@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>新原型</title>
+<style>
+/* #region tokens */
+:root {
+  --color-primary: #b8532f;
+  --color-bg: #faf9f5;
+  --color-surface: #ffffff;
+  --color-text: #141413;
+  --color-muted: #6f6e69;
+  --color-border: #e5e2d6;
+  --color-danger: #b42318;
+  --color-success: #4c7a52;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --font-title: 24px;
+  --font-heading: 18px;
+  --font-body: 14px;
+  --font-small: 12px;
+  --radius-control: 8px;
+  --radius-card: 12px;
+  --radius-dialog: 16px;
+}
+/* #endregion tokens */
+/* #region base */
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--color-bg); color: var(--color-text); font: var(--font-body)/1.7 -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; }
+button, input, select, textarea { font: inherit; }
+h1 { font-size: var(--font-title); margin: 0; }
+/* #endregion base */
+/* #region components */
+button { cursor: pointer; border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: var(--space-2) var(--space-4); background: var(--color-surface); color: var(--color-text); }
+.primary { background: var(--color-primary); border-color: var(--color-primary); color: var(--color-surface); }
+/* #endregion components */
+/* #region layout */
+main { padding: var(--space-8); max-width: 1200px; margin: auto; }
+/* #endregion layout */
+/* #region section-header */
+header { padding: var(--space-6) var(--space-8); background: var(--color-surface); border-bottom: 1px solid var(--color-border); }
+/* #endregion section-header */
+/* #region section-main */
+.starter { min-height: 55vh; display: grid; place-content: center; text-align: center; }
+.starter p { color: var(--color-muted); }
+/* #endregion section-main */
+</style>
+</head>
+<body>
+<!-- #region markup-header -->
+<header data-pid="header"><h1 data-pid="header-title">新原型</h1></header>
+<!-- #endregion markup-header -->
+<!-- #region markup-main -->
+<main data-pid="main"><section class="starter" data-pid="main-starter"><h2 data-pid="main-heading">从一个想法开始</h2><p data-pid="main-description">在左侧描述页面的用途、内容与交互，AI 会基于此骨架制作第一版。</p><button class="primary" data-pid="main-btn-demo" onclick="this.textContent='交互已就绪'">试一下交互</button></section></main>
+<!-- #endregion markup-main -->
+<!-- #region script -->
+<script>
+// 在此添加页面交互。
+</script>
+<!-- #endregion script -->
+</body>
+</html>

@@ -1,0 +1,367 @@
+"""Source-preserving edits: parsers locate nodes; only original ranges change."""
+from __future__ import annotations
+
+import difflib
+import hashlib
+import html
+import re
+import shutil
+import subprocess
+from dataclasses import dataclass
+from html.parser import HTMLParser
+
+from bs4 import BeautifulSoup
+
+
+class PatchError(RuntimeError):
+    pass
+
+
+VOID = set("area base br col embed hr img input link meta param source track wbr".split())
+MARKER = re.compile(r"^[\t ]*(?:<!--|/\*)[\t ]*#(end)?region[\t ]+([\w-]+)[\t ]*(?:-->|\*/)[\t ]*\r?$", re.M)
+DEFAULT_TOKENS = {
+    "--color-primary": "#b8532f", "--color-bg": "#faf9f5",
+    "--color-surface": "#ffffff", "--color-text": "#141413",
+    "--color-muted": "#6f6e69", "--color-border": "#e5e2d6",
+    "--color-danger": "#b42318", "--color-success": "#4c7a52",
+}
+
+
+@dataclass
+class Span:
+    tag: str
+    start: int
+    open_end: int
+    close_start: int = -1
+    end: int = -1
+
+
+class SourceIndex(HTMLParser):
+    def __init__(self, source):
+        super().__init__(convert_charrefs=False)
+        self.source = source
+        self.lines = [0] + [m.end() for m in re.finditer("\n", source)]
+        self.nodes = {}
+        self.stack = []
+        self.feed(source)
+
+    def position(self):
+        line, col = self.getpos()
+        return self.lines[line - 1] + col
+
+    def handle_starttag(self, tag, attrs):
+        start = self.position()
+        node = Span(tag, start, start + len(self.get_starttag_text()))
+        self.nodes[start] = node
+        if tag in VOID:
+            node.close_start = node.end = node.open_end
+        else:
+            self.stack.append(node)
+
+    def handle_startendtag(self, tag, attrs):
+        self.handle_starttag(tag, attrs)
+        node = self.nodes[self.position()]
+        node.close_start = node.end = node.open_end
+        if self.stack and self.stack[-1] is node:
+            self.stack.pop()
+
+    def handle_endtag(self, tag):
+        at = self.position()
+        for i in range(len(self.stack) - 1, -1, -1):
+            if self.stack[i].tag == tag:
+                node = self.stack[i]
+                node.close_start = at
+                node.end = self.source.find(">", at) + 1
+                del self.stack[i:]
+                return
+
+
+def locate(source: str, selector: str):
+    soup = BeautifulSoup(source, "html.parser")
+    try:
+        matches = soup.select(selector)
+    except Exception as exc:
+        raise PatchError(f"无效选择器：{selector}") from exc
+    if len(matches) != 1:
+        raise PatchError(f"目标必须唯一命中，当前命中 {len(matches)} 处：{selector}。动态元素请搜索其模板源码。")
+    node = matches[0]
+    index = SourceIndex(source)
+    if not node.sourceline:
+        raise PatchError("无法确认元素在源码中的位置")
+    at = index.lines[node.sourceline - 1] + node.sourcepos
+    span = index.nodes.get(at)
+    if not span or span.end < 0:
+        raise PatchError("元素缺少明确的结束标签，无法安全直接编辑")
+    return node, span
+
+
+def regions(source: str):
+    result, stack = {}, []
+    for mark in MARKER.finditer(source):
+        end, name = mark.groups()
+        if not end:
+            if name in result or any(n == name for n, _ in stack):
+                raise PatchError(f"region 重复：{name}")
+            stack.append((name, mark))
+        else:
+            if not stack or stack[-1][0] != name:
+                raise PatchError(f"region 标记不匹配：{name}")
+            _, start = stack.pop()
+            result[name] = (start.end(), mark.start())
+    if stack:
+        raise PatchError(f"region 未闭合：{stack[-1][0]}")
+    return result
+
+
+def token_values(source: str):
+    soup = BeautifulSoup(source, "html.parser")
+    css = "\n".join(t.get_text() for t in soup.find_all("style"))
+    return dict(re.findall(r"(--[\w-]+)\s*:\s*([^;{}]+)\s*;", css))
+
+
+def outline(source: str):
+    return [{"name": name, "lines": source[a:b].count("\n"),
+             "summary": source[a:b].strip().split("\n")[0][:100] if source[a:b].strip() else "空区块"}
+            for name, (a, b) in regions(source).items()]
+
+
+def closest_snippet(text: str, old: str, offset_line: int = 0):
+    """FIND 没命中时，找出文件里最像它的一段真实源码。
+
+    只告诉模型“命中 0 处”，它不知道是空格、换行还是位置错了，只能瞎猜着重试；
+    把真实原文附回去，它第二次通常就能照着原样构造。
+    """
+    wanted = old.strip()
+    lines, target = text.splitlines(), wanted.splitlines()
+    if not lines or not target:
+        return None
+    span = len(target)
+    probe = target[0].strip()[:200]
+    if not probe:
+        return None
+    # 先用首行粗筛，避免对每个窗口做全量比对
+    rough = difflib.SequenceMatcher(autojunk=False)
+    rough.set_seq2(probe)
+    candidates = []
+    for i, line in enumerate(lines):
+        rough.set_seq1(line.strip()[:200])
+        if rough.real_quick_ratio() < 0.45 or rough.quick_ratio() < 0.45:
+            continue
+        candidates.append((rough.ratio(), i))
+    if not candidates:
+        return None
+    candidates.sort(reverse=True)
+    full = difflib.SequenceMatcher(autojunk=False)
+    full.set_seq2(wanted[:6000])
+    best = None
+    for _, i in candidates[:40]:
+        window = "\n".join(lines[i:i + span])
+        full.set_seq1(window[:6000])
+        score = full.ratio()
+        if best is None or score > best[0]:
+            best = (score, i, window)
+    if best is None or best[0] < 0.5:
+        return None
+    score, i, window = best
+    return {"score": round(score, 2), "start": offset_line + i + 1,
+            "end": offset_line + i + len(window.splitlines()), "content": window[:1600]}
+
+
+def replace_unique(source, old, new, region=""):
+    a, b = 0, len(source)
+    if region:
+        bounds = regions(source)
+        if region not in bounds:
+            raise PatchError(f"region 不存在：{region}")
+        a, b = bounds[region]
+    text = source[a:b]
+    count = text.count(old) if old else 0
+    if count != 1:
+        message = f"FIND 必须唯一命中，当前 {count} 处；请重新读取真实片段并扩大定位范围"
+        if count == 0 and old:
+            near = closest_snippet(text, old, source[:a].count("\n"))
+            if near:
+                message += (f"\n文件里最接近的一段真实源码（第 {near['start']}–{near['end']} 行，"
+                            f"相似度 {near['score']}）——请照这段原文重新构造 FIND：\n{near['content']}")
+        raise PatchError(message)
+    return source[:a] + text.replace(old, new, 1) + source[b:]
+
+
+def append_block(source, value, kind):
+    closing = re.search(r"</head\s*>" if kind == "style" else r"</body\s*>", source, re.I)
+    if not closing:
+        raise PatchError(f"缺少 {kind} 的插入位置")
+    at = closing.start()
+    return source[:at] + f"\n<{kind}>\n{value}\n</{kind}>\n" + source[at:]
+
+
+def set_token(source, name, value):
+    if not re.fullmatch(r"--[a-zA-Z][\w-]*", name):
+        raise PatchError("无效设计变量名")
+    if not re.fullmatch(r"#[0-9a-fA-F]{3,8}|[\d.]+(?:px|rem|em|%)", value):
+        raise PatchError("设计变量支持十六进制颜色或尺寸")
+    bounds = regions(source)
+    if "tokens" in bounds:
+        a, b = bounds["tokens"]
+        chunk = source[a:b]
+        pattern = re.compile(r"(" + re.escape(name) + r"\s*:\s*)[^;{}]+(?=;)")
+        if len(pattern.findall(chunk)) > 1:
+            raise PatchError("变量在 tokens 区出现多次，请交给 AI 确认")
+        if pattern.search(chunk):
+            chunk = pattern.sub(lambda m: m.group(1) + value, chunk)
+        else:
+            chunk += f"\n:root {{ {name}: {value}; }}\n"
+        return source[:a] + chunk + source[b:]
+    return append_block(source, f"/* #region tokens */\n:root {{ {name}: {value}; }}\n/* #endregion tokens */", "style")
+
+
+def set_style(source, selector, name, value):
+    allowed = {"color", "background-color", "font-size", "border-radius", "padding-top", "padding-bottom", "padding-left", "padding-right", "display"}
+    if name not in allowed:
+        raise PatchError("属性不在直接编辑范围内")
+    if not (re.fullmatch(r"var\(--[\w-]+\)", value) or re.fullmatch(r"\d{1,3}px", value) or value in {"none", "revert"}):
+        raise PatchError("请选择设计变量或有效尺寸")
+    ident = r"[\w-]+"
+    attribute = r'\[data-pid=(?:"' + ident + r'"|\x27' + ident + r'\x27|' + ident + r')\]'
+    qualifier = r'(?:[.#]' + ident + '|' + attribute + r'|:nth-of-type\([1-9]\d*\))'
+    part = r'(?:[a-zA-Z][\w-]*(?:' + qualifier + r')*|' + qualifier + r'+)'
+    if not re.fullmatch(part + r'(?:\s*(?:>|\s)\s*' + part + r')*', selector):
+        raise PatchError("该元素的定位方式不适合直接写入样式，请重新点选或交给 AI 修改")
+    ident = hashlib.sha256(f"{selector}/{name}".encode()).hexdigest()[:16]
+    rule = f"/* edit:{ident} */ {selector} {{ {name}: {value} !important; }}"
+    pattern = re.compile(r"/\* edit:" + ident + r" \*/[^\n]*")
+    if pattern.search(source):
+        return pattern.sub(lambda _: rule, source)
+    bounds = regions(source)
+    if "manual-styles" in bounds:
+        _, at = bounds["manual-styles"]
+        return source[:at] + rule + "\n" + source[at:]
+    return append_block(source, f"/* #region manual-styles */\n{rule}\n/* #endregion manual-styles */", "style")
+
+
+def apply_operations(source: str, operations: list[dict]) -> tuple[str, list[str]]:
+    logs = []
+    original_regions = set(regions(source))
+    for op in operations:
+        action, value = op.get("action"), str(op.get("value", ""))
+        selector, name = op.get("selector", ""), op.get("name", "")
+        if action == "replace_source_text":
+            old = op.get("old", "")
+            if re.search(r"<html\b[\s\S]*</html\s*>", old, re.I):
+                raise PatchError("不能替换整份 HTML，请定位具体元素或 region")
+            source = replace_unique(source, op.get("old", ""), op.get("new", ""), op.get("region", ""))
+        elif action == "replace_region":
+            bounds = regions(source)
+            region = op.get("region", "")
+            if region not in bounds:
+                raise PatchError(f"region 不存在：{region}")
+            a, b = bounds[region]
+            source = source[:a] + value + source[b:]
+        elif action in {"append_style", "append_script"}:
+            source = append_block(source, value, action.split("_")[1])
+        elif action == "set_token":
+            source = set_token(source, name, value)
+        else:
+            node, span = locate(source, selector)
+            if span.tag in {"html", "head", "body"} and action in {"set_text", "set_html", "replace_outer_html", "remove"}:
+                raise PatchError("不能重写页面根结构，请修改具体元素或 region")
+            a, b = span.start, span.end
+            if action == "set_style":
+                source = set_style(source, selector, name, value)
+                logs.append(f"{selector} · {name} → {value}")
+                continue
+            if action in {"set_text", "set_html"}:
+                if span.tag in VOID:
+                    raise PatchError("该元素没有文本内容")
+                a, b = span.open_end, span.close_start
+                value = html.escape(value, quote=False) if action == "set_text" else value
+            elif action == "remove":
+                value = ""
+            elif action == "insert_before":
+                b = a
+            elif action == "insert_after":
+                a = b
+            elif action == "replace_outer_html":
+                pass
+            elif action in {"set_attr", "remove_attr", "add_class", "remove_class"}:
+                if action in {"add_class", "remove_class"}:
+                    classes = list(node.get("class", []))
+                    classes = list(dict.fromkeys(classes + value.split())) if action == "add_class" else [c for c in classes if c not in value.split()]
+                    name, value = "class", " ".join(classes)
+                if not re.fullmatch(r"[\w:-]+", name):
+                    raise PatchError("无效属性名称")
+                a, b = span.start, span.open_end
+                opening = source[a:b]
+                pattern = re.compile(r"\s+" + re.escape(name) + r"(?:\s*=\s*(?:\"[^\"]*\"|'[^']*'|[^\s>]+))?(?=[\s/>])", re.I)
+                attr = "" if action == "remove_attr" else f' {name}="{html.escape(value, quote=True)}"'
+                if pattern.search(opening):
+                    value = pattern.sub(lambda _: attr, opening, count=1)
+                elif action != "remove_attr":
+                    pos = len(opening) - (2 if opening.endswith("/>") else 1)
+                    value = opening[:pos] + attr + opening[pos:]
+                else:
+                    value = opening
+            else:
+                raise PatchError(f"不支持的操作：{action}")
+            source = source[:a] + value + source[b:]
+        logs.append(f"{action} · {selector or name or op.get('region', '源码片段')}")
+        if not original_regions.issubset(regions(source)):
+            raise PatchError("不能删除或改名已有 region 标记")
+    return source, logs
+
+
+def script_syntax_error(code: str, module: bool = False) -> str:
+    """校验一段独立脚本的语法，有错返回错误文本，没错或查不了返回空串。
+
+    没装 node 时不阻拦——本地工具不该因为缺个可选依赖就不让人干活。
+    """
+    node = shutil.which("node")
+    if not node or not code.strip():
+        return ""
+    try:
+        result = subprocess.run(
+            [node, "--check", "--input-type=" + ("module" if module else "commonjs")],
+            input=code, text=True, capture_output=True, timeout=8)
+        return result.stderr[:900] if result.returncode else ""
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+
+
+def verify_source(source: str, assertions: list[dict] | None = None) -> dict:
+    soup, issues = BeautifulSoup(source, "html.parser"), []
+    if not soup.html or not soup.body or not soup.head:
+        issues.append("需要完整的 html / head / body 结构")
+    try:
+        regions(source)
+    except PatchError as exc:
+        issues.append(str(exc))
+    pids = [n["data-pid"] for n in soup.select("[data-pid]")]
+    if len(set(pids)) != len(pids):
+        issues.append("data-pid 不能重复")
+    node = shutil.which("node")
+    syntax_checked = bool(node)
+    for i, tag in enumerate(soup.find_all("script"), 1):
+        kind = tag.get("type", "").lower()
+        if tag.get("src") or kind not in {"", "text/javascript", "application/javascript", "module"}:
+            continue
+        if node and tag.string:
+            try:
+                result = subprocess.run([node, "--check", "--input-type=" + ("module" if kind == "module" else "commonjs")], input=tag.string, text=True, capture_output=True, timeout=8)
+                if result.returncode:
+                    issues.append(f"脚本 {i} 语法错误：{result.stderr[:900]}")
+            except (OSError, subprocess.TimeoutExpired):
+                syntax_checked = False
+                issues.append(f"脚本 {i} 语法检查未完成")
+    for item in assertions or []:
+        try:
+            matches = soup.select(item.get("selector", ""))
+            if item.get("exists", True) is False:
+                if matches:
+                    issues.append(f"元素仍存在：{item['selector']}")
+            elif not matches:
+                issues.append(f"未找到：{item.get('selector')}")
+            elif item.get("contains") and item["contains"] not in str(matches[0]):
+                issues.append(f"内容不匹配：{item['selector']}")
+        except Exception:
+            issues.append("断言选择器无效")
+    return {"ok": not issues, "issues": issues, "syntax_checked": syntax_checked}

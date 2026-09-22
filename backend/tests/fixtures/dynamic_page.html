@@ -1,0 +1,114 @@
+<!doctype html><html><head><title>样例</title><style>.cx-badge{padding:2px 6px}.cx-badge.green{color:#0a0}</style></head><body><div id="app"></div>
+<script>
+function afGases(type){const d=ACT[type];if(!d)return[];const gs=d.gases.slice();
+ if(gs.length>1)((DB.cx&&DB.cx.vers)||[]).forEach(v=>Object.keys(v.gwp||{}).forEach(g=>{if(CORE_GAS.indexOf(g)<0&&gs.indexOf(g)<0)gs.push(g)}));return gs}
+function afVars(type){const d=ACT[type];if(!d)return[];if(d.gases.length>1)return afGases(type).map(g=>d.v+'_'+gasKey(g));return['AD','EF_'+d.v.replace(/^E_/,''),'GWP']}
+function varDesc(v){if(v==='AD')return'活动数据量（设施的活动数据单位）';if(v==='GWP')return'全球变暖潜势（取自因子库版本）';if(/^EF_/.test(v))return'排放因子（已折算为 t / 活动数据单位）';
+ const k=Object.keys(ACT).find(x=>ACT[x].v===v);if(k)return ACT[k].label+'（tCO₂e）';const m=/^(E_[a-z]+)_(.+)$/.exec(v);if(m){const kk=Object.keys(ACT).find(x=>ACT[x].v===m[1]);return(kk?ACT[kk].label:m[1])+' 中该气体的分项排放量（tCO₂e）'}return v}
+const actVars=()=>Array.from(new Set(C().formulas.acts.map(a=>ACT[a.type]?ACT[a.type].v:'').filter(Boolean)));
+const varLabel=v=>{const k=Object.keys(ACT).find(k=>ACT[k].v===v);return k?ACT[k].label:''};
+const badge=(t,c)=>'<span class="cx-badge '+(c||'gray')+'">'+E(t)+'</span>';
+const lockMark='<span class="cx-lockmark">🔒</span>';
+const btnL=(cx,text,id,extra)=>'<button class="link" data-cx="'+cx+'"'+(id!=null?' data-id="'+E(id)+'"':'')+(extra||'')+'>'+text+'</button>';
+const btn=(cx,text,cls,id)=>'<button class="btn '+(cls||'')+'" data-cx="'+cx+'"'+(id!=null?' data-id="'+E(id)+'"':'')+'>'+text+'</button>';
+const titleCard=(t,sub,act)=>'<div class="cx-titlebar"><div><h1>'+t+'</h1><p>'+sub+'</p></div><div class="cx-right">'+(act||'')+'</div></div>';
+const cell=v=>'<td>'+v+'</td>';
+
+/* ---------- UI 状态 ---------- */
+const U={fl:{name:'',year:'全部',status:'全部'},verId:null,fm:{src:'全部',gas:'全部'},tplCode:null,tplSel:{},fmTab:'all',fmInd:'全部行业',fmMat:'全部',fmTr:'全部',bdQuota:0,bdType:'全部',devB:null,devType:0,devUnit:'全部',devSel:{},devF:{name:'',ds:'全部',status:'全部'},bdF:{unit:'全部',src:'全部',quota:'全部'},bdSel:{},mOk:null,mExtra:null};
+
+/* ================= 页面：环境影响因子库清单 ================= */
+function pFactorList(){
+ const c=C(),f=U.fl;
+ const years=Array.from(new Set(c.vers.map(v=>String(v.year)))).sort().reverse();
+ const rows=c.vers.filter(v=>{const l=libOf(v);return(!f.name||l.name.indexOf(f.name)>-1||l.short.indexOf(f.name)>-1)&&(f.year==='全部'||String(v.year)===f.year)&&(f.status==='全部'||v.status===f.status)});
+ rows.sort((a,b)=>c.libs.findIndex(l=>l.id===a.lib)-c.libs.findIndex(l=>l.id===b.lib)||String(b.effective).localeCompare(String(a.effective)));
+ const sel=(id,arr,cur)=>'<select id="'+id+'">'+['全部'].concat(arr).map(x=>'<option'+(x===cur?' selected':'')+'>'+E(x)+'</option>').join('')+'</select>';
+ const body=rows.map((v,i)=>{const l=libOf(v);
+  return '<tr>'+cell(i+1)+cell(E(l.name))+cell(E(v.version))+cell(v.year)+cell(E(v.effective))+cell(E(v.origin||v.org))+cell(Number(v.count).toLocaleString('en-US'))+cell(badge(v.status,v.status==='当前版本'?'green':v.status==='待生效'?'orange':'gray'))+cell(btnL('fl-view','查看因子',v.id)+' '+btnL('ver-detail','版本详情',v.id)+(v.status!=='当前版本'?' '+btnL('ver-current','设为当前',v.id):''))+'</tr>'}).join('');
+ return '<div class="page cx-pg">'+titleCard('环境影响因子库清单','按“库 + 版本”管理来源标准；更新版本不覆盖历史数据。',btn('ver-help','版本使用说明'))+
+ '<div class="toolbar"><label class="field"><span>因子库名称</span><input id="cx-fl-name" placeholder="请输入因子库名称" value="'+E(f.name)+'"></label><label class="field"><span>发布年份</span>'+sel('cx-fl-year',years,f.year)+'</label><label class="field"><span>版本状态</span>'+sel('cx-fl-status',['当前版本','历史版本','待生效'],f.status)+'</label>'+btn('fl-query','查询','primary')+btn('fl-reset','重置')+'</div>'+
+ '<section class="panel"><div class="panel-head"><span>环境影响因子库版本清单</span><span class="cx-panel-tools">'+btn('lib-add','新增因子库','sm')+btn('ver-add','新增版本','primary sm')+btn('ver-import','批量导入','sm')+'</span></div>'+
+ '<div class="table-wrap"><table><thead><tr><th>序号</th><th>因子库名称</th><th>版本号</th><th>发布年份</th><th>生效时间</th><th>来源标准/发布机构</th><th>因子数量</th><th>版本状态</th><th>操作</th></tr></thead><tbody>'+(body||'<tr><td colspan="9" class="cx-gray" style="text-align:center">暂无符合条件的因子库版本</td></tr>')+'</tbody></table></div></section></div>';
+}
+
+/* ================= 页面：环境影响因子库管理 ================= */
+const FM_TABS=[['all','全部因子'],['direct','直接排放因子'],['indirect','间接排放因子'],['gwp','GWP值'],['material','物料因子'],['transport','运输因子']];
+const gwpSrcOf=v=>v.gwpSrc||(v.gwp&&v.gwp['CH₄']===28?'IPCC AR5':'IPCC AR6');
+function facItems(v){
+ const c=C(),items=[],org=v.stdShort||v.standard;
+ c.factors.filter(x=>x.ver===v.id).forEach(x=>{const d=SRC[x.source],ind=x.source==='外购电力'||x.source==='外购热力';
+  items.push({kind:ind?'indirect':'direct',label:ind?'间接排放因子':'直接排放因子',uid:x.uid,id:x.id,obj:x.source,gas:x.gas,au:d?(d.ncv?d.bu:d.den):'—',val:x.ef,unit:x.unit,heat:d&&d.ncv?(x.ncv||'—'):'—',heatU:d&&d.ncv?'GJ/'+d.bu:'—',origin:org,status:x.status,edit:'fac-edit',del:'fac-del'})});
+ Object.keys(v.gwp||{}).filter(g=>g!=='CO₂e').forEach(g=>items.push({kind:'gwp',label:'GWP值',uid:g,id:'GWP-'+(GKEY[g]||g),obj:g,gas:'—',au:'kg',val:v.gwp[g],unit:'kgCO₂e/kg',heat:'—',heatU:'—',origin:gwpSrcOf(v),status:'启用',edit:'gwp-edit',del:CORE_GAS.indexOf(g)<0?'gwp-del':''}));
+ (c.matFactors||[]).filter(x=>x.ver===v.id).forEach(x=>items.push({kind:'material',label:'物料因子',uid:x.uid,id:x.id,obj:x.name+' · '+x.cat,gas:'—',au:(x.unit.split('/')[1]||'kg'),val:x.ef,unit:x.unit,heat:'—',heatU:'—',origin:org,status:x.status,edit:'mat-edit',del:'mat-del'}));
+ (c.trFactors||[]).filter(x=>x.ver===v.id).forEach(x=>items.push({kind:'transport',label:'运输因子',uid:x.uid,id:x.id,obj:x.mode,gas:'—',au:'t·km',val:x.ef,unit:x.unit,heat:'—',heatU:'—',origin:org,status:x.status,edit:'tr-edit',del:'tr-del'}));
+ return items}
+function pFactorManage(){
+ const c=C();let v=verById(U.verId);
+ if(!v){v=c.vers.find(x=>x.lib==='LB-BUILD'&&x.status==='当前版本')||c.vers[0];U.verId=v.id}
+ const lib=libOf(v),tab=U.fmTab||'all',fq=U.fm||{},st=fq.st||'全部',kw=(fq.kw||'').trim();
+ const inds=['全部行业'].concat(INDUSTRIES).concat(Array.from(new Set(c.libs.map(l=>l.industry))).filter(x=>INDUSTRIES.indexOf(x)<0));
+ if(inds.indexOf(U.fmInd)<0)U.fmInd='全部行业';
+ const libsShown=c.libs.filter(l=>U.fmInd==='全部行业'||l.industry===U.fmInd||l.id===lib.id);
+ const libOpts=libsShown.map(l=>'<option value="'+E(l.id)+'"'+(l.id===lib.id?' selected':'')+' title="'+E(l.name)+'">'+E(l.short)+'</option>').join('');
+ const verList=c.vers.filter(x=>x.lib===lib.id).sort((a,b)=>String(b.effective).localeCompare(String(a.effective)));
+ const verOptsH=verList.map(x=>'<option value="'+E(x.id)+'"'+(x.id===v.id?' selected':'')+'>'+E(x.version+'（'+x.status+'）')+'</option>').join('');
+ const all=facItems(v);
+ const rows=all.filter(x=>(tab==='all'||x.kind===tab)&&(st==='全部'||x.status===st)&&(!kw||(x.id+' '+x.obj+' '+x.gas).toLowerCase().indexOf(kw.toLowerCase())>-1));
+ const full=true; /* 所有标签共用同一套列，不适用的填“—” */
+ const ops=x=>btnL(x.edit,'编辑',x.uid)+(x.del?' ｜ '+btnL(x.del,'删除',x.uid):'');
+ const body=rows.map((x,i)=>'<tr>'+cell(i+1)+cell(E(x.id))+cell(E(x.label))+cell(E(x.obj))+(full?cell(E(x.gas)):'')+cell(E(x.au))+cell(E(x.val))+cell(E(x.unit))+(full?cell(E(x.heat))+cell(E(x.heatU)):'')+cell(E(x.origin))+cell(badge(x.status,x.status==='启用'?'green':'gray'))+cell(ops(x))+'</tr>').join('');
+ const head=full?['序号','因子编号','因子类型','排放源/对象','温室气体','活动单位','因子值','因子单位','低位发热值','热值单位','数据来源','状态','操作']:['序号','因子编号','因子类型','排放源/对象','活动单位','因子值','因子单位','数据来源','状态','操作'];
+ const ctx='<div class="cx-ctx"><div class="box"><div class="k">所属因子库（可切换）</div><div class="v"><select data-cxc="fm-lib" title="'+E(lib.name)+'">'+libOpts+'</select></div></div><div class="box"><div class="k">版本（可切换）</div><div class="v"><select data-cxc="fm-ver" title="切换版本">'+verOptsH+'</select></div></div><div class="box"><div class="k">适用行业</div><div class="v">'+E(lib.industry)+' <small>'+lockMark+' 随库版本带出</small></div></div><div class="box"><div class="k">来源标准</div><div class="v">'+E(v.stdShort||v.standard)+' '+lockMark+'</div></div></div>';
+ const tree='<section class="panel tree-panel"><div class="panel-head"><span>行业分类</span>'+btn('ind-add','+','primary sm')+'</div>'+inds.map(x=>'<div class="tree-row '+(U.fmInd===x?'active':'')+'" data-cx="fm-ind" data-id="'+E(x)+'">'+E(x)+'</div>').join('')+'</section>';
+ const sel=(id,arr,cur)=>'<select id="'+id+'">'+arr.map(x=>'<option'+(x===cur?' selected':'')+'>'+E(x)+'</option>').join('')+'</select>';
+ const tool='<div class="toolbar"><label class="field"><span>状态</span>'+sel('cx-fm-st',['全部','启用','停用'],st)+'</label><label class="field"><span>关键字</span><input id="cx-fm-kw" placeholder="请输入因子编号/名称/排放源" value="'+E(kw)+'"></label>'+btn('fm-query','查询','primary')+btn('fm-reset','重置')+'</div>';
+ const tabsH='<div class="tabs">'+FM_TABS.map(x=>'<button class="tab '+(tab===x[0]?'active':'')+'" data-cx="fm-tab" data-id="'+x[0]+'">'+x[1]+'</button>').join('')+'</div>';
+ const tools=btn('fac-add','新增因子','primary sm')+((tab==='all'||tab==='direct'||tab==='indirect')?btn('fac-copy','从其他版本复制','sm')+btn('fac-import','批量导入','sm'):'');
+ const empty='<tr><td colspan="'+head.length+'" class="cx-gray" style="text-align:center">暂无符合条件的因子</td></tr>';
+ return '<div class="page cx-pg">'+titleCard('环境影响因子库管理','进入某个因子库版本后维护具体因子；库、版本、行业默认带出并锁定。',btn('goto-fl','返回因子库清单'))+ctx+
+ '<div class="catalog-layout">'+tree+'<div>'+tool+tabsH+'<section class="panel"><div class="panel-head"><span>因子明细'+(tab==='gwp'?' <span class="cx-tbl-note">GWP 按因子库版本维护：可新增气体，标准三种可编辑数值</span>':'')+'</span><span class="cx-panel-tools">'+tools+'</span></div>'+
+ '<div class="table-wrap"><table><thead><tr>'+head.map(h=>'<th>'+h+'</th>').join('')+'</tr></thead><tbody>'+(body||empty)+'</tbody></table></div><div class="pager">共 '+rows.length+' 条 · 当前行业：'+E(U.fmInd)+'</div></section></div></div></div>';
+}
+
+
+/* ================= 页面：碳排计算公式库管理 ================= */
+function pFormula(){
+ const c=C(),fm=c.formulas;
+ const tRows=fm.totals.map(t=>'<tr>'+cell(E(t.code))+cell(E(t.name))+cell(E(t.industry))+cell('<span class="cx-code">E_total</span>')+cell('<span class="cx-code">'+E(t.expr)+'</span>')+cell('tCO₂e')+cell(tplRefs(t.code).length?tplRefs(t.code).length+' 个模板':'<span class="cx-gray">未引用</span>')+cell(badge(t.status,t.status==='启用'?'green':'gray'))+cell(btnL('tf-edit','编辑',t.code)+' '+btnL('tf-view','查看组成',t.code))+'</tr>').join('');
+ const aRows=fm.acts.map(a=>{const d=ACT[a.type]||{v:'—'};return '<tr>'+cell(E(a.code))+cell(E(a.type))+cell('<span class="cx-code">'+E(d.v)+'</span>')+cell(E(a.expr))+cell('tCO₂e')+cell(facRefs(a.code).length?facRefs(a.code).length+' 个设施':'<span class="cx-gray">未引用</span>')+cell(badge(a.status,a.status==='启用'?'green':'gray'))+cell(btnL('af-edit','编辑',a.code))+'</tr>'}).join('');
+ const subs=fm.acts.filter(a=>ACT[a.type]&&ACT[a.type].gases.length>1).map(a=>{const d=ACT[a.type];
+  return '<div class="cx-subttl">'+E(a.type)+' · 气体分项公式</div>'+afGases(a.type).map(g=>{const k=gasKey(g);return '<div class="cx-formula-row"><b>'+d.v+'_'+k+'</b> = AD × EF_'+k+' × GWP_'+k+' <em>'+(g==='CO₂'?'GWP_CO2 = 1':'GWP_'+k+' 由因子库版本带出')+'</em></div>'}).join('')}).join('');
+ return '<div class="page cx-pg">'+titleCard('碳排计算公式库管理','总公式引用活动公式；活动公式再拆到温室气体分项，避免 AD/EF 与总公式混用。')+
+ '<section class="panel"><div class="panel-head"><span>总计算公式</span>'+btn('tf-add','新增总公式','primary sm')+'</div><div class="table-wrap"><table><thead><tr><th>公式编号</th><th>公式名称</th><th>适用行业</th><th>结果变量</th><th>表达式</th><th>结果单位</th><th>引用</th><th>状态</th><th>操作</th></tr></thead><tbody>'+tRows+'</tbody></table></div></section>'+
+ '<section class="panel"><div class="panel-head"><span>排放活动公式</span>'+btn('af-add','新增活动公式','primary sm')+'</div><div class="table-wrap"><table><thead><tr><th>公式编号</th><th>活动类型</th><th>结果变量</th><th>组成</th><th>结果单位</th><th>引用</th><th>状态</th><th>操作</th></tr></thead><tbody>'+aRows+'</tbody></table></div>'+subs+'<div style="height:10px"></div></section></div>';
+}
+
+/* ================= 页面：碳排核算模板配置 ================= */
+function tplStatus(t){return !t.enabled?badge('停用','gray'):t.current?badge('当前执行','green'):badge('可选','gray')}
+function pTemplate(){return U.tplCode&&tplBy(U.tplCode)?pTplDetail(tplBy(U.tplCode)):pTplList()}
+function pTplList(){
+ const c=C();
+ const rows=c.templates.map((t,i)=>{const v=verById(t.libVer);
+  return '<tr>'+cell(i+1)+'<td class="wrap2">'+btnL('tpl-detail',E(t.code),t.code)+'</td>'+'<td class="wrap2">'+E(t.name)+'</td>'+cell(E(t.industry))+'<td class="wrap2">'+E(t.std)+'</td>'+cell(E(t.ver))+'<td class="wrap2">'+(v?E(verLabel2(v)):'—')+'</td>'+cell(E(t.formula))+cell(srcCount(t.code)+' <span class="cx-tbl-note">自动统计</span>')+cell(t.effective?E(t.effective)+' 起':'长期有效')+cell(tplStatus(t))+
+  cell(btnL('tpl-detail','详情',t.code)+' '+btnL('tpl-edit','编辑',t.code)+' '+btnL('tpl-copy','复制',t.code)+(t.enabled&&!t.current?' '+btnL('tpl-current','设为当前',t.code):''))+'</tr>'}).join('');
+ return '<div class="page cx-pg"><section class="panel"><div class="panel-head"><span>核算模板列表</span>'+btn('tpl-add','新增模板','primary sm')+'</div><div class="table-wrap"><table class="cx-fit"><thead><tr><th>序号</th><th>模板编号</th><th>模板名称</th><th>适用行业</th><th>标准/制度</th><th>模板版本</th><th>因子库版本</th><th>总计算公式</th><th>关联排放源数</th><th>有效期</th><th>状态</th><th>操作</th></tr></thead><tbody>'+rows+'</tbody></table></div><div class="pager">共 '+c.templates.length+' 条 · 第 1 / 1 页</div></section></div>';
+}
+function facRows(t,f,idx){
+ const s=SRC[f.source]||{gases:[],v:'—'};const ver=verById(t.libVer);const gs=(f.gases&&f.gases.length?f.gases:s.gases)||[];const g0=gs.length?gs:['—'];
+ const span=g0.length,sel=U.tplSel[f.id]?' checked':'';const fm=C().formulas.acts.find(a=>a.code===f.formula);
+ return g0.map((g,k)=>{
+  const r=efAct(t.libVer,f.source,g,f.unit);
+  const ef=r&&r.val!=null?'<span title="'+E(r.note)+'">'+fmtN(r.val)+'</span> '+lockMark:(r&&r.miss?'<span class="cx-warn">缺'+r.miss+'</span>':'<span class="cx-warn">未匹配</span>');
+  const un=r&&r.unit?E(r.unit)+' '+lockMark:'—';
+  const gw=r&&r.unit&&ver?E(ver.gwp[g]!=null?ver.gwp[g]:1)+' '+lockMark:'—';
+  let h='<tr class="'+(k?'gas-mid':'')+'">';
+  if(k===0)h+='<td rowspan="'+span+'"><input type="checkbox" class="checks" data-cxc="tpl-sel" data-id="'+E(f.id)+'"'+sel+'></td><td rowspan="'+span+'">'+idx+'</td><td rowspan="'+span+'">'+E(f.name)+'</td><td rowspan="'+span+'">'+E(f.source)+'</td><td rowspan="'+span+'">'+badge(f.status,f.status==='启用'?'green':'gray')+'</td><td rowspan="'+span+'">'+E(f.ds||'人工填报')+'</td><td rowspan="'+span+'">'+E(f.unit||s.unit||'—')+'</td>';
+  h+='<td class="gas sep">'+E(g)+'</td><td>'+ef+'</td><td>'+un+'</td><td>'+gw+'</td>';
+  if(k===0)h+='<td rowspan="'+span+'" class="sep"><span class="cx-code">'+E(f.formula||'—')+'</span><span class="cx-auto">'+E(fm?fm.type:'')+'</span></td><td rowspan="'+span+'">'+E(f.updated||'')+'</td><td rowspan="'+span+'">'+btnL('tpl-fac-edit','编辑',f.id)+' ｜ '+btnL('tpl-fac-del','删除',f.id)+'</td>';
+  return h+'</tr>'}).join('');
+}
+function pTplDetail(t){
+ const v=verById(t.libVer);
+ const head='<div class="cx-bar"><div class="grp"><label>年度<select data-cxc="tpl-year"><option>2026</option></select></label></div><div class="grp">'+btn('tpl-industry','行业模板库')+btn('tpl-copy','复制模板','',t.code)+btn('tpl-batch-del','删除设施/活动')+btn('tpl-data','数据管理','primary')+btn('tpl-back','返回模板列表')+'</div></div>';
+</script></body></html>

@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>零碳园区 UI 组件库</title>
+<style>
+:root{
+  --bg:#F3F5F7;
+  --card:#FFFFFF;
+  --line:#E7E9EE;
+  --line-strong:#D8DCE3;
+  --text-1:#1F2329;
+  --text-2:#4E5969;
+  --text-3:#86909C;
+  --primary:#1D5BFF;
+  --primary-hover:#1651E8;
+  --primary-weak:#EAF1FF;
+  --danger:#F53F3F;
+  --danger-hover:#E12F2F;
+  --del-hover:#FFECEC;
+  --head-bg:#FAFBFC;
+  --row-hover:#F7F9FC;
+  --menu-hover:#F5F7FA;
+  --sel-bg:#E6F2FF;
+  --service-bg:#EAF1FF;
+  --service-text:#1D5BFF;
+  --event-bg:#E8F8EE;
+  --event-text:#12A35C;
+  --other-bg:#FFF4E8;
+  --other-text:#E07B1F;
+  --mask:rgba(31,35,41,.45);
+  --toast:rgba(31,35,41,.92);
+  --toast-error:rgba(214,48,49,.95);
+  --empty-line:#C9CDD4;
+  --avatar-bg:#EEF1F5;
+  --avatar-ico:#A0A7B3;
+  --card-radius:8px;
+  --control-radius:6px;
+  --modal-radius:10px;
+  --card-shadow:0 1px 2px rgba(31,35,41,.04),0 4px 16px rgba(31,35,41,.05);
+  --modal-shadow:0 12px 40px rgba(31,35,41,.18);
+  --font-sans:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Helvetica Neue",Arial,sans-serif;
+  --font-mono:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text-1);font-family:var(--font-sans);font-size:12px;line-height:1.5;-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit}
+button{font-size:12px}
+a{color:inherit;text-decoration:none}
+svg{display:block}
+.app{min-height:100vh;display:flex;flex-direction:column}
+.topbar{height:56px;flex:0 0 56px;position:sticky;top:0;z-index:50;background:var(--card);border-bottom:1px solid var(--line);padding:0 22px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+.brand{display:flex;align-items:center;gap:10px;min-width:0}
+.brand-mark{width:28px;height:28px;border-radius:7px;background:var(--primary);display:grid;place-items:center;color:#fff;flex:0 0 auto}
+.brand-name{font-size:16px;font-weight:700;letter-spacing:1px;white-space:nowrap}
+.top-actions{display:flex;align-items:center;gap:8px}
+.shell{display:flex;align-items:flex-start;min-height:calc(100vh - 56px)}
+.sidebar{width:172px;flex:0 0 172px;position:sticky;top:56px;max-height:calc(100vh - 56px);overflow-y:auto;background:var(--card);border-right:1px solid var(--line);align-self:flex-start}
+.nav{padding:8px 0 18px}
+.nav-group{border-bottom:1px solid rgba(231,233,238,.65)}
+.nav-gh{width:100%;min-height:34px;padding:7px 16px;border:0;background:transparent;color:var(--text-2);display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;text-align:left;font-size:12.5px;font-weight:500}
+.nav-gh:hover{background:var(--menu-hover)}
+.nav-gh .nav-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chev{width:12px;height:12px;transition:transform .22s ease;flex:0 0 auto}
+.nav-gh.open .chev{transform:rotate(90deg)}
+.nav-kids{max-height:0;overflow:hidden;transition:max-height .22s ease}
+.nav-kids.open{max-height:360px}
+.nav-i{display:flex;align-items:center;gap:8px;position:relative;min-height:30px;padding:6px 16px 6px 38px;color:var(--text-2);font-size:12px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nav-i:hover{background:var(--menu-hover)}
+.nav-i.on{color:var(--primary);font-weight:500;background:var(--primary-weak)}
+.nav-i.on::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--primary)}
+.main{flex:1;min-width:0}
+.content{padding:12px 18px 20px;min-width:0}
+.breadcrumb{font-size:12px;color:var(--text-3);margin-bottom:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.page-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:14px}
+.page-head h1{margin:0;font-size:15px;line-height:1.4;font-weight:600;color:var(--text-1)}
+.page-head p{margin:5px 0 0;font-size:12px;color:var(--text-3)}
+.page-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--card-radius);box-shadow:var(--card-shadow);overflow:hidden}
+.card+.card{margin-top:14px}
+.card-hd{min-height:42px;padding:0 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px}
+.card-title{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;color:var(--text-1)}
+.card-title::before{content:"";width:3px;height:14px;border-radius:1px;background:var(--primary)}
+.card-desc{color:var(--text-3);font-size:11px}
+.card-bd{padding:14px}
+.grid{display:grid;gap:12px}
+.grid.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+.grid.three{grid-template-columns:repeat(3,minmax(0,1fr))}
+.grid.four{grid-template-columns:repeat(4,minmax(0,1fr))}
+.demo{border:1px solid var(--line);border-radius:var(--card-radius);background:var(--card);overflow:hidden}
+.demo-stage{min-height:76px;padding:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.demo-code{border-top:1px solid var(--line);padding:10px 12px;background:var(--head-bg);color:var(--text-2);font:11.5px/1.65 var(--font-mono);white-space:pre-wrap;word-break:break-word}
+.section{margin-bottom:14px}
+.section:last-child{margin-bottom:0}
+.section-hd{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 8px}
+.section-hd h2{font-size:14px;line-height:1.4;margin:0;font-weight:600}
+.section-hd code{font:11.5px var(--font-mono);color:var(--text-3)}
+.btn{height:30px;border:1px solid var(--line-strong);border-radius:var(--control-radius);background:#fff;color:var(--text-2);padding:0 12px;display:inline-flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;white-space:nowrap;transition:border-color .12s,color .12s,background .12s,transform .06s}
+.btn:hover{border-color:var(--primary);color:var(--primary)}
+.btn:active{transform:translateY(1px)}
+.btn.primary{background:var(--primary);border-color:var(--primary);color:#fff;font-weight:500}
+.btn.primary:hover{background:var(--primary-hover);border-color:var(--primary-hover);color:#fff}
+.btn.danger{color:var(--danger);border-color:var(--line-strong);background:#fff}
+.btn.danger:hover{color:var(--danger-hover);border-color:var(--danger)}
+.btn.danger-solid{background:var(--danger);border-color:var(--danger);color:#fff;font-weight:500}
+.btn.danger-solid:hover{background:var(--danger-hover);border-color:var(--danger-hover);color:#fff}
+.btn.loading{pointer-events:none;position:relative}
+.btn.loading .btn-spinner{width:12px;height:12px;border:1.5px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .7s linear infinite}
+.btn[disabled]{color:var(--text-3);background:var(--head-bg);border-color:var(--line);cursor:not-allowed;transform:none}
+.btn-ico{width:14px;height:14px;flex:0 0 auto}
+.icon-btn{width:30px;height:30px;border:1px solid var(--line-strong);border-radius:var(--control-radius);background:#fff;color:var(--text-2);display:grid;place-items:center;cursor:pointer}
+.icon-btn:hover{border-color:var(--primary);color:var(--primary)}
+.icon-btn svg{width:16px;height:16px}
+.btn:focus-visible,.icon-btn:focus-visible,input:focus,select:focus,textarea:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 2px rgba(29,91,255,.12)}
+.lnk{height:18px;line-height:16px;padding:1px 6px;border:0;border-radius:4px;background:transparent;color:var(--primary);font-size:12px;cursor:pointer;white-space:nowrap}
+.lnk:hover{background:var(--primary-weak)}
+.lnk.danger{color:var(--danger)}
+.lnk.danger:hover{background:var(--del-hover)}
+.lnk[disabled]{color:var(--text-3);cursor:not-allowed;background:transparent}
+.ops{height:19px;display:flex;align-items:flex-start;gap:6px;white-space:nowrap}
+.field{min-width:0}
+.field label{display:block;color:var(--text-2);font-size:12px;margin-bottom:6px}
+.req{color:var(--danger);margin-left:2px}
+.field input,.field select,.field textarea{width:100%;height:30px;border:1px solid var(--line-strong);border-radius:var(--control-radius);background:#fff;color:var(--text-2);padding:0 12px}
+.field select{padding-right:26px;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%2386909C' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m8 10 4 4 4-4'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 6px center;background-size:14px}
+.field textarea{min-height:64px;height:76px;padding:8px 12px;resize:vertical}
+.field input::placeholder,.field textarea::placeholder{color:var(--text-3)}
+.field .hint{font-size:11px;color:var(--text-3);margin-top:5px}
+.field .error{font-size:11px;color:var(--danger);margin-top:5px}
+.field.invalid input,.field.invalid select,.field.invalid textarea{border-color:var(--danger)}
+.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 12px}
+.field.full{grid-column:1/-1}
+.filter{display:grid;grid-template-columns:repeat(4,minmax(130px,1fr));gap:10px;align-items:end}
+.filter-actions{display:flex;align-items:center;gap:8px}
+.tag{display:inline-block;line-height:16px;padding:1px 7px;border-radius:999px;font-size:11px;white-space:nowrap}
+.tag.service{background:var(--service-bg);color:var(--service-text)}
+.tag.event{background:var(--event-bg);color:var(--event-text)}
+.tag.other{background:var(--other-bg);color:var(--other-text)}
+.tag.neutral{background:var(--head-bg);color:var(--text-2);border:1px solid var(--line)}
+.switch{width:34px;height:18px;border-radius:999px;border:0;background:var(--line-strong);position:relative;cursor:pointer;padding:0;display:inline-block}
+.switch::after{content:"";position:absolute;width:14px;height:14px;border-radius:50%;background:#fff;left:2px;top:2px;box-shadow:0 1px 3px rgba(31,35,41,.18);transition:left .15s}
+.switch.on{background:var(--primary)}
+.switch.on::after{left:18px}
+.badge{min-width:18px;height:18px;line-height:18px;padding:0 5px;border-radius:9px;background:var(--danger);color:#fff;font-size:11px;text-align:center;display:inline-block}
+.tw{width:100%;overflow-x:auto}
+table.data-table{width:100%;min-width:1010px;border-collapse:collapse;table-layout:fixed;background:#fff}
+.data-table th,.data-table td{padding-left:12px;padding-right:12px;border-bottom:1px solid var(--line);text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.data-table th{height:31px;padding-top:7px;padding-bottom:7px;line-height:16px;color:var(--text-3);font-weight:400;background:var(--head-bg)}
+.data-table td{height:36px;padding-top:8px;padding-bottom:8px;line-height:18px;color:var(--text-2)}
+.data-table tbody tr{height:36px;transition:background .12s}
+.data-table tbody tr:hover td{background:var(--row-hover)}
+.data-table td.t1{color:var(--text-1);font-weight:500}
+.code{font-family:var(--font-mono);font-size:11.5px;font-weight:400}
+.data-table .op-col{white-space:nowrap;overflow:visible}
+.pagination{border-top:1px solid var(--line);padding:10px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;color:var(--text-3)}
+.pager-left{white-space:nowrap}
+.pager-right{display:flex;align-items:center;gap:6px}
+.page-btn{min-width:30px;height:30px;border:1px solid var(--line-strong);border-radius:var(--control-radius);background:#fff;color:var(--text-2);padding:0 8px;cursor:pointer}
+.page-btn:hover{border-color:var(--primary);color:var(--primary)}
+.page-btn.on{background:var(--primary);border-color:var(--primary);color:#fff}
+.page-btn[disabled]{background:var(--head-bg);color:var(--text-3);border-color:var(--line);cursor:not-allowed}
+.empty{padding:34px 18px;text-align:center}
+.empty-icon{width:36px;height:36px;margin:0 auto 10px;color:var(--empty-line)}
+.empty h3{margin:0;font-size:14px;font-weight:600}
+.empty p{margin:5px 0 12px;color:var(--text-3)}
+.token-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.token{border:1px solid var(--line);border-radius:var(--card-radius);overflow:hidden;background:#fff}
+.swatch{height:54px;border-bottom:1px solid var(--line)}
+.token-info{padding:9px 10px}
+.token-info b{display:block;font-size:12px;font-weight:500;margin-bottom:3px}
+.token-info code{font:11.5px var(--font-mono);color:var(--text-3)}
+.metric-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.metric{border:1px solid var(--line);border-radius:var(--card-radius);padding:12px;background:#fff}
+.metric-label{color:var(--text-3);font-size:11px}
+.metric-value{font:600 22px/1.25 var(--font-mono);margin:7px 0 4px;color:var(--text-1)}
+.metric-foot{font-size:11px;color:var(--text-3)}
+.rule-list{display:grid;gap:8px}
+.rule{display:grid;grid-template-columns:26px minmax(0,1fr);gap:8px;align-items:start;padding:9px 10px;border:1px solid var(--line);border-radius:6px;background:#fff}
+.rule-no{width:20px;height:20px;border-radius:4px;background:var(--primary-weak);color:var(--primary);display:grid;place-items:center;font:600 11px var(--font-mono)}
+.rule b{display:block;font-size:12px;margin-bottom:2px}
+.rule span{color:var(--text-3);font-size:11px}
+.modal-mask{position:fixed;inset:0;z-index:100;background:var(--mask);display:flex;align-items:center;justify-content:center;padding:20px;animation:fadeIn .15s ease}
+.modal{width:440px;max-width:100%;max-height:calc(100vh - 40px);background:#fff;border-radius:var(--modal-radius);box-shadow:var(--modal-shadow);overflow:hidden;animation:popIn .18s ease;display:flex;flex-direction:column}
+.modal.wide{width:640px}
+.modal-hd{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px}
+.modal-hd b{font-size:14px;font-weight:600}
+.modal-bd{padding:20px;overflow:auto}
+.modal-ft{padding:14px 20px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:10px}
+.confirm-copy{display:grid;grid-template-columns:36px minmax(0,1fr);gap:12px;align-items:start}
+.confirm-ico{width:36px;height:36px;border-radius:50%;background:var(--del-hover);color:var(--danger);display:grid;place-items:center}
+.confirm-ico svg{width:18px;height:18px}
+.confirm-copy h3{margin:0 0 5px;font-size:14px;font-weight:600;color:var(--text-1)}
+.confirm-copy p{margin:0;color:var(--text-2);line-height:1.7}
+.drawer-mask{position:fixed;inset:0;z-index:110;background:var(--mask);animation:fadeIn .15s ease}
+.drawer-panel{position:absolute;top:0;right:0;width:min(560px,92vw);height:100%;background:#fff;box-shadow:-12px 0 36px rgba(31,35,41,.18);display:flex;flex-direction:column;animation:drawerIn .2s ease}
+.drawer-hd{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px}
+.drawer-hd b{font-size:14px;font-weight:600}
+.drawer-bd{padding:20px;overflow:auto;flex:1}
+.drawer-ft{padding:14px 20px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:10px}
+.toast-host{position:fixed;left:50%;top:70px;transform:translateX(-50%);z-index:160;pointer-events:none}
+.toast{background:var(--toast);color:#fff;padding:9px 18px;border-radius:6px;font-size:12px;white-space:nowrap;box-shadow:var(--card-shadow);animation:fadeIn .15s ease}
+.toast.error{background:var(--toast-error)}
+.size-demo{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.size-card{border:1px solid var(--line);border-radius:8px;padding:12px;background:#fff}
+.measure{height:30px;border:1px dashed var(--line-strong);border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--text-3);font-family:var(--font-mono);margin-top:8px}
+.status-line{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.kv{display:grid;grid-template-columns:120px minmax(0,1fr);row-gap:10px;column-gap:12px}
+.kv dt{color:var(--text-3)}
+.kv dd{margin:0;color:var(--text-2)}
+.mobile-menu{display:none}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes drawerIn{from{transform:translateX(24px);opacity:.5}to{transform:translateX(0);opacity:1}}
+@keyframes popIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
+@media(max-width:1100px){.grid.four,.token-grid,.metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.filter{grid-template-columns:repeat(2,minmax(130px,1fr))}}
+@media(max-width:960px){.drawer-panel{width:100vw}.shell{flex-direction:column}.sidebar{position:sticky;top:56px;width:100%;flex:0 0 auto;max-height:none;border-right:0;border-bottom:1px solid var(--line);overflow-x:auto;overflow-y:hidden}.nav{display:flex;padding:0 8px;min-width:max-content}.nav-group{border-bottom:0;border-right:1px solid var(--line)}.nav-gh{min-width:140px}.nav-group{display:flex;align-items:stretch}.nav-gh{min-width:104px;width:auto;justify-content:center}.nav-gh .chev{display:none}.nav-kids,.nav-kids.open{position:static;visibility:visible;pointer-events:auto;max-height:none;display:flex;overflow:visible}.nav-i{padding:6px 12px;min-height:34px}.nav-i.on::before{left:8px;right:8px;top:auto;bottom:0;width:auto;height:2px}.content{padding:12px 14px 20px}.top-actions .top-copy{display:none}.grid.two,.grid.three,.grid.four,.token-grid,.metric-grid,.size-demo,.form-grid,.filter{grid-template-columns:1fr}.page-head{flex-direction:column}.page-actions{justify-content:flex-start}.mobile-menu{display:grid}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="layerHost"></div>
+<div id="toastHost" class="toast-host"></div>
+<script>
+const SVG={
+  leaf:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 4c-7 0-12 3-14.5 8.5C4 16 6 20 10 20c5.5 0 9-6 10-16Z"/><path d="M5 19c2-5 6-8 11-10"/></svg>`,
+  chevron:`<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>`,
+  plus:`<svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>`,
+  search:`<svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>`,
+  reset:`<svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>`,
+  close:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 6 12 12M18 6 6 18"/></svg>`,
+  prev:`<svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>`,
+  next:`<svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>`,
+  empty:`<svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16v12H4z"/><path d="m8 11 3 3 5-5"/></svg>`,
+  alert:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2.8 19h18.4L12 3Z"/><path d="M12 9v4"/><path d="M12 16h.01"/></svg>`
+};
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const code=s=>`<div class="demo-code">${esc(s)}</div>`;
+
+const ZeroUI={
+  Button:({label,kind='',icon='',id='',disabled=false,loading=false})=>`<button type="button" class="btn ${kind} ${loading?'loading':''}" ${id?`id="${esc(id)}"`:''} ${(disabled||loading)?'disabled':''}>${loading?'<span class="btn-spinner" aria-hidden="true"></span>':(icon||'')}${esc(label)}</button>`,
+  IconButton:({icon,title,id=''})=>`<button type="button" class="icon-btn" title="${esc(title)}" aria-label="${esc(title)}" ${id?`id="${esc(id)}"`:''}>${icon}</button>`,
+  Tag:({text,kind='service'})=>`<span class="tag ${kind}">${esc(text)}</span>`,
+  Field:({label,type='text',placeholder='',value='',options=[],required=false,hint='',invalid='',full=false,id='',disabled=false,readonly=false})=>`<div class="field ${full?'full':''} ${invalid?'invalid':''}"><label ${id?`for="${esc(id)}"`:''}>${esc(label)}${required?'<span class="req">*</span>':''}</label>${type==='select'?`<select ${id?`id="${esc(id)}"`:''} ${disabled?'disabled':''}>${options.map(x=>`<option ${x===value?'selected':''}>${esc(x)}</option>`).join('')}</select>`:type==='textarea'?`<textarea ${id?`id="${esc(id)}"`:''} placeholder="${esc(placeholder)}" ${disabled?'disabled':''} ${readonly?'readonly':''}>${esc(value)}</textarea>`:`<input ${id?`id="${esc(id)}"`:''} type="${esc(type)}" value="${esc(value)}" placeholder="${esc(placeholder)}" ${disabled?'disabled':''} ${readonly?'readonly':''}>`}${invalid?`<div class="error">${esc(invalid)}</div>`:hint?`<div class="hint">${esc(hint)}</div>`:''}</div>`,
+  Pager:({total=26,page=1,pageSize=10})=>{const pages=Math.max(1,Math.ceil(total/pageSize));return `<div class="pagination" data-pager data-page="${page}" data-pages="${pages}"><div class="pager-left">共 ${total} 条，每页 ${pageSize} 条</div><div class="pager-right"><button type="button" class="page-btn" data-page-go="${page-1}" ${page<=1?'disabled':''}>${SVG.prev}</button><button type="button" class="page-btn on">${page}</button>${page<pages?`<button type="button" class="page-btn" data-page-go="${page+1}">${page+1}</button>`:''}<button type="button" class="page-btn" data-page-go="${page+1}" ${page>=pages?'disabled':''}>${SVG.next}</button></div></div>`},
+  Empty:({title='暂无数据',text='当前还没有可展示的数据。',action='立即新增'})=>`<div class="empty">${SVG.empty}<h3>${esc(title)}</h3><p>${esc(text)}</p>${ZeroUI.Button({label:action,kind:'primary',icon:SVG.plus,id:'emptyAction'})}</div>`,
+  Toast:(message,type='')=>{const host=document.getElementById('toastHost');if(!host)return;clearTimeout(ZeroUI._toastTimer);host.innerHTML=`<div class="toast ${type==='error'?'error':''}" role="status">${esc(message)}</div>`;ZeroUI._toastTimer=setTimeout(()=>host.innerHTML='',2200)},
+  Modal:({title='新增配置',wide=false,body='',confirm='确定',cancel='取消',footer='double',confirmKind='primary'})=>`<div class="modal-mask" id="activeModal"><section class="modal ${wide?'wide':''}" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="modal-hd"><b>${esc(title)}</b>${ZeroUI.IconButton({icon:SVG.close,title:'关闭',id:'modalClose'})}</div><div class="modal-bd">${body}</div>${footer==='none'?'':`<div class="modal-ft">${footer==='double'?ZeroUI.Button({label:cancel,id:'modalCancel'}):''}${ZeroUI.Button({label:confirm,kind:confirmKind,id:'modalConfirm'})}</div>`}</section></div>`,
+  ConfirmModal:({title='确认操作',message='此操作执行后将立即生效。',confirm='确定',danger=false})=>ZeroUI.Modal({title,body:`<div class="confirm-copy"><div class="confirm-ico">${SVG.alert}</div><div><h3>${esc(title)}</h3><p>${esc(message)}</p></div></div>`,confirm,cancel:'取消',footer:'double',confirmKind:danger?'danger-solid':'primary'}),
+  Drawer:({title='详情',body='',confirm='保存',cancel='取消',footer='double'})=>`<div class="drawer-mask" id="activeDrawer"><section class="drawer-panel" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="drawer-hd"><b>${esc(title)}</b>${ZeroUI.IconButton({icon:SVG.close,title:'关闭',id:'drawerClose'})}</div><div class="drawer-bd">${body}</div>${footer==='none'?'':`<div class="drawer-ft">${footer==='double'?ZeroUI.Button({label:cancel,id:'drawerCancel'}):''}${ZeroUI.Button({label:confirm,kind:'primary',id:'drawerConfirm'})}</div>`}</section></div>`,
+  _lockLayer(trigger){ZeroUI._lastTrigger=trigger||document.activeElement;ZeroUI._prevOverflow=document.body.style.overflow;document.body.style.overflow='hidden'},
+  _unlockLayer(){document.body.style.overflow=ZeroUI._prevOverflow||'';const t=ZeroUI._lastTrigger;ZeroUI._lastTrigger=null;if(t&&typeof t.focus==='function')setTimeout(()=>t.focus(),0)},
+  openModal:(html,onConfirm,trigger)=>{const host=document.getElementById('layerHost');ZeroUI._lockLayer(trigger);host.innerHTML=html;const mask=document.getElementById('activeModal');const close=()=>{host.innerHTML='';document.removeEventListener('keydown',escClose);ZeroUI._unlockLayer()};const escClose=e=>{if(e.key==='Escape')close()};const closeBtn=document.getElementById('modalClose');if(closeBtn)closeBtn.onclick=close;const cancelBtn=document.getElementById('modalCancel');if(cancelBtn)cancelBtn.onclick=close;mask.addEventListener('click',e=>{if(e.target===mask)close()});const confirmBtn=document.getElementById('modalConfirm');if(confirmBtn)confirmBtn.onclick=()=>{if(onConfirm)onConfirm(close,confirmBtn);else close()};document.addEventListener('keydown',escClose);setTimeout(()=>{const target=mask.querySelector('input:not([disabled]),select:not([disabled]),textarea:not([disabled]),button');if(target)target.focus()},0)},
+  openDrawer:(html,onConfirm,trigger)=>{const host=document.getElementById('layerHost');ZeroUI._lockLayer(trigger);host.innerHTML=html;const mask=document.getElementById('activeDrawer');const close=()=>{host.innerHTML='';document.removeEventListener('keydown',escClose);ZeroUI._unlockLayer()};const escClose=e=>{if(e.key==='Escape')close()};document.getElementById('drawerClose').onclick=close;const cancelBtn=document.getElementById('drawerCancel');if(cancelBtn)cancelBtn.onclick=close;mask.addEventListener('click',e=>{if(e.target===mask)close()});const confirmBtn=document.getElementById('drawerConfirm');if(confirmBtn)confirmBtn.onclick=()=>{if(onConfirm)onConfirm(close,confirmBtn);else close()};document.addEventListener('keydown',escClose)}
+};
+
+const NAV=[
+  {key:'start',label:'开始',items:[{key:'overview',label:'组件概览'},{key:'tokens',label:'设计 Token'}]},
+  {key:'base',label:'基础组件',items:[{key:'buttons',label:'按钮与操作'},{key:'forms',label:'输入与表单'},{key:'tags',label:'标签与状态'}]},
+  {key:'data',label:'数据展示',items:[{key:'table',label:'表格与分页'},{key:'empty',label:'空态与指标'}]},
+  {key:'feedback',label:'反馈组件',items:[{key:'modal',label:'弹窗 / 抽屉 / Toast'}]},
+  {key:'rules',label:'规范模板',items:[{key:'layout',label:'布局与菜单'},{key:'acceptance',label:'验收清单'}]}
+];
+const navState={open:{}};
+const moduleDesc='零碳园区管理平台前端统一视觉与交互规范，用于原型、演示页与业务页面的组件化复用。';
+NAV.forEach(g=>navState.open[g.key]=false);
+
+const Demo=({children,source})=>`<div class="demo"><div class="demo-stage">${children}</div>${code(source)}</div>`;
+const Section=({title,name,body})=>`<section class="section"><div class="section-hd"><h2>${esc(title)}</h2><code>${esc(name)}</code></div>${body}</section>`;
+const Card=({title,desc='',body='',extra=''})=>`<section class="card"><div class="card-hd"><div><div class="card-title">${esc(title)}</div>${desc?`<div class="card-desc">${esc(desc)}</div>`:''}</div>${extra}</div><div class="card-bd">${body}</div></section>`;
+
+const rows=[
+  {id:'PRJ-202609-001',name:'分布式光伏一期',type:'服务',owner:'张三',status:'执行中',time:'2026-09-18 14:26'},
+  {id:'PRJ-202609-002',name:'空压机节能改造',type:'事件',owner:'李四',status:'待审核',time:'2026-09-17 10:40'},
+  {id:'PRJ-202609-003',name:'照明系统升级',type:'其它',owner:'王五',status:'已完成',time:'2026-09-15 16:08'}
+];
+const tagKind=t=>t==='服务'?'service':t==='事件'?'event':'other';
+const statusKind=s=>s==='执行中'?'service':s==='待审核'?'other':'event';
+function tableHtml(data=rows){return `<div class="card" style="box-shadow:none"><div class="tw"><table class="data-table"><colgroup><col style="width:54px"><col style="width:144px"><col style="width:210px"><col style="width:92px"><col style="width:100px"><col style="width:104px"><col style="width:150px"><col style="width:156px"></colgroup><thead><tr><th>序号</th><th>项目编号</th><th>项目名称</th><th>类型</th><th>负责人</th><th>状态</th><th>更新时间</th><th class="op-col">操作</th></tr></thead><tbody>${data.map((r,i)=>`<tr><td class="code">${String(i+1).padStart(2,'0')}</td><td class="code">${esc(r.id)}</td><td class="t1">${esc(r.name)}</td><td>${ZeroUI.Tag({text:r.type,kind:tagKind(r.type)})}</td><td>${esc(r.owner)}</td><td>${ZeroUI.Tag({text:r.status,kind:statusKind(r.status)})}</td><td class="code">${esc(r.time)}</td><td class="op-col"><div class="ops"><button class="lnk" data-row-action="view" data-id="${esc(r.id)}">详情</button><button class="lnk" data-row-action="edit" data-id="${esc(r.id)}">编辑</button><button class="lnk danger" data-row-action="delete" data-id="${esc(r.id)}">删除</button></div></td></tr>`).join('')}</tbody></table></div>${ZeroUI.Pager({total:26,page:1,pageSize:10})}</div>`}
+
+const Pages={
+  overview(){return pageShell('组件概览',`按规范把高频基础组件、数据展示、反馈组件和布局规则做成一个可直接复用的单文件组件库。`,`<div class="metric-grid"><div class="metric"><div class="metric-label">基准字号</div><div class="metric-value">12px</div><div class="metric-foot">body line-height 1.5</div></div><div class="metric"><div class="metric-label">顶栏 / 菜单</div><div class="metric-value">56 / 172</div><div class="metric-foot">固定骨架尺寸</div></div><div class="metric"><div class="metric-label">控件高度</div><div class="metric-value">30px</div><div class="metric-foot">按钮 / 输入 / 下拉</div></div><div class="metric"><div class="metric-label">表格行高</div><div class="metric-value">31 / 36</div><div class="metric-foot">表头 / 数据行</div></div></div>${Card({title:'组件预览',desc:'点击组件可以验证真实交互，不放僵尸按钮。',body:`<div class="grid two">${Demo({children:ZeroUI.Button({label:'新增项目',kind:'primary',icon:SVG.plus,id:'overviewAdd'})+ZeroUI.Button({label:'查询',icon:SVG.search,id:'overviewSearch'})+ZeroUI.Tag({text:'服务',kind:'service'})+ZeroUI.Tag({text:'事件',kind:'event'}),source:`ZeroUI.Button({ label:'新增项目', kind:'primary' })\nZeroUI.Tag({ text:'服务', kind:'service' })`})}${Demo({children:ZeroUI.Field({label:'项目名称',placeholder:'请输入项目名称',required:true,id:'overviewName'}),source:`ZeroUI.Field({ label:'项目名称', required:true, placeholder:'请输入项目名称' })`})}</div>`})}${Card({title:'表格预览',desc:'table-layout:fixed + colgroup + 卡片内横向滚动。',body:tableHtml()})}`,'overviewAdd')},
+  tokens(){const ts=[['--bg','#F3F5F7'],['--card','#FFFFFF'],['--line','#E7E9EE'],['--line-strong','#D8DCE3'],['--text-1','#1F2329'],['--text-2','#4E5969'],['--text-3','#86909C'],['--primary','#1D5BFF'],['--primary-hover','#1651E8'],['--primary-weak','#EAF1FF'],['--danger','#F53F3F'],['--head-bg','#FAFBFC'],['--row-hover','#F7F9FC'],['--menu-hover','#F5F7FA'],['--sel-bg','#E6F2FF'],['--empty-line','#C9CDD4']];return pageShell('设计 Token','颜色、圆角、阴影与字体均按 MD 硬约束收口，不新增装饰色。',`${Card({title:'颜色 Token',body:`<div class="token-grid">${ts.map(([n,v])=>`<div class="token"><div class="swatch" style="background:${v}"></div><div class="token-info"><b>${n}</b><code>${v}</code></div></div>`).join('')}</div>`})}${Card({title:'尺寸 Token',body:`<div class="size-demo"><div class="size-card"><b>卡片圆角</b><div class="measure">8px</div></div><div class="size-card"><b>控件圆角</b><div class="measure">6px</div></div><div class="size-card"><b>弹窗圆角</b><div class="measure">10px</div></div></div>`})}`)},
+  buttons(){return pageShell('按钮与操作','按钮统一 30px 高、6px 圆角；绿色与橙色不用于按钮或装饰。',`${Card({title:'按钮类型',body:`<div class="grid two">${Demo({children:ZeroUI.Button({label:'新增',kind:'primary',icon:SVG.plus,id:'btnPrimary'})+ZeroUI.Button({label:'查询',icon:SVG.search,id:'btnDefault'})+ZeroUI.Button({label:'删除',kind:'danger',id:'btnDanger'})+ZeroUI.Button({label:'提交中',kind:'primary',loading:true})+ZeroUI.Button({label:'禁用',disabled:true}),source:`<button class="btn primary">新增</button>\n<button class="btn">查询</button>\n<button class="btn danger">删除</button>`})}${Demo({children:`<button class="lnk">编辑</button><button class="lnk danger">删除</button><button class="lnk" disabled>禁用</button>`,source:`<button class="lnk">编辑</button>\n<button class="lnk danger">删除</button>`})}</div>`})}${Card({title:'图标规则',body:`<div class="rule-list"><div class="rule"><div class="rule-no">01</div><div><b>只用内联 SVG</b><span>viewBox="0 0 24 24"、fill:none、stroke:currentColor、stroke-width:1.8。</span></div></div><div class="rule"><div class="rule-no">02</div><div><b>按钮图标 14px / 关闭图标 16px</b><span>不使用 emoji，不使用图标字体。</span></div></div></div>`})}`)},
+  forms(){return pageShell('输入与表单','输入框、下拉框统一 30px 高；文本域 min-height 64px；校验失败不清空已填内容。',`${Card({title:'表单控件',body:`<div class="form-grid">${ZeroUI.Field({label:'项目名称',required:true,placeholder:'请输入项目名称',id:'fName'})}${ZeroUI.Field({label:'项目类型',type:'select',options:['节能改造','清洁能源','管理优化'],id:'fType'})}${ZeroUI.Field({label:'预计减排量',placeholder:'请输入 tCO₂e',hint:'仅填写数值，保存时统一换算。',id:'fCarbon'})}${ZeroUI.Field({label:'审核人',value:'李四',id:'fOwner'})}${ZeroUI.Field({label:'项目说明',type:'textarea',placeholder:'请输入项目说明',full:true,id:'fDesc'})}</div>`})}${Card({title:'查询区',body:`<div class="filter">${ZeroUI.Field({label:'项目名称',placeholder:'请输入关键词',id:'qName'})}${ZeroUI.Field({label:'状态',type:'select',options:['全部','执行中','待审核','已完成'],id:'qStatus'})}${ZeroUI.Field({label:'更新时间',type:'date',id:'qDate'})}<div class="filter-actions">${ZeroUI.Button({label:'查询',kind:'primary',icon:SVG.search,id:'queryBtn'})}${ZeroUI.Button({label:'重置',icon:SVG.reset,id:'resetBtn'})}</div></div>`})}`)},
+  tags(){return pageShell('标签与状态','绿 / 橙只作为数据语义标签，不能作为按钮或装饰。',`${Card({title:'功能类型标签',body:Demo({children:ZeroUI.Tag({text:'服务',kind:'service'})+ZeroUI.Tag({text:'事件',kind:'event'})+ZeroUI.Tag({text:'其它',kind:'other'})+ZeroUI.Tag({text:'只读',kind:'neutral'}),source:`<span class="tag service">服务</span>\n<span class="tag event">事件</span>\n<span class="tag other">其它</span>`})})}${Card({title:'开关与徽章',body:`<div class="status-line"><button class="switch on" id="demoSwitch" aria-label="启用"></button><span>启用状态</span><span class="badge">8</span><span>待处理</span></div>`})}`)},
+  table(){return pageShell('表格与分页','表头 31px、数据行 36px；单元格内元素 ≤19px；操作列 nowrap。',`${Card({title:'标准数据表',desc:'声明列宽合计 1010px，并写入 table min-width，超出只在卡片内滚动。',body:tableHtml()})}${Card({title:'行高说明',body:`<div class="grid two"><div class="rule"><div class="rule-no">31</div><div><b>表头</b><span>padding 7px 12px + line-height 16px + border 1px。</span></div></div><div class="rule"><div class="rule-no">36</div><div><b>数据行</b><span>padding 8px 12px + line-height 18px，靠 tr 高度兜到 36px。</span></div></div></div>`})}`)},
+  empty(){return pageShell('空态与指标','空态必须包含主文案、副文案与明确下一步动作。',`${Card({title:'指标卡',body:`<div class="metric-grid"><div class="metric"><div class="metric-label">碳排放总量</div><div class="metric-value">12,860</div><div class="metric-foot">tCO₂e · 本年度</div></div><div class="metric"><div class="metric-label">剩余配额</div><div class="metric-value">3,140</div><div class="metric-foot">tCO₂e · 可用</div></div><div class="metric"><div class="metric-label">碳排放强度</div><div class="metric-value">0.48</div><div class="metric-foot">tCO₂e / 万元</div></div><div class="metric"><div class="metric-label">减排项目</div><div class="metric-value">18</div><div class="metric-foot">执行中 7 个</div></div></div>`})}${Card({title:'标准空态',body:ZeroUI.Empty({title:'暂无减排项目',text:'创建第一个减排项目后，可在这里跟踪预计减排与实际累计。',action:'新建项目'})})}`)},
+  modal(){return pageShell('弹窗 / 抽屉 / Toast','按场景选择 Form Modal、Detail Modal、Confirm Modal、Drawer 或 Toast；不是所有反馈都用同一种弹窗。',`${Card({title:'反馈入口',body:`<div class="status-line">${ZeroUI.Button({label:'新增表单',kind:'primary',id:'openModalBtn'})}${ZeroUI.Button({label:'查看详情',id:'detailModalBtn'})}${ZeroUI.Button({label:'删除确认',kind:'danger',id:'confirmModalBtn'})}${ZeroUI.Button({label:'打开抽屉',id:'drawerBtn'})}${ZeroUI.Button({label:'成功提示',id:'toastBtn'})}${ZeroUI.Button({label:'错误提示',kind:'danger',id:'errorToastBtn'})}</div>`})}${Card({title:'组件选择规则',body:`<div class="rule-list"><div class="rule"><div class="rule-no">01</div><div><b>Form Modal</b><span>新增/编辑；440px，复杂表单 640px；取消在左、保存在右。</span></div></div><div class="rule"><div class="rule-no">02</div><div><b>Detail Modal</b><span>简短详情，底部只保留一个“关闭”，不再出现“取消 + 关闭”。</span></div></div><div class="rule"><div class="rule-no">03</div><div><b>Confirm Modal</b><span>删除/停用等破坏性操作必须确认，危险按钮仅用于最终执行。</span></div></div><div class="rule"><div class="rule-no">04</div><div><b>Drawer</b><span>长详情、多分区配置使用 560px 右侧抽屉，保留主页面上下文。</span></div></div></div>`})}`)},
+  layout(){return pageShell('布局与菜单','顶栏 56px，左侧菜单 172px；菜单来自单一配置源，一级折叠、二级路由，内容区不再叠加页签。',`${Card({title:'骨架尺寸',body:`<div class="size-demo"><div class="size-card"><b>顶栏</b><div class="measure">56px</div></div><div class="size-card"><b>左侧菜单</b><div class="measure">172px</div></div><div class="size-card"><b>内容内边距</b><div class="measure">12 / 18 / 20</div></div></div>`})}${Card({title:'菜单状态管理',body:`<div class="rule-list"><div class="rule"><div class="rule-no">01</div><div><b>单一 NAV 配置数组</b><span>每次渲染都从同一份配置生成菜单，不手写第二份 DOM。</span></div></div><div class="rule"><div class="rule-no">02</div><div><b>max-height 折叠</b><span>展开态 max-height:360px，0.22s ease，箭头同步旋转。</span></div></div><div class="rule"><div class="rule-no">03</div><div><b>URL hash 路由</b><span>当前子页由 location.hash 决定，带 hash 打开可直达页面。</span></div></div></div>`})}`)},
+  acceptance(){const checks=['颜色全部来自 Token，无新增装饰色','字号阶梯：16 / 14 / 12.5 / 12 / 11.5 / 11','顶栏 56px、菜单 172px、内容 padding 12 18 20','菜单折叠使用 max-height，不使用 display 切换','子页切换使用 URL hash，首次渲染同步 hash','没有额外页签导航','表格 fixed + colgroup + min-width','表头 31px、数据行 36px','操作列 nowrap，按钮同一行','控件 30px / 卡片 8px / 弹窗 10px','弹窗按 Form / Detail / Confirm 分类，详情仅单关闭按钮','抽屉用于长详情与复杂配置','删除/停用使用 Confirm Modal，不用 Toast 代替确认','提交按钮支持 Loading 防重复','弹窗关闭恢复触发焦点并解锁背景滚动','有数据就有分页','空态有主副文案与下一步动作','无僵尸按钮','无 emoji 图标','prefers-reduced-motion 下关闭动画','页面整体无横向滚动，宽表只在卡片内滚动'];return pageShell('验收清单','按 MD 第 8 节整理成可直接逐项核对的实现检查表。',Card({title:'逐项验收',body:`<div class="rule-list">${checks.map((x,i)=>`<div class="rule"><div class="rule-no">${String(i+1).padStart(2,'0')}</div><div><b>${esc(x)}</b><span>当前组件库已按此规则实现。</span></div></div>`).join('')}</div>`}))}
+};
+
+function pageShell(title,desc,body,focusId=''){
+  return `<div class="breadcrumb">组件库 / ${esc(title)}</div><div class="page-head"><div><h1>${esc(title)}</h1><p>${esc(desc||moduleDesc)}</p></div><div class="page-actions">${ZeroUI.Button({label:'复制当前链接',id:'copyLink'})}${ZeroUI.Button({label:'打开示例弹窗',kind:'primary',id:'globalModal'})}</div></div>${body}`;
+}
+
+const Router={
+  current(){const key=location.hash.replace(/^#/,'');return NAV.flatMap(x=>x.items).some(x=>x.key===key)?key:'overview'},
+  syncOpen(page){const group=NAV.find(g=>g.items.some(i=>i.key===page));if(group)navState.open[group.key]=true},
+  render(){const page=this.current();this.syncOpen(page);renderNav(page);const meta=NAV.flatMap(g=>g.items.map(i=>({...i,group:g.label}))).find(i=>i.key===page);document.getElementById('crumbTop').textContent=`组件库 / ${meta.group} / ${meta.label}`;document.getElementById('content').innerHTML=(Pages[page]||Pages.overview)();bindPage(page)}
+};
+function renderNav(page){document.getElementById('nav').innerHTML=NAV.map(g=>{const open=!!navState.open[g.key];return `<div class="nav-group"><button type="button" class="nav-gh ${open?'open':''}" data-group="${g.key}"><span class="nav-label">${esc(g.label)}</span>${SVG.chevron}</button><div class="nav-kids ${open?'open':''}">${g.items.map(i=>`<a href="#${i.key}" class="nav-i ${i.key===page?'on':''}">${esc(i.label)}</a>`).join('')}</div></div>`}).join('');document.querySelectorAll('[data-group]').forEach(el=>el.onclick=()=>{const key=el.dataset.group;navState.open[key]=!navState.open[key];renderNav(Router.current())})}
+
+function bindPage(page){
+  const copy=document.getElementById('copyLink');if(copy)copy.onclick=async()=>{try{await navigator.clipboard.writeText(location.href);ZeroUI.Toast('当前链接已复制')}catch{ZeroUI.Toast('当前环境不支持自动复制，请手动复制地址栏','error')}};
+  const g=document.getElementById('globalModal');if(g)g.onclick=()=>openDemoModal({},g);
+  const add=document.getElementById('overviewAdd');if(add)add.onclick=()=>openDemoModal({},add);
+  const s=document.getElementById('overviewSearch');if(s)s.onclick=()=>ZeroUI.Toast('查询动作已触发');
+  ['btnPrimary','btnDefault','btnDanger'].forEach(id=>{const el=document.getElementById(id);if(el)el.onclick=()=>ZeroUI.Toast(`${el.textContent.trim()}：交互正常`)});
+  const sw=document.getElementById('demoSwitch');if(sw)sw.onclick=()=>{sw.classList.toggle('on');ZeroUI.Toast(sw.classList.contains('on')?'已启用':'已停用')};
+  const q=document.getElementById('queryBtn');if(q)q.onclick=()=>ZeroUI.Toast('查询完成');
+  const r=document.getElementById('resetBtn');if(r)r.onclick=()=>{['qName','qDate'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});const st=document.getElementById('qStatus');if(st)st.selectedIndex=0;ZeroUI.Toast('查询条件已重置')};
+  const empty=document.getElementById('emptyAction');if(empty)empty.onclick=()=>openDemoModal({},empty);
+  const om=document.getElementById('openModalBtn');if(om)om.onclick=()=>openDemoModal({},om);
+  const dm=document.getElementById('detailModalBtn');if(dm)dm.onclick=()=>ZeroUI.openModal(ZeroUI.Modal({title:'项目详情',body:`<dl class="kv"><dt>项目名称</dt><dd>园区照明节能改造</dd><dt>负责人</dt><dd>张三</dd><dt>状态</dt><dd>${ZeroUI.Tag({text:'执行中',kind:'service'})}</dd><dt>说明</dt><dd>仅用于展示 Detail Modal 的单按钮用法。</dd></dl>`,confirm:'关闭',footer:'single'}),null,dm);
+  const cm=document.getElementById('confirmModalBtn');if(cm)cm.onclick=()=>ZeroUI.openModal(ZeroUI.ConfirmModal({title:'确认删除项目',message:'删除后无法恢复，请确认是否继续。',confirm:'删除',danger:true}),(close,btn)=>{btn.classList.add('loading');btn.innerHTML='<span class="btn-spinner"></span>删除中';setTimeout(()=>{close();ZeroUI.Toast('删除完成')},450)},cm);
+  const dr=document.getElementById('drawerBtn');if(dr)dr.onclick=()=>ZeroUI.openDrawer(ZeroUI.Drawer({title:'项目完整详情',body:`<div class="rule-list">${Array.from({length:8},(_,i)=>`<div class="rule"><div class="rule-no">${String(i+1).padStart(2,'0')}</div><div><b>详情分区 ${i+1}</b><span>抽屉适合字段较多、历史记录或需要保留主页面上下文的场景。</span></div></div>`).join('')}</div>`,confirm:'保存'}),(close)=>{close();ZeroUI.Toast('抽屉内容已保存')},dr);
+  const tb=document.getElementById('toastBtn');if(tb)tb.onclick=()=>ZeroUI.Toast('保存成功');
+  const et=document.getElementById('errorToastBtn');if(et)et.onclick=()=>ZeroUI.Toast('请检查必填项','error');
+  document.querySelectorAll('[data-page-go]').forEach(el=>el.onclick=()=>{const go=Number(el.dataset.pageGo);if(go>0)ZeroUI.Toast(`分页交互正常：准备切换到第 ${go} 页`)});
+  document.querySelectorAll('.demo-stage .lnk:not([disabled])').forEach(el=>{if(!el.dataset.rowAction)el.onclick=()=>ZeroUI.Toast(`${el.textContent.trim()}：行内操作交互正常`)});
+  document.querySelectorAll('[data-row-action]').forEach(el=>el.onclick=()=>{const row=rows.find(x=>x.id===el.dataset.id);if(!row)return;if(el.dataset.rowAction==='view'){ZeroUI.openModal(ZeroUI.Modal({title:'项目详情',wide:true,body:`<dl class="kv"><dt>项目编号</dt><dd class="code">${esc(row.id)}</dd><dt>项目名称</dt><dd>${esc(row.name)}</dd><dt>项目类型</dt><dd>${ZeroUI.Tag({text:row.type,kind:tagKind(row.type)})}</dd><dt>负责人</dt><dd>${esc(row.owner)}</dd><dt>当前状态</dt><dd>${ZeroUI.Tag({text:row.status,kind:statusKind(row.status)})}</dd><dt>更新时间</dt><dd class="code">${esc(row.time)}</dd></dl>`,confirm:'关闭',footer:'single'}),null,el);}else if(el.dataset.rowAction==='edit'){openDemoModal(row,el)}else{ZeroUI.openModal(ZeroUI.ConfirmModal({title:'确认删除项目',message:`确定删除“${row.name}”吗？删除后将无法恢复。`,confirm:'删除',danger:true}),(close,btn)=>{btn.classList.add('loading');btn.innerHTML='<span class="btn-spinner"></span>删除中';setTimeout(()=>{close();ZeroUI.Toast(`已删除：${row.name}`)},450)},el)}})
+}
+function openDemoModal(row={},trigger=null){ZeroUI.openModal(ZeroUI.Modal({title:row.id?'编辑减排项目':'新增减排项目',body:`<div class="form-grid">${ZeroUI.Field({label:'项目名称',required:true,value:row.name||'',placeholder:'请输入项目名称',id:'modalName'})}${ZeroUI.Field({label:'项目类型',type:'select',options:['节能改造','清洁能源','管理优化'],id:'modalType'})}${ZeroUI.Field({label:'预计减排量',placeholder:'请输入 tCO₂e',id:'modalCarbon'})}${ZeroUI.Field({label:'审核人',value:row.owner||'李四',id:'modalOwner'})}${ZeroUI.Field({label:'项目说明',type:'textarea',placeholder:'请输入项目说明',full:true,id:'modalDesc'})}</div>`}),close=>{const name=document.getElementById('modalName');if(!name.value.trim()){name.parentElement.classList.add('invalid');let err=name.parentElement.querySelector('.error');if(!err){err=document.createElement('div');err.className='error';err.textContent='项目名称不能为空';name.parentElement.appendChild(err)}name.focus();ZeroUI.Toast('请填写项目名称','error');return}close();ZeroUI.Toast('保存成功')},trigger)}
+
+function renderLayout(){document.getElementById('app').innerHTML=`<div class="app"><header class="topbar"><div class="brand"><div class="brand-mark">${SVG.leaf}</div><div class="brand-name">零碳园区 UI 组件库</div></div><div class="top-actions"><span class="top-copy" id="crumbTop" style="color:var(--text-3)"></span>${ZeroUI.IconButton({icon:SVG.search,title:'搜索组件',id:'topSearch'})}</div></header><div class="shell"><aside class="sidebar"><nav class="nav" id="nav"></nav></aside><main class="main"><section class="content" id="content"></section></main></div></div>`;const ts=document.getElementById('topSearch');if(ts)ts.onclick=()=>ZeroUI.Toast('可使用左侧目录快速定位组件')}
+renderLayout();
+window.addEventListener('hashchange',()=>Router.render());
+if(!location.hash)location.hash='#overview';
+Router.render();
+</script>
+</body>
+</html>
