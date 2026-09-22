@@ -6,8 +6,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from .deepseek_client import chat, DeepSeekError
-from .patcher import apply_operations, verify_source, PatchError, regions, outline, locate, script_syntax_error
+from .deepseek_client import chat
+from .patcher import apply_operations, verify_source, PatchError, regions, outline
 from . import storage
 from .transactions import stage
 from .errors import WorkError, error_payload
@@ -253,18 +253,6 @@ def _search_source(source: str, query: str) -> dict:
     if len(hits) > 5:
         out["note"] = f"共命中 {len(hits)} 处，上面只展开了前 5 处的上下文；全部行号见 lines。"
     return out
-
-
-def _context_lines(source: str, query: str, radius: int = 6) -> str:
-    lines = source.splitlines()
-    hits = [i for i, line in enumerate(lines) if query.lower() in line.lower()]
-    if not hits:
-        return "未找到关键词。"
-    chunks = []
-    for hit in hits[:5]:
-        s, e = max(0, hit-radius), min(len(lines), hit+radius+1)
-        chunks.append("\n".join(f"{i+1}: {lines[i]}" for i in range(s,e)))
-    return "\n---\n".join(chunks)[:8000]
 
 
 

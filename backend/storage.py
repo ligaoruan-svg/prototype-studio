@@ -4,7 +4,6 @@ import json
 import shutil
 import uuid
 import re
-from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -219,15 +218,6 @@ def snapshot_version(project_id: str, page_id: str, reason: str) -> dict[str, An
     return entry
 
 
-def restore_version(project_id: str, page_id: str, version: int) -> dict[str, Any]:
-    meta = load_meta(project_id)
-    page = get_page(meta, page_id)
-    item = next((v for v in page.get("versions", []) if int(v["version"]) == int(version)), None)
-    if not item:
-        raise KeyError(version)
-    content = (project_dir(project_id) / item["file"]).read_bytes().decode("utf-8", errors="replace")
-    return write_page(project_id, page_id, content, reason=f"恢复 v{version}")
-
 
 def active_annotations(meta: dict[str, Any], page_id: str) -> list[dict[str, Any]]:
     return [a for a in meta.get("annotations", []) if a.get("page_id") == page_id and a.get("status", "active") == "active"]
@@ -261,14 +251,6 @@ def delete_annotation(project_id: str, ann_id: str) -> None:
     meta["annotations"] = [a for a in meta.get("annotations", []) if a.get("id") != ann_id]
     save_meta(meta)
 
-
-def mark_annotations_applied(project_id: str, page_id: str) -> None:
-    meta = load_meta(project_id)
-    for ann in meta.get("annotations", []):
-        if ann.get("page_id") == page_id and ann.get("status", "active") == "active":
-            ann["status"] = "applied"
-            ann["applied_at"] = now_iso()
-    save_meta(meta)
 
 
 def append_chat(project_id: str, role: str, content: str, extra: dict[str, Any] | None = None) -> None:

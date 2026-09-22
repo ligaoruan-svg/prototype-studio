@@ -3,7 +3,6 @@ from __future__ import annotations
 import io
 import json
 import mimetypes
-import os
 import re
 import shutil
 import zipfile
@@ -13,7 +12,7 @@ import logging
 from pathlib import Path, PurePosixPath
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 

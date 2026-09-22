@@ -310,22 +310,6 @@ def apply_operations(source: str, operations: list[dict]) -> tuple[str, list[str
     return source, logs
 
 
-def script_syntax_error(code: str, module: bool = False) -> str:
-    """校验一段独立脚本的语法，有错返回错误文本，没错或查不了返回空串。
-
-    没装 node 时不阻拦——本地工具不该因为缺个可选依赖就不让人干活。
-    """
-    node = shutil.which("node")
-    if not node or not code.strip():
-        return ""
-    try:
-        result = subprocess.run(
-            [node, "--check", "--input-type=" + ("module" if module else "commonjs")],
-            input=code, text=True, capture_output=True, timeout=8)
-        return result.stderr[:900] if result.returncode else ""
-    except (OSError, subprocess.TimeoutExpired):
-        return ""
-
 
 def verify_source(source: str, assertions: list[dict] | None = None) -> dict:
     soup, issues = BeautifulSoup(source, "html.parser"), []

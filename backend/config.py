@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 from .atomicio import write_atomic
 
 # Single source of truth for the version shown in the API, README and release name.
-VERSION = "5.2"
+VERSION = "6.0"
 CONFIG_FILE = Path(__file__).resolve().parents[1] / "data" / "config.json"
 DEFAULT = {"base_url": "https://api.deepseek.com", "model": "deepseek-flash", "api_key": "", "supports_vision": False,
            "max_tokens": 32000, "stream": True, "context_budget": 200_000, "max_rounds": 24}
