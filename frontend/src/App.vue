@@ -294,13 +294,6 @@ async function runAgent(text = '', runtimeFeedback = '', options = {}) {
     })
     current.result = result
     if (result.changed) { current.status = 'checking'; Object.assign(result, await checkAndCommit(result)) }
-    else if (result.need_target) {
-      // 话没指到东西。把它留回输入框、切到点选，用户点一下就能直接再发一次。
-      status.value = '请点选要改的位置'
-      setMode('select')
-      if (!input.value.trim()) input.value = message
-      toast('点一下要改的位置，再发一次')
-    }
     else status.value = result.clarification ? '等待你确认' : result.discussion ? '讨论完成 · 未修改文件' : '没有改动页面'
     lastResult.value = result
     await refresh(false); projects.value = await api('/api/projects')

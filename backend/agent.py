@@ -12,8 +12,8 @@ from . import storage
 from .transactions import stage
 from .errors import WorkError, error_payload
 from .experience import element_name, tool_label, compact_messages, changed_targets, result_report, scope_report
-from .conversation import resolve_intent, discussion_result, history_context, needs_target
-from . import components, memory, skills, dynamic
+from .conversation import resolve_intent, discussion_result, history_context
+from . import components, memory, skills
 
 logger = logging.getLogger(__name__)
 
@@ -267,30 +267,6 @@ def _context_lines(source: str, query: str, radius: int = 6) -> str:
     return "\n---\n".join(chunks)[:8000]
 
 
-def dynamic_origin_note(source: str, targets: list[dict]) -> str:
-    """选中的东西在源码里找不到时，替它把"是哪段代码拼出来的"先查好。
-
-    这份原型 86% 是脚本，页面上看到的绝大多数 DOM 源码里并不存在。
-    没有这一步，模型只能自己猜关键词——实测猜了八轮仍然两手空空。
-    查一次的成本是几毫秒，省下的是八轮模型调用。
-    """
-    notes = []
-    for target in targets[:6]:
-        selector, outer = target.get("selector"), target.get("outer_html")
-        if not selector or not outer:
-            continue
-        try:
-            locate(source, selector)
-            continue          # 源码里就有，正常改就行
-        except (PatchError, Exception):
-            pass
-        note = dynamic.hint_text(source, outer)
-        if note:
-            notes.append(note)
-        if len(notes) >= 2:   # 两个就够看了，再多会把提示词撑爆
-            break
-    return "".join(notes)
-
 
 def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, model: str,
               base_url: str = "https://api.deepseek.com", selection: dict | None = None,
@@ -312,16 +288,6 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
         anns += [{**target, "note":user_message} for target in (selection.get('targets') or [selection])[:16]]
     for ann in anns:
         ann['name'] = element_name(ann)
-    # 「这个」「这里」指的是用户此刻看着的东西。没点选就没有指代，
-    # 让模型去几十万字符里猜纯属浪费——当场请他指一下，一个 token 都不花。
-    if not selection and not saved_annotations and needs_target(user_message):
-        hint = ("你说的「这个」我看不到指的是哪儿。按 V 点选，或者按 B 框一下要改的位置，"
-                "再把这句话发一遍；也可以直接说出它叫什么，比如「顶栏右侧的说明按钮」。")
-        storage.append_chat(project_id, "assistant", hint,
-                            {"page_id": page_id, "changed": False, "intent": "need_target"})
-        return {"changed": False, "intent": "need_target", "message": hint,
-                "need_target": True, "usage": {"prompt_tokens":0,"completion_tokens":0,"total_tokens":0},
-                "tool_log": []}
     source = working_source = storage.read_page(project_id, page_id)
     if not runtime_feedback:
         storage.append_chat(project_id, "user", user_message, {"page_id":page_id,"annotation_count":len(saved_annotations),"intent":intent})
@@ -336,7 +302,6 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
                   f"页面骨架：{json.dumps(outline(source),ensure_ascii=False)}")
     if runtime_feedback and not read_only:
         background += f"\n上次检查错误：{runtime_feedback[:2000]}"
-    background += dynamic_origin_note(source, anns)
     kickoff = ("以下是背景资料，只在和用户这轮问的事情相关时才用：\n" + background
                + "\n\n———\n用户这轮说的是：\n" + user_message)
     spec = (SYSTEM_PROMPT_PATH.parent / "design-spec.md").read_text("utf-8")

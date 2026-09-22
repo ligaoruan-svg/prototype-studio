@@ -58,22 +58,6 @@ def resolve_intent(message: str, intent: str = 'auto') -> str:
     return 'discuss'
 
 
-# 「这个」「这里」这类指代词，指的是用户此刻在屏幕上看着的东西。
-# 没有点选就没有指代——模型再聪明也只能在几十万字符里瞎猜。
-# 实测过一次：用户说「这个我想要点击有介绍内容」，模型搜了八轮才说出
-# 「你这个没有指代，我无法确定改哪个元素」。这句话该在第一秒说，不该烧八轮。
-PLACE_WORDS = re.compile(r'这里|这儿|这块|这边|那里|那儿')
-# 「这个」后面跟名词就是有指代的（这个按钮、那个表格）；跟动词、代词、标点或结尾就是空指。
-BARE_THIS = re.compile(
-    r'(?:这个|那个|这一个|它)\s*(?=[我你他她想要能可以怎太就还也是有加改换删弄做搞给，。！？!?、…]|$)')
-
-
-def needs_target(message: str) -> bool:
-    """这句话在指某个东西，但没告诉我们是哪个。"""
-    text = (message or "").strip()
-    if not text:
-        return False
-    return bool(PLACE_WORDS.search(text) or BARE_THIS.search(text))
 
 
 def discussion_result(answer: str, suggestions=None) -> dict:
