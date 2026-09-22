@@ -32,5 +32,11 @@ def error_payload(exc):
         'validation': '改完页面报错了，已保留上一版。可以让 AI 修复',
         'conflict': '页面已发生变化，请刷新后再修改',
         'iterations': '这次改动未能完成，请缩小到一个位置后重试',
+        'stalled': '一直没定位到该改的地方，已停下。点选或框选目标后再说一次会准得多',
+        'tool_rejected': '同一步反复没通过，已停下。换个说法或缩小到一个位置重试',
     }
-    return {'code': code, 'message': messages.get(code, detail), 'detail': detail}
+    headline = messages.get(code)
+    # 没登记的错误码以前直接回退成 detail，卡片标题和「查看详情」就是同一句话，
+    # 看着像坏了。宁可只给一句，也不要重复一遍。
+    return {'code': code, 'message': headline or detail,
+            'detail': '' if headline is None else detail}
