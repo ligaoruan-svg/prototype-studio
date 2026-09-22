@@ -64,7 +64,7 @@ async function api(url, options = {}) {
 const post = (url, body = {}) => api(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
 function toast(message) { notice.value = message; clearTimeout(toastTimer); toastTimer = setTimeout(() => notice.value = '', 3000) }
 function send(message) { previewFrame.value?.contentWindow?.postMessage(previewMessage(message), '*') }
-function setMode(value) { mode.value = value; view.value = 'preview'; send({ type: 'PA_SET_MODE', mode: value }); if (window.innerWidth <= 960) { leftOpen.value = false; rightOpen.value = false } if (value === 'select') toast('点击画布中的文字、按钮或组件'); if (value === 'box') toast('按住拖动，框选你想调整的区域') }
+function setMode(value) { mode.value = value; view.value = 'preview'; send({ type: 'PA_SET_MODE', mode: value }); if (window.innerWidth <= 960) { leftOpen.value = false; rightOpen.value = false } if (value === 'select') toast('点击选中；按住 Shift 或 ⌘ 可以多选几处'); if (value === 'box') toast('按住拖动，框选你想调整的区域') }
 function clearSelectionOnly() { selected.value = null; inspection.value = null; note.value = ''; textValue.value = ''; ++regionKey.value; send({ type: 'PA_SELECT', selector: '' }) }
 function closeSelection() { clearSelectionOnly(); if (!keepInspector.value) rightOpen.value = false }
 function hideGuide() { showGuide.value = false; localStorage.setItem('pf-hide-guide', 'true') }
@@ -157,6 +157,7 @@ async function onMessage(event) {
   if (data.type === 'REGION_SELECTED' && !loading.value) { selected.value = data; inspection.value = { editable: false, kind: 'region' }; textValue.value = data.text; rightOpen.value = true; if (window.innerWidth <= 960) leftOpen.value = false }
   if (data.type === 'NOTICE') toast(data.message)
   if (data.type === 'SELECTION_MISSING') closeSelection()
+  if (data.type === 'SELECTION_CLEARED') clearSelectionOnly()   // 按住 Shift 把最后一个也取消掉了
   if (data.type === 'SCROLL_STATE') previewScroll.value = data.state
   if (data.type === 'WIDTH') canvasWidth.value = data.width
   if (data.type === 'SHORTCUT') keydown(data)
@@ -532,7 +533,7 @@ onUnmounted(() => { window.removeEventListener('message', onMessage); window.rem
         <div v-if="view === 'preview'" class="canvas" :class="device">
 
           <div class="preview-shell" :class="{ 'is-selecting': mode !== 'interact' }"><iframe v-if="previewDoc" ref="previewFrame" title="原型预览" :srcdoc="previewDoc" :sandbox="PREVIEW_SANDBOX"></iframe><div v-else class="empty-canvas"><div class="empty-emblem"><PanelsTopLeft :size="30" :stroke-width="1.4" /></div><h1>给想法一个可操作的样子</h1><p>从已有的 HTML 开始修改，<br>或描述需求，让 AI 帮你搭建第一版。</p><div><button class="primary" @click="openDialog('new')"><Plus :size="16" />新建原型</button><button class="outline" @click="fileInput.click()"><Upload :size="16" />导入原型</button></div><span>支持 HTML、包含多页面的 ZIP</span></div><RegionCapture v-if="previewDoc && mode === 'box' && !loading" :key="regionKey" @select="send({ type: 'PA_BOX_RECT', bounds: $event })" @scroll="send({ type: 'PA_SCROLL', ...$event })" /><div v-if="loading" class="loading-veil"><LoaderCircle class="spin" :size="25" /><span>正在加载原型…</span></div></div>
-          <div v-if="page" class="canvas-tool-dock"><button :class="{ active: mode === 'interact' }" :disabled="loading" title="交互 · H" @click="setMode('interact')"><Hand :size="16" />交互<kbd>H</kbd></button><span></span><button :class="{ active: mode === 'select' }" :disabled="loading" title="点选 · V" @click="setMode('select')"><MousePointer2 :size="16" />点选<kbd>V</kbd></button><button :class="{ active: mode === 'box' }" :disabled="loading" title="拉框 · B" @click="setMode('box')"><Scan :size="16" />拉框<kbd>B</kbd></button></div>
+          <div v-if="page" class="canvas-tool-dock"><button :class="{ active: mode === 'interact' }" :disabled="loading" title="交互 · H" @click="setMode('interact')"><Hand :size="16" />交互<kbd>H</kbd></button><span></span><button :class="{ active: mode === 'select' }" :disabled="loading" title="点选 · V（按住 Shift / ⌘ 多选）" @click="setMode('select')"><MousePointer2 :size="16" />点选<kbd>V</kbd></button><button :class="{ active: mode === 'box' }" :disabled="loading" title="拉框 · B" @click="setMode('box')"><Scan :size="16" />拉框<kbd>B</kbd></button></div>
         </div>
         <div v-else class="code-panel"><div class="code-toolbar"><Braces :size="15" /><select aria-label="源码区域" v-model="codeRegion"><option value="all">完整文件 · 只读</option><option v-for="region in sourceInfo.regions" :key="region.name" :value="region.name">{{ region.label || '自定义区域' }}</option></select><span>{{ codeText.split('\n').length }} 行</span><button class="quiet" @click="copySource"><Check v-if="codeCopied" :size="14" /><Copy v-else :size="14" />{{ codeCopied ? '已复制' : '复制' }}</button></div><div class="source-scroll"><pre class="line-numbers" aria-hidden="true">{{ lineNumbers }}</pre><pre class="source-code"><code>{{ codeText }}</code></pre></div></div>
         <div v-if="error" class="error-banner" role="alert"><AlertCircle :size="16" /><span>{{ error }}</span><button class="icon-button" aria-label="关闭错误提示" @click="error = ''"><X :size="14" /></button></div>

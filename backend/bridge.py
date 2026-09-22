@@ -6,7 +6,10 @@ _TEMPLATE = r'''
 (() => {
   const CFG = __CFG__;
   const send = (type, payload={}) => parent.postMessage({source:'prototype-agent', ...CFG, type, ...payload}, '*');
-  let mode='interact', selected=null, hover=null, box, selectedBox, caption, dragStart=null, dragBox=null, markers=[];
+  // 选中是一组，不是一个。点一下换一个，按住 Shift/⌘ 点是往里加——
+  // 同一种改动落在好几处时（表单里散着的那些「手工填写」标签），
+  // 一个一个点、一条一条写实在不合理。
+  let mode='interact', picked=[], hover=null, box, pickBoxes=[], caption, dragStart=null, dragBox=null, markers=[];
   const esc = value => CSS.escape(String(value));
   const scrollContainers = new Set(); let scrollTimer, restoringScroll=false;
   // Opaque sandbox origins cannot use native localStorage. Keep demo data scoped
@@ -66,19 +69,54 @@ _TEMPLATE = r'''
     Object.assign(el.style,{position:'fixed',pointerEvents:'none',zIndex:'2147483646',border,boxSizing:'border-box',display:'none',borderRadius:'2px'});
     document.documentElement.appendChild(el);return el;
   }
+  function paintPicks(){
+    while(pickBoxes.length>picked.length){const x=pickBoxes.pop();x.frame.remove();x.tag.remove();}
+    while(pickBoxes.length<picked.length){
+      const frame=overlay('2px solid #b8532f');
+      const tag=overlay('0');
+      Object.assign(tag.style,{width:'18px',height:'18px',borderRadius:'50%',background:'#b8532f',
+        color:'#fff',font:'10px/18px system-ui',textAlign:'center',display:'none'});
+      pickBoxes.push({frame,tag});
+    }
+    picked.forEach((el,i)=>{
+      const {frame,tag}=pickBoxes[i];
+      if(!el?.isConnected||mode==='interact'){frame.style.display='none';tag.style.display='none';return;}
+      const r=el.getBoundingClientRect();
+      Object.assign(frame.style,{display:'block',left:r.left+'px',top:r.top+'px',width:r.width+'px',height:r.height+'px',background:'#b8532f10'});
+      // 只有选了不止一个才标序号；只有一个时序号是噪音
+      tag.textContent=i+1;
+      tag.style.display=picked.length>1?'block':'none';
+      tag.style.left=(r.left-9)+'px';tag.style.top=(r.top-9)+'px';
+    });
+  }
+  function reportPicks(){
+    if(!picked.length){send('SELECTION_CLEARED',{});return;}
+    if(picked.length===1){send('SELECTED',describe(picked[0]));return;}
+    // 多选走和拉框同一条路：targets 数组、「已选中 N 个元素」、一次说清怎么改
+    const targets=picked.map(describe);
+    let ancestor=picked[0];
+    while(ancestor&&picked.some(n=>!ancestor.contains(n)))ancestor=ancestor.parentElement;
+    send('REGION_SELECTED',{...describe(ancestor||document.body),kind:'region',
+      text:targets.map(n=>n.text||n.tag).join(' · ').slice(0,500),targets});
+  }
   function place(out,el){
     if(!out)return;
     if(!el?.isConnected || mode==='interact'){out.style.display='none';return;}
     const r=el.getBoundingClientRect();
     Object.assign(out.style,{display:'block',left:r.left+'px',top:r.top+'px',width:r.width+'px',height:r.height+'px'});
   }
-  function paint(){place(box,hover);place(selectedBox,selected);for(const {el,pin} of markers){const r=el.getBoundingClientRect();pin.style.display=el.isConnected&&r.width?'grid':'none';pin.style.left=(r.right-10)+'px';pin.style.top=(r.top-10)+'px';}if(caption){caption.style.display=(mode==='select'&&hover?.isConnected)?'block':'none';if(hover?.isConnected){const r=hover.getBoundingClientRect();caption.textContent=hover.dataset.pid||hover.tagName.toLowerCase();caption.style.left=Math.max(4,r.left)+'px';caption.style.top=Math.max(4,r.top-26)+'px';}}}
+  function paint(){place(box,hover);paintPicks();for(const {el,pin} of markers){const r=el.getBoundingClientRect();pin.style.display=el.isConnected&&r.width?'grid':'none';pin.style.left=(r.right-10)+'px';pin.style.top=(r.top-10)+'px';}if(caption){caption.style.display=(mode==='select'&&hover?.isConnected)?'block':'none';if(hover?.isConnected){const r=hover.getBoundingClientRect();caption.textContent=hover.dataset.pid||hover.tagName.toLowerCase();caption.style.left=Math.max(4,r.left)+'px';caption.style.top=Math.max(4,r.top-26)+'px';}}}
   window.addEventListener('mousemove',e=>{if(mode!=='select')return;hover=e.target instanceof Element&&!e.target.closest('[data-pa-overlay]')?e.target:null;paint();},true);
   window.addEventListener('click',e=>{
     const el=e.target instanceof Element?e.target:null;if(!el)return;
     if(mode==='box'){e.preventDefault();e.stopImmediatePropagation();return;}
     if(mode==='select'){
-      e.preventDefault();e.stopImmediatePropagation();selected=el;hover=null;paint();send('SELECTED',describe(el));return;
+      e.preventDefault();e.stopImmediatePropagation();hover=null;
+      if(e.shiftKey||e.metaKey||e.ctrlKey){
+        const at=picked.indexOf(el);
+        if(at>=0)picked.splice(at,1);else if(picked.length<16)picked.push(el);
+      }else picked=[el];
+      paint();reportPicks();return;
     }
     const link=el.closest('a[href]');const href=link?.getAttribute('href')||'';
     if(href.startsWith('#')){e.preventDefault();location.hash=href;return;}
@@ -141,10 +179,13 @@ _TEMPLATE = r'''
   window.addEventListener('keydown',e=>{if(e.target?.closest?.('input,textarea,select,[contenteditable=true]'))return;const key=e.key.toLowerCase(),command=e.metaKey||e.ctrlKey;if((!command&&!e.altKey&&['h','v','b','escape'].includes(key))||(command&&['z','/','enter'].includes(key))){e.preventDefault();send('SHORTCUT',{key:e.key,metaKey:e.metaKey,ctrlKey:e.ctrlKey,altKey:e.altKey,shiftKey:e.shiftKey});}},true);
   window.addEventListener('message',e=>{
     if(e.source!==parent)return;const m=e.data||{};
-    if(m.type==='PA_SET_MODE'){mode=m.mode;hover=null;dragStart=null;if(dragBox)dragBox.style.display='none';paint();}
+    if(m.type==='PA_SET_MODE'){mode=m.mode;hover=null;dragStart=null;if(m.mode==='interact')picked=[];if(dragBox)dragBox.style.display='none';paint();}
     if(m.type==='PA_SELECT'){
       if(!m.selector&&dragBox)dragBox.style.display='none';
-      try{selected=m.selector?document.querySelector(m.selector):null;if(selected)send('SELECTED',{...describe(selected),refresh:true});else if(m.selector)send('SELECTION_MISSING');paint();}catch{}
+      try{const one=m.selector?document.querySelector(m.selector):null;
+        picked=one?[one]:[];
+        if(one)send('SELECTED',{...describe(one),refresh:true});else if(m.selector)send('SELECTION_MISSING');
+        paint();}catch{}
     }
     if(m.type==='PA_RENDER_MARKERS'){
       markers.forEach(m=>m.pin.remove());markers=[];
@@ -166,7 +207,7 @@ _TEMPLATE = r'''
     }
   });
   window.addEventListener('DOMContentLoaded',()=>{
-    box=overlay('1px solid #b8532f');selectedBox=overlay('2px solid #b8532f');caption=overlay('0');
+    box=overlay('1px solid #b8532f');caption=overlay('0');
     Object.assign(caption.style,{background:'#b8532f',color:'#fff',font:'11px/20px system-ui',padding:'1px 6px',borderRadius:'3px'});
     restoreScroll();send('READY');send('WIDTH',{width:innerWidth});
   });

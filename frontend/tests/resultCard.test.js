@@ -69,3 +69,27 @@ test('框选用命中测试，挡住的元素不再被穿透选中', () => {
   // 不能再是"只按几何位置筛"
   assert.doesNotMatch(bridge, /return b\.width>0&&b\.height>0&&x>=r\.left&&x<=r\.right&&y>=r\.top&&y<=r\.bottom;\n    \}\)\.filter/)
 })
+
+test('点选可以多选，同一种改动不用一条一条写', () => {
+  // 表单里散着好几个「手工填写」标签，框选框不到一起，
+  // 只能点一个写一条实在不合理。Shift / ⌘ 点击往选中里加减。
+  assert.match(bridge, /e\.shiftKey\|\|e\.metaKey\|\|e\.ctrlKey/)
+  assert.match(bridge, /picked\.splice\(at, ?1\)/)
+  assert.match(bridge, /picked\.length<16/)      // 有上限，别一口气选上百个
+})
+
+test('选中几处就画几个框，多选才标序号', () => {
+  assert.match(bridge, /function paintPicks/)
+  assert.match(bridge, /picked\.length>1\?'block':'none'/)
+})
+
+test('多选走和拉框同一条路', () => {
+  // 复用已经跑通的 targets 数组，不另起一套
+  assert.match(bridge, /picked\.length===1.*?SELECTED/s)
+  assert.match(bridge, /REGION_SELECTED.*?kind:'region'.*?targets/s)
+})
+
+test('取消掉最后一个会通知父层清空', () => {
+  assert.match(bridge, /SELECTION_CLEARED/)
+  assert.match(app, /SELECTION_CLEARED'\) clearSelectionOnly\(\)/)
+})
