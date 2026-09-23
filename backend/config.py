@@ -7,6 +7,8 @@ from .atomicio import write_atomic
 
 # Single source of truth for the version shown in the API, README and release name.
 VERSION = "6.0"
+# 进程启动时刻。界面上显示出来，就不用再靠猜"到底重启了没有"。
+STARTED_AT = __import__("datetime").datetime.now().strftime("%H:%M:%S")
 CONFIG_FILE = Path(__file__).resolve().parents[1] / "data" / "config.json"
 DEFAULT = {"base_url": "https://api.deepseek.com", "model": "deepseek-flash", "api_key": "", "supports_vision": False,
            "max_tokens": 32000, "stream": True, "context_budget": 200_000, "max_rounds": 24}
@@ -18,7 +20,8 @@ def load():
 
 def public():
     data = load()
-    return {"base_url": data["base_url"], "model": data["model"], "has_key": bool(data["api_key"]),
+    return {"version": VERSION, "started_at": STARTED_AT,
+            "base_url": data["base_url"], "model": data["model"], "has_key": bool(data["api_key"]),
             "supports_vision": data["supports_vision"], "max_tokens": data['max_tokens'], "stream": data['stream'],
             "context_budget": data['context_budget'], "max_rounds": data['max_rounds']}
 
