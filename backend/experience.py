@@ -16,6 +16,52 @@ def element_name(target):
     return f'「{text}」{kind}' if text else kind
 
 
+def step_detail(name: str, args: dict, output) -> str:
+    """一步做完之后，用一句话说清它到底拿到了什么。
+
+    只给个标签「查找「overview」」，用户看不出搜到没搜到——
+    卡住的时候只能干等。这里把每一步的真实结果摘出来，
+    界面上点开就能看见，跟看别人操作一样。
+    """
+    if not isinstance(output, dict):
+        return str(output)[:300]
+    if output.get("ok") is False:
+        return str(output.get("error") or "这一步没通过")[:300]
+
+    if name == "search_source" or name == "search_skill_file":
+        query = str(args.get("query", ""))
+        hits = output.get("hits")
+        if hits == 0:
+            return f"没有找到「{query}」"
+        rows = output.get("lines") or []
+        where = "、".join(str(r) for r in rows[:8]) + (" …" if len(rows) > 8 else "")
+        return f"找到 {hits} 处" + (f"：第 {where} 行" if where else "")
+    if name in {"read_source_slice", "read_skill_file"}:
+        tail = "，还没读完" if output.get("truncated") else ""
+        return f"读了第 {output.get('start')}–{output.get('end')} 行，全文共 {output.get('total_lines')} 行{tail}"
+    if name == "inspect_page":
+        regions = len(output.get("regions") or [])
+        actions = len(output.get("actions") or [])
+        return f"页面「{output.get('title','')}」{output.get('chars',0)} 字符，{regions} 个区域，{actions} 个可点元素"
+    if name == "read_region":
+        return f"读了区域「{args.get('name','')}」{len(str(output.get('content','')))} 字符"
+    if name == "apply_operations":
+        logs = output.get("logs") or []
+        return "；".join(str(x) for x in logs)[:300] or "已应用"
+    if name == "verify_page":
+        issues = output.get("issues") or []
+        return "、".join(str(i) for i in issues)[:300] if issues else "结构、脚本、断言都通过"
+    if name in {"read_skill", "read_component"}:
+        return f"取到 {len(str(output.get('content') or output.get('preview') or ''))} 字符"
+    if name == "update_plan":
+        return "；".join(s.get("title", "") for s in output.get("steps", []))[:300]
+    if name in {"remember", "forget"}:
+        return str(output.get("text") or output.get("id") or "")[:200]
+    if name == "report_result":
+        return str((output.get("report") or {}).get("summary", ""))[:300]
+    return json.dumps(output, ensure_ascii=False)[:300]
+
+
 def tool_label(name, args):
     return {
         'inspect_page': '读取页面结构', 'search_source': f'查找「{str(args.get("query", ""))[:24]}」',

@@ -297,6 +297,7 @@ async function runAgent(text = '', runtimeFeedback = '', options = {}) {
         if (!step) { current.steps.push({ id: event.id, label: event.label }); step = current.steps[current.steps.length - 1] }
         step.state = event.type === 'step_start' ? 'running' : event.type === 'step_done' ? 'done' : 'error'
         step.error = event.error?.message || event.error?.error || ''
+        if (event.detail) step.detail = event.detail
         // 记下真的动过文件的那一刻，卡片标题在那之前不该说"修改中"。
         if (event.tool === 'apply_operations' && event.type === 'step_done') { current.editing = true; status.value = '修改中' }
       }

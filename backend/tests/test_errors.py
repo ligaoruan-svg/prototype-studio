@@ -47,3 +47,49 @@ class Payload(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StepDetail(unittest.TestCase):
+    """每一步做完要说清拿到了什么。
+
+    只给个标签「查找「overview」」，用户看不出搜到没搜到——
+    卡住的时候只能干等，这是最折磨人的地方。
+    """
+
+    def setUp(self):
+        from backend.experience import step_detail
+        self.detail = step_detail
+
+    def test_搜到了说找到几处在哪几行(self):
+        got = self.detail("search_source", {"query": "总览"}, {"hits": 19, "lines": [53, 216, 749]})
+        self.assertIn("19 处", got)
+        self.assertIn("53", got)
+
+    def test_没搜到要说没搜到(self):
+        got = self.detail("search_source", {"query": "overview"}, {"hits": 0, "context": "整个页面里没有"})
+        self.assertIn("没有找到", got)
+        self.assertIn("overview", got)
+
+    def test_读代码说清读到哪还剩多少(self):
+        got = self.detail("read_source_slice", {}, {"start": 1, "end": 155, "total_lines": 6671, "truncated": True})
+        self.assertIn("1–155", got)
+        self.assertIn("6671", got)
+        self.assertIn("还没读完", got)
+
+    def test_失败要给原因(self):
+        got = self.detail("apply_operations", {}, {"ok": False, "error": "没有找到要替换的原文"})
+        self.assertIn("没有找到要替换的原文", got)
+
+    def test_校验通过与不通过都说清(self):
+        self.assertIn("通过", self.detail("verify_page", {}, {"ok": True, "issues": []}))
+        self.assertIn("data-pid", self.detail("verify_page", {}, {"issues": ["data-pid 不能重复"]}))
+
+    def test_每条都短得下得了一行(self):
+        long_out = {"hits": 900, "lines": list(range(900))}
+        self.assertLessEqual(len(self.detail("search_source", {"query": "x"}, long_out)), 320)
+        self.assertLessEqual(len(self.detail("whatever", {}, {"a": "x" * 5000})), 320)
+
+    def test_没见过的工具也不炸(self):
+        for out in (None, "纯文字", 123, {"随便": "什么"}):
+            with self.subTest(out=out):
+                self.assertIsInstance(self.detail("unknown_tool", {}, out), str)

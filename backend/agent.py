@@ -11,7 +11,7 @@ from .patcher import apply_operations, verify_source, PatchError, regions, outli
 from . import storage
 from .transactions import stage
 from .errors import WorkError, error_payload
-from .experience import element_name, tool_label, compact_messages, changed_targets, result_report, scope_report
+from .experience import element_name, tool_label, compact_messages, changed_targets, result_report, scope_report, step_detail
 from .conversation import resolve_intent, discussion_result, history_context
 from . import components, memory, skills
 
@@ -530,6 +530,7 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
             messages.append({"role":"tool","tool_call_id":call.get("id"),"content":json.dumps(output,ensure_ascii=False)})
             failed = output.get("ok") is False
             emit({"type":"step_error" if failed else "step_done","id":step_id,"label":label,"tool":fn,
+                  "detail":step_detail(fn,args,output),
                   **({"error":{"message":output.get('error') or '检查未通过',"detail":"；".join(output.get('issues',[]))}} if failed else {})})
             if failed:
                 key = (fn, str(output.get("code") or output.get("error") or "")[:80])
