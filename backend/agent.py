@@ -389,7 +389,7 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
                               "error":"这一段你本轮已经读过了，内容没有变化。不要重复读——"
                                       "基于已经读到的内容动手改；如果确认页面上没有要改的东西，"
                                       "直接用 report_result 把这个事实说清楚。"}
-                    emit({"type":"step_done","id":step_id,"label":label,"tool":fn})
+                    emit({"type":"step_done","id":step_id,"label":label,"tool":fn,"detail":"这一段本轮已经读过，跳过了"})
                     tool_log.append({"tool":fn,"args":args,"output":output})
                     messages.append({"role":"tool","tool_call_id":call.get("id"),
                                      "content":json.dumps(output,ensure_ascii=False)})

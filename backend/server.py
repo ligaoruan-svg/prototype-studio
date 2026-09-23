@@ -98,7 +98,8 @@ class RestoreItemIn(BaseModel):
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "version": config.VERSION, "service": "prototype-agent"}
+    return {"ok": True, "version": config.VERSION, "service": "prototype-agent",
+            "started_epoch": config.STARTED_EPOCH}
 
 
 @app.get("/api/config")
@@ -598,10 +599,24 @@ def commit_candidate(token: str, body: CommitIn):
         raise HTTPException(409, error_payload(exc))
 
 
+# 界面文件名里没有版本号（app.css、App.js 一直是这个名字）。
+# Starlette 只发 etag 和 last-modified，不发 Cache-Control，浏览器就按启发式规则
+# 自己判定「这个文件还新鲜」，连问都不问服务器——改了代码、重启了服务，页面还是老样子，
+# 只能靠人记得按 Cmd+Shift+R。这里要求每次都回来核对；没变就是 304，本地几乎不花时间。
+NO_CACHE = {"Cache-Control": "no-cache"}
+
+
+class FreshFiles(StaticFiles):
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 if FRONTEND_DIST.exists():
     assets = FRONTEND_DIST / "assets"
     if assets.exists():
-        app.mount("/assets", StaticFiles(directory=assets), name="assets")
+        app.mount("/assets", FreshFiles(directory=assets), name="assets")
 
     @app.get("/{path:path}")
     def spa(path: str):
@@ -611,5 +626,5 @@ if FRONTEND_DIST.exists():
         if FRONTEND_DIST.resolve() not in candidate.parents and candidate != FRONTEND_DIST.resolve():
             raise HTTPException(404)
         if path and candidate.exists() and candidate.is_file():
-            return FileResponse(candidate)
-        return FileResponse(FRONTEND_DIST / "index.html")
+            return FileResponse(candidate, headers=NO_CACHE)
+        return FileResponse(FRONTEND_DIST / "index.html", headers=NO_CACHE)
