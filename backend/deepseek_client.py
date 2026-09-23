@@ -144,7 +144,9 @@ def _assemble(events, on_delta):
             delta = choice.get('delta') or {}
             if delta.get('content'):
                 content.append(delta['content'])
-                on_delta(delta['content'])
+                # 模型在调工具之前说的话——它为什么要查这个。
+                # 和下面工具参数里的最终结论不是一回事，分开发。
+                on_delta(delta['content'], 'note')
             for call in delta.get('tool_calls') or []:
                 index = call.get('index', 0)
                 slot = calls.setdefault(index, {'id': '', 'type': 'function', 'function': {'name': '', 'arguments': ''}})
@@ -157,7 +159,7 @@ def _assemble(events, on_delta):
                     slot['function']['arguments'] += function['arguments']
                     text = visible_text(slot['function']['arguments'])
                     if len(text) > shown.get(index, 0):
-                        on_delta(text[shown.get(index, 0):])
+                        on_delta(text[shown.get(index, 0):], 'result')
                         shown[index] = len(text)
     message = {'role': 'assistant', 'content': ''.join(content)}
     if calls:

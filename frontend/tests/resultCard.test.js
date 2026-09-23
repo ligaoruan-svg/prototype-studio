@@ -93,3 +93,29 @@ test('取消掉最后一个会通知父层清空', () => {
   assert.match(bridge, /SELECTION_CLEARED/)
   assert.match(app, /SELECTION_CLEARED'\) clearSelectionOnly\(\)/)
 })
+
+test('模型的旁白和它接下来做的事排在一起', () => {
+  // 以前只看得到一串工具名（查找「绿电」、读取相关代码），
+  // 判断不出它在正经干活还是在瞎转。旁白要按轮次插进步骤列表。
+  assert.match(app, /note_delta/)
+  assert.match(app, /kind: 'note'/)
+  assert.match(card, /step\.kind === 'note'/)
+})
+
+test('旁白不会被下一轮擦掉', () => {
+  // model_wait 会清空 streamText；旁白如果也走那个变量，每换一轮就没了。
+  assert.match(app, /current\.steps\.push\(\{ id: 'note-'/)
+  assert.doesNotMatch(app, /note_delta'\) current\.streamText/)
+})
+
+test('旁白和最终结论走不同通道', () => {
+  const client = readFileSync(new URL('../../backend/deepseek_client.js', import.meta.url).pathname.replace('.js', '.py'), 'utf8')
+  assert.match(client, /on_delta\(delta\['content'\], 'note'\)/)
+  assert.match(client, /'result'\)/)
+})
+
+test('提示词要求它边做边说', () => {
+  const prompt = readFileSync(new URL('../../prompts/agent-system.md', import.meta.url), 'utf8')
+  assert.match(prompt, /# 边做边说/)
+  assert.match(prompt, /调工具之前，先用一句话说/)
+})

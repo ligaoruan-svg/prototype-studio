@@ -281,8 +281,16 @@ async function runAgent(text = '', runtimeFeedback = '', options = {}) {
     const result = await consumeAgentStream(response, event => {
       if (event.type === 'intent') { current.intent = event.intent; current.options.intent = event.intent; status.value = event.intent === 'discuss' ? '讨论中 · 不会修改文件' : '正在看代码' }
       if (event.type === 'plan') current.plan = event.steps
-      if (event.type === 'model_wait') current.streamText = ''
+      if (event.type === 'model_wait') { current.streamText = ''; current.round = event.round }
       if (event.type === 'text_delta') current.streamText += event.text
+      if (event.type === 'note_delta') {
+        // 模型的旁白按轮次接在步骤列表里，和它接下来做的事排在一起。
+        // 以前所有文字共用一个 streamText，每换一轮就被擦掉，
+        // 于是你只看得到工具名，看不到它为什么要查这个。
+        const tail = current.steps[current.steps.length - 1]
+        if (tail?.kind === 'note' && tail.round === current.round) tail.label += event.text
+        else current.steps.push({ id: 'note-' + current.steps.length, kind: 'note', round: current.round, label: event.text })
+      }
       if (event.label) current.label = event.label
       if (event.type.startsWith('step_')) {
         let step = current.steps.find(item => item.id === event.id)

@@ -318,7 +318,10 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
         compact_messages(messages, context_budget)
         emit({"type":"model_wait","round":round_no+1,"label":"思考你的问题" if read_only else "理解需求中" if round_no==0 else "继续处理修改"})
         # 本轮的结论文字在工具参数里，边收边推给界面；只在有事件通道时才走流式。
-        on_delta = (lambda text: emit({"type": "text_delta", "text": text})) if (stream and on_event) else None
+        # note = 模型在动手之前说的话（它为什么要查这个）；result = 最终结论。
+        # 两者混在一起的话，旁白会被当成结论显示，结论又会被下一轮擦掉。
+        on_delta = ((lambda text, kind="result": emit({"type": "note_delta" if kind == "note" else "text_delta", "text": text}))
+                    if (stream and on_event) else None)
         resp = chat(api_key, model, messages, tools, base_url=base_url, max_tokens=max_tokens, on_delta=on_delta)
         for key in usage:
             usage[key] += (resp.get("usage") or {}).get(key,0) or 0
@@ -339,6 +342,8 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
             continue
         msg = choices[0].get("message") or {}
         assistant = {"role":"assistant","content":msg.get("content") or ""}
+        if not stream and assistant["content"].strip():
+            emit({"type":"note_delta","text":assistant["content"].strip()})
         calls = msg.get("tool_calls") or []
         if calls: assistant["tool_calls"] = calls
         messages.append(assistant)
