@@ -119,3 +119,15 @@ test('提示词要求它边做边说', () => {
   assert.match(prompt, /# 边做边说/)
   assert.match(prompt, /调工具之前，先用一句话说/)
 })
+
+test('每一步的结果默认折叠，点开才看', () => {
+  // 全摊开是十几行灰字糊成一片，真正要看的（它在想什么）反而被埋了。
+  assert.match(card, /const opened = ref\(new Set\(\)\)/)
+  assert.match(card, /function toggle\(id\)/)
+  assert.match(card, /step\.detail && opened\.has\(step\.id\)/)
+  assert.match(card, /class="step-head"/)
+})
+
+test('旁白不折叠——那是最该看见的', () => {
+  assert.match(card, /step\.kind !== 'note' && step\.detail/)
+})
