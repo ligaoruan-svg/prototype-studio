@@ -61,7 +61,7 @@ export async function probePage({ doc, width = 1150, height = 800, onUpdate = ()
       const opened = reply.ok && reply.opened
       if (!opened || seen.has(opened.sig)) continue
       seen.add(opened.sig)
-      const node = { id: result.nodes.length + 1, parent: job.parent, label: job.label, title: opened.title, html: opened.html, box: opened.box, path: [...job.path, job.step] }
+      const node = { id: result.nodes.length + 1, parent: job.parent, label: job.label, title: opened.title, html: opened.html, box: opened.box, layerSel: opened.layerSel || '', path: [...job.path, job.step] }
       result.nodes.push(node)
       if (job.depth < MAX_DEPTH) {
         const children = [

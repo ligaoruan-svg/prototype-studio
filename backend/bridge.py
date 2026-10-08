@@ -301,6 +301,8 @@ _TEMPLATE = r'''
       else if(el.type==='checkbox'||el.type==='radio')c.toggleAttribute('checked',el.checked);
       else if(el.tagName==='TEXTAREA')c.textContent=el.value;else c.setAttribute('value',el.value);});
     clone.querySelectorAll('script,[data-pa-overlay]').forEach(n=>n.remove());
+    // 卡片里点选时，从这一层往下算路径；拼上这一层在真实页面里的选择器，就能对回原元素
+    clone.setAttribute('data-pa-layer','');
     let html=clone.outerHTML;
     // 弹窗样式常挂在祖先上（.app #modal.show），副本把祖先链的标签和类带上
     for(let p=node.parentElement;p&&p!==document.body&&p!==document.documentElement;p=p.parentElement){
@@ -325,7 +327,7 @@ _TEMPLATE = r'''
     return location.hash+'|'+heads.join('/');
   }
   function pageTitle(){
-    const h=[...document.querySelectorAll('h1,h2,[class*=page-title],[class*=title]')].find(el=>vis(el)&&!inSkipZone(el)&&(el.innerText||'').trim().length>=2);
+    const h=[...document.querySelectorAll('h1,h2,[class*=page-title],[class*=title]')].find(el=>vis(el)&&!inSkipZone(el)&&!inChrome(el)&&(el.innerText||'').trim().length>=2);
     return ((h&&h.innerText)||document.title||'当前页面').trim().split('\n')[0].slice(0,40);
   }
   function stylesOf(){
@@ -370,7 +372,7 @@ _TEMPLATE = r'''
     let out={ok:true,opened:null};
     if(L){
       const wizard=wizardOf(L);
-      out.opened={title:titleOf(L),sig:titleOf(L)+'|'+(L.innerText||'').replace(/\s+/g,' ').slice(0,160),html:freeze(L),box:boxOf(L),
+      out.opened={layerSel:selectorFor(L),title:titleOf(L),sig:titleOf(L)+'|'+(L.innerText||'').replace(/\s+/g,' ').slice(0,160),html:freeze(L),box:boxOf(L),
         triggers:triggersIn(L,true,wizard.next?[wizard.next]:[]),branches:wizard.branches};
     }
     const closed=await closeAll(probeBase);

@@ -54,3 +54,32 @@ test('进度里的按钮名去掉「表格行」前缀并截短', () => {
   assert.equal(shortLabel('表格行 · 编辑'), '编辑')
   assert.equal(shortLabel('下一步 · 间接排放因子（外购电力/热力）', 10), '下一步 · 间接排放…')
 })
+
+import { pickToSelection, CARD_SCRIPT } from '../src/probeTree.js'
+
+const gwp = { id: 7, title: '新增 GWP 值', layerSel: '#modal', label: '下一步 · GWP值' }
+
+test('卡片里点中一个元素 → 选择器对回真实页面，并带上所在弹窗', () => {
+  const sel = pickToSelection(gwp, [{ rel: 'div.modal > div:nth-of-type(2) > input', tag: 'input', text: '', outer_html: '<input>' }])
+  assert.equal(sel.selector, '#modal > div.modal > div:nth-of-type(2) > input')
+  assert.equal(sel.modal, '新增 GWP 值')
+  assert.deepEqual(sel.card, { nodeId: 7, rels: ['div.modal > div:nth-of-type(2) > input'] })
+  assert.equal(sel.kind, undefined, '单选走普通选中，能进属性面板')
+})
+
+test('Shift 多选同一张卡片 → 和预览里多选一样是一组 targets', () => {
+  const sel = pickToSelection(gwp, [
+    { rel: 'div > label:nth-of-type(1)', tag: 'label', text: '温室气体', outer_html: '<label>温室气体</label>' },
+    { rel: 'div > label:nth-of-type(2)', tag: 'label', text: 'GWP 值', outer_html: '<label>GWP 值</label>' },
+  ])
+  assert.equal(sel.kind, 'region')
+  assert.deepEqual(sel.targets.map(t => t.selector), ['#modal > div > label:nth-of-type(1)', '#modal > div > label:nth-of-type(2)'])
+  assert.ok(sel.targets.every(t => t.modal === '新增 GWP 值'))
+  assert.equal(sel.text, '温室气体 · GWP 值')
+})
+
+test('能点选的卡片才带脚本，页面缩略图仍然是纯静态', () => {
+  assert.match(cardDocument({}, '<div data-pa-layer></div>', { pickable: true }), /CARD_PICK/)
+  assert.doesNotMatch(cardDocument({}, '<div></div>'), /<script/)
+  assert.doesNotThrow(() => new Function(CARD_SCRIPT), '注入的脚本至少要能被解析')
+})

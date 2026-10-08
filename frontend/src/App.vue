@@ -35,7 +35,7 @@ const fileManagerRevision = ref(0)
 const runs = ref([]), canvasWidth = ref(0), previewScroll = ref(null), pendingHighlights = ref([]), savedAt = ref('')
 const validationDetails = ref(''), composerIntent = ref('auto'), previewHash = ref('')
 // 展开视图：把这一页的弹窗铺开看；点卡片后在预览里复现打开路径
-const boardOpen = ref(false), boardDoc = ref(''), pendingReplay = ref(null), openedModal = ref(null)
+const boardOpen = ref(false), pendingReplay = ref(null), openedModal = ref(null)
 let reloadNonce = 0
 const currentRuns = computed(() => runs.value.filter(r => r.pageId === pageId.value && r.projectId === project.value?.id && !['complete', 'dismissed'].includes(r.status)))
 let toastTimer, loadSequence = 0
@@ -72,11 +72,23 @@ function setMode(value) { mode.value = value; view.value = 'preview'; boardOpen.
 function toggleBoard() {
   if (!page.value || !previewDoc.value) return
   if (boardOpen.value) { boardOpen.value = false; return }
+  view.value = 'preview'; boardOpen.value = true
+}
+// 副本从和预览一样的路由、一样的演示数据起步，但它点出来的任何改动都不会写回来。
+// 跟着 previewDoc 走：在展开视图里改完、提交了新版本，副本自动换成新源码重新展开。
+const boardDoc = computed(() => {
+  if (!boardOpen.value || !previewDoc.value) return ''
   let stored = {}
   try { stored = JSON.parse(localStorage.getItem(runtimeKey()) || '{}') } catch {}
-  // 副本从和预览一样的路由、一样的演示数据起步，但它点出来的任何改动都不会写回来
-  boardDoc.value = preparePreviewDocument(previewDoc.value, { stored, route: previewRoute.value, scroll: null, probe: true })
-  view.value = 'preview'; boardOpen.value = true
+  return preparePreviewDocument(previewDoc.value.replace(/\n<!-- pa-open \d+ -->$/, ''), { stored, route: previewRoute.value, scroll: null, probe: true })
+})
+// 在展开视图的卡片里点选：和预览里点选走同一条路，改的是同一份源码
+async function pickFromBoard(data) {
+  if (loading.value) return
+  openedModal.value = { title: data.modal, trail: data.trail || '' }
+  send({ type: 'PA_SELECT', selector: '' })
+  if (data.kind === 'region') { selected.value = data; inspection.value = { editable: false, kind: 'region' }; textValue.value = data.text; rightOpen.value = true; if (window.innerWidth <= 960) leftOpen.value = false; return }
+  await inspect(data)
 }
 const boardKey = computed(() => `${project.value?.id}:${pageId.value}:${page.value?.version}:${previewHash.value}:${previewRoute.value}`)
 function openFromBoard(node) {
@@ -575,7 +587,7 @@ onUnmounted(() => { window.removeEventListener('message', onMessage); window.rem
         <div class="canvas-toolbar"><div class="view-tools"><button v-if="!leftOpen" class="icon-button" aria-label="打开对话" @click="leftOpen = true; rightOpen = window.innerWidth > 960 && rightOpen"><MessageSquare :size="17" /></button><div class="view-tabs"><button :class="{ active: view === 'preview' }" @click="view = 'preview'">预览</button><button :class="{ active: view === 'code' }" :disabled="!page" title="切换预览 / 代码 · ⌘/Ctrl + /" @click="view = 'code'"><Code2 :size="14" />代码</button></div></div><div class="device-tools" v-if="view === 'preview'"><button v-for="d in [{ id: 'desktop', label: '桌面', icon: Monitor }, { id: 'tablet', label: '平板', icon: Tablet }, { id: 'mobile', label: '手机', icon: Smartphone }]" :key="d.id" class="icon-button" :class="{ active: device === d.id }" :aria-label="d.label + '预览'" :title="d.label" @click="device = d.id"><component :is="d.icon" :size="16" /></button><span class="actual-width">{{ canvasWidth }} px</span></div><div class="canvas-actions"><button v-if="page" class="version-tag" @click="openDialog('history')" title="查看版本历史">v{{ page.version }}</button><button class="icon-button" aria-label="撤销上一步" :title="undoCount ? '撤销上一步 · ⌘/Ctrl + Z' : '暂无可撤销的修改'" :disabled="!undoCount || locked" @click="undo()"><Undo2 :size="16" /></button><button class="icon-button" :class="{ active: rightOpen }" aria-label="切换属性面板" @click="rightOpen = !rightOpen; leftOpen = window.innerWidth > 960 && leftOpen"><SlidersHorizontal :size="17" /></button></div></div>
         <div v-if="view === 'preview'" class="canvas" :class="device">
 
-          <ExpandBoard v-if="boardOpen" :doc="boardDoc" :width="canvasWidth || 1150" :cache-key="boardKey" :page-name="page?.title" @open="openFromBoard" @close="boardOpen = false" />
+          <ExpandBoard v-if="boardOpen" :doc="boardDoc" :width="canvasWidth || 1150" :cache-key="boardKey" :page-name="page?.title" :selection="selected" @open="openFromBoard" @close="boardOpen = false" @select="pickFromBoard" />
           <div v-show="!boardOpen" class="preview-shell" :class="{ 'is-selecting': mode !== 'interact' }"><iframe v-if="previewDoc" ref="previewFrame" title="原型预览" :srcdoc="previewDoc" :sandbox="PREVIEW_SANDBOX"></iframe><div v-else class="empty-canvas"><div class="empty-emblem"><PanelsTopLeft :size="30" :stroke-width="1.4" /></div><h1>给想法一个可操作的样子</h1><p>从已有的 HTML 开始修改，<br>或描述需求，让 AI 帮你搭建第一版。</p><div><button class="primary" @click="openDialog('new')"><Plus :size="16" />新建原型</button><button class="outline" @click="fileInput.click()"><Upload :size="16" />导入原型</button></div><span>支持 HTML、包含多页面的 ZIP</span></div><RegionCapture v-if="previewDoc && mode === 'box' && !loading" :key="regionKey" @select="send({ type: 'PA_BOX_RECT', bounds: $event })" @scroll="send({ type: 'PA_SCROLL', ...$event })" /><div v-if="loading" class="loading-veil"><LoaderCircle class="spin" :size="25" /><span>正在加载原型…</span></div></div>
           <div v-if="page" class="canvas-tool-dock"><button :class="{ active: mode === 'interact' && !boardOpen }" :disabled="loading" title="交互 · H" @click="setMode('interact')"><Hand :size="16" />交互<kbd>H</kbd></button><span></span><button :class="{ active: mode === 'select' && !boardOpen }" :disabled="loading" title="点选 · V（按住 Shift / ⌘ 多选）" @click="setMode('select')"><MousePointer2 :size="16" />点选<kbd>V</kbd></button><button :class="{ active: mode === 'box' && !boardOpen }" :disabled="loading" title="拉框 · B" @click="setMode('box')"><Scan :size="16" />拉框<kbd>B</kbd></button><span></span><button :class="{ active: boardOpen }" :disabled="loading || !previewDoc" title="展开这一页的所有弹窗 · E" @click="toggleBoard"><Layers :size="16" />展开<kbd>E</kbd></button></div>
         </div>
