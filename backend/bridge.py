@@ -10,6 +10,10 @@ _TEMPLATE = r'''
   // 同一种改动落在好几处时（表单里散着的那些「手工填写」标签），
   // 一个一个点、一条一条写实在不合理。
   let mode='interact', picked=[], hover=null, box, pickBoxes=[], caption, dragStart=null, dragBox=null, markers=[];
+  // 后台展开用的副本：原生 alert/confirm 会把真实对话框弹到用户屏幕上，
+  // 打开新窗口、打印同理。副本里点什么都只是为了看会弹出什么，统统静音。
+  const PROBE=!!window.__paProbe;
+  if(PROBE){try{window.alert=()=>{};window.confirm=()=>false;window.prompt=()=>null;window.open=()=>null;window.print=()=>{};}catch{}}
   const esc = value => CSS.escape(String(value));
   const scrollContainers = new Set(); let scrollTimer, restoringScroll=false;
   // Opaque sandbox origins cannot use native localStorage. Keep demo data scoped
@@ -49,7 +53,7 @@ _TEMPLATE = r'''
   function describe(el){
     const cs=getComputedStyle(el);
     return {selector:selectorFor(el),pid:el.dataset.pid||'',tag:el.tagName.toLowerCase(),
-      text:(el.innerText||el.textContent||'').trim().slice(0,500),outer_html:el.outerHTML.slice(0,5000),
+      text:(el.innerText||el.textContent||'').trim().slice(0,500),outer_html:el.outerHTML.slice(0,5000),modal:modalOf(el),
       styles:Object.fromEntries(['color','background-color','font-size','border-radius','padding-top','padding-bottom','padding-left','padding-right','display'].map(k=>[k,cs.getPropertyValue(k)]))};
   }
   function scrollState(){return {window:{x:scrollX,y:scrollY},containers:[...scrollContainers].filter(el=>el.isConnected).slice(0,40).map(el=>({selector:selectorFor(el),x:el.scrollLeft,y:el.scrollTop}))};}
@@ -176,9 +180,215 @@ _TEMPLATE = r'''
   window.addEventListener('submit',e=>{e.preventDefault();if(mode==='select')e.stopImmediatePropagation();},true);
   window.addEventListener('scroll',e=>{paint();if(restoringScroll)return;if(e.target instanceof Element&&!e.target.closest('[data-pa-overlay]'))scrollContainers.add(e.target);clearTimeout(scrollTimer);scrollTimer=setTimeout(()=>send('SCROLL_STATE',{state:scrollState()}),80);},true);
   window.addEventListener('resize',()=>{paint();send('WIDTH',{width:innerWidth});});
-  window.addEventListener('keydown',e=>{if(e.target?.closest?.('input,textarea,select,[contenteditable=true]'))return;const key=e.key.toLowerCase(),command=e.metaKey||e.ctrlKey;if((!command&&!e.altKey&&['h','v','b','escape'].includes(key))||(command&&['z','/','enter'].includes(key))){e.preventDefault();send('SHORTCUT',{key:e.key,metaKey:e.metaKey,ctrlKey:e.ctrlKey,altKey:e.altKey,shiftKey:e.shiftKey});}},true);
+  window.addEventListener('keydown',e=>{if(e.target?.closest?.('input,textarea,select,[contenteditable=true]'))return;const key=e.key.toLowerCase(),command=e.metaKey||e.ctrlKey;if((!command&&!e.altKey&&['h','v','b','e','escape'].includes(key))||(command&&['z','/','enter'].includes(key))){e.preventDefault();send('SHORTCUT',{key:e.key,metaKey:e.metaKey,ctrlKey:e.ctrlKey,altKey:e.altKey,shiftKey:e.shiftKey});}},true);
+  // ===== 展开：找出这一页能打开的所有弹窗 =====
+  // 原型里的弹窗大多是 JS 现拼的，源码里搜不到、预览里要点好几层才看得见。
+  // 这里在一个后台副本里把按钮挨个点一遍：点完多出来一层遮罩，就是它打开的弹窗；
+  // 再顺着弹窗里的按钮（下一步、新排放源……）往下点，整条链就出来了。
+  const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+  const LAYER_SEL='[role=dialog],[aria-modal=true],dialog,[class*=modal],[class*=Modal],[class*=dialog],[class*=Dialog],[class*=drawer],[class*=popup],[class*=mask],[class*=overlay]';
+  const LAYER_NAME=/modal|dialog|drawer|popup|mask|overlay|layer/i;
+  const CLICKABLE='button,a[href],[data-action],[data-cx],[onclick],[role=button],.btn,[class*=btn]';
+  // 导航、页签、分页只是换内容，不会弹窗；跳过它们省掉大半次数。
+  // 不用 [class*=tab]：那会把 table 里的「编辑」也一起跳过。
+  const SKIP_NAME=/(^|[\s_-])(tabs?|tab-?bar|sidebar|side-?nav|menu|pager|pagination|breadcrumb)($|[\s_-])/i;
+  function inSkipZone(el){
+    if(el.closest('nav,aside,#nav,[role=tab],[role=tablist],[data-pa-overlay]'))return true;
+    for(let n=el,i=0;n&&n!==document.body&&i<8;n=n.parentElement,i++)if(SKIP_NAME.test(String(n.className)))return true;
+    return false;
+  }
+  const CLOSE_TEXT=/^(×|✕|✖|x|X|取消|关闭|返回)$/;
+  // 会真的落数据的按钮不点：在真实预览里复现路径时，点了就是改了用户的演示数据
+  const COMMIT_TEXT=/^(保存|确定|确认|提交|完成|删除|移除|确认删除|启用|停用|发布|撤回|通过|驳回)$/;
+  const NOISE_TEXT=/^(查询|搜索|重置|刷新|导出.*|下载.*|全屏|退出.*|打印|返回.*|收起|展开|更多|上一页|下一页)$/;
+  const WIZARD_TEXT=/^(下一步|继续|下一页|next)/i;
+  // vis：按钮、下拉这种小东西看得见就行；shown：够大才算得上一层弹窗
+  function vis(el){
+    if(!el?.isConnected)return false;const cs=getComputedStyle(el);
+    if(cs.display==='none'||cs.visibility==='hidden'||Number(cs.opacity)===0)return false;
+    const r=el.getBoundingClientRect();return r.width>0&&r.height>0;
+  }
+  function shown(el){if(!vis(el))return false;const r=el.getBoundingClientRect();return r.width>40&&r.height>30;}
+  function isLayer(el){
+    if(el.closest('[data-pa-overlay]')||!shown(el))return false;
+    if(el.matches('[role=dialog],[aria-modal=true],dialog[open]'))return true;
+    const cs=getComputedStyle(el);if(cs.position!=='fixed')return false;
+    const r=el.getBoundingClientRect(),area=r.width*r.height/(innerWidth*innerHeight);
+    return area>=0.5||(area>=0.1&&LAYER_NAME.test(String(el.className)+' '+el.id));
+  }
+  function layers(){
+    const pool=new Set([...document.body.children,...[...document.body.children].flatMap(c=>[...c.children]),...document.querySelectorAll(LAYER_SEL)]);
+    const out=[...pool].filter(isLayer);
+    return out.filter(el=>!out.some(o=>o!==el&&o.contains(el)));
+  }
+  function titleOf(el){
+    const t=el.querySelector('[class*=title],[class*=Title],h1,h2,h3,h4,[class*=header],[class*=head]');
+    const line=((t&&t.innerText)||el.innerText||'').trim().split('\n')[0].trim();
+    return line.slice(0,40)||'弹窗';
+  }
+  // 一层弹窗的身份：标题 + 它有哪些字段。
+  // 同一个 #modal 换了内容就是新弹窗——哪怕标题一样（「新增因子」选完类型点下一步，标题还叫新增因子，字段全换了）；
+  // 字段没变、只是多了几行（弹窗里点「新增气体」）不算。
+  function keyOf(el){
+    const fields=[...new Set([...el.querySelectorAll('label,th,legend,[class*=label]')].map(n=>(n.innerText||'').trim().split('\n')[0].slice(0,16)).filter(Boolean))].sort().slice(0,40);
+    return titleOf(el)+'#'+fields.join(',');
+  }
+  function snapshot(){return new Map(layers().map(el=>[el,keyOf(el)]));}
+  function opened(base){return layers().filter(el=>!base.has(el)||base.get(el)!==keyOf(el));}
+  function topOpen(base){const list=opened(base);return list[list.length-1]||null;}
+  function modalOf(el){
+    try{const L=layers().find(l=>l.contains(el)&&(l.matches('[role=dialog],[aria-modal=true],dialog')||l.getBoundingClientRect().width*l.getBoundingClientRect().height>=innerWidth*innerHeight*0.5||LAYER_NAME.test(String(l.className)+' '+l.id)));
+      return L?titleOf(L):'';}catch{return '';}
+  }
+  function labelOf(el){
+    let text=(el.innerText||el.value||el.getAttribute('aria-label')||el.title||'').replace(/\s+/g,' ').trim().slice(0,30);
+    // 「+」「⋯」这种按钮光看字不知道是干嘛的，带上它所在的标题
+    if(text.length<=1){const ctx=(el.parentElement?.innerText||'').replace(text,'').replace(/\s+/g,' ').trim().slice(0,12);if(ctx)text=ctx+' '+(text||'按钮');}
+    if(el.closest('tr'))text='表格行 · '+text;
+    return text;
+  }
+  function targetOf(el){
+    const attr=['data-action','data-cx','onclick'].find(a=>el.hasAttribute(a))||'';
+    return {selector:selectorFor(el),attr,value:attr?el.getAttribute(attr):'',text:labelOf(el),tag:el.tagName.toLowerCase()};
+  }
+  function findTarget(t,scope){
+    scope=scope||document;let el=null;
+    if(t.attr){const pool=[...scope.querySelectorAll(`[${t.attr}="${esc(t.value)}"]`)].filter(shown);el=pool.find(n=>labelOf(n)===t.text)||pool[0]||null;}
+    if(!el){try{const n=scope.querySelector(t.selector);if(n&&vis(n))el=n;}catch{}}
+    if(!el&&t.text)el=[...scope.querySelectorAll(CLICKABLE)].find(n=>vis(n)&&labelOf(n)===t.text)||null;
+    return el;
+  }
+  // 应用外壳（固定的顶栏、侧栏）里的按钮是全局的：全屏、折叠菜单、账号下拉，不属于这一页
+  function inChrome(el){
+    for(let n=el.parentElement;n&&n!==document.body;n=n.parentElement){const p=getComputedStyle(n).position;if(p==='fixed'||p==='sticky')return true;}
+    return false;
+  }
+  const bare=el=>(el.innerText||el.value||'').replace(/\s+/g,' ').trim().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu,'');
+  function triggersIn(scope,inLayer,skip){
+    const seen=new Set(),groups={},out=[],open=inLayer?[]:layers();
+    for(const el of scope.querySelectorAll(CLICKABLE)){
+      if(out.length>=40)break;
+      if(!vis(el)||el.disabled||el.closest('[data-pa-overlay]'))continue;
+      if(!inLayer&&(inSkipZone(el)||inChrome(el)||open.some(l=>l.contains(el))))continue;
+      const outer=el.parentElement?.closest(CLICKABLE);if(outer&&scope.contains(outer))continue;
+      const raw=bare(el);
+      if(CLOSE_TEXT.test(raw)||COMMIT_TEXT.test(raw)||NOISE_TEXT.test(raw))continue;
+      if(el.matches('[class*=close]')||(skip&&skip.includes(el)))continue;
+      const href=el.getAttribute('href')||'';
+      if(el.tagName==='A'&&!el.matches('[data-action],[data-cx],[onclick]')&&(href.startsWith('#')||/\.html?(?:[?#].*)?$/i.test(href)||/^(?:https?:)?\/\//i.test(href)))continue;
+      const t=targetOf(el);if(!t.text)continue;
+      const group=t.attr?t.attr+'='+t.value.replace(/\d+/g,'#'):t.tag+'|'+t.text,key=group+'|'+t.text;
+      // 同一个动作挂在一排按钮上（行业列表、每一行的编辑）只试两个，试多了全是重复
+      if(seen.has(key)||(groups[group]||0)>=2)continue;
+      seen.add(key);groups[group]=(groups[group]||0)+1;out.push(t);
+    }
+    return out;
+  }
+  // 「选类型 → 下一步」这种向导：同一个按钮，下拉选不同的值会走到不同的弹窗
+  function wizardOf(L){
+    const buttons=[...L.querySelectorAll('button,[role=button],.btn')].filter(shown);
+    const next=buttons.find(b=>WIZARD_TEXT.test((b.innerText||'').trim()));
+    const select=[...L.querySelectorAll('select')].find(s=>vis(s)&&s.options.length>=2&&s.options.length<=8);
+    if(!next||!select)return {next:null,branches:[]};
+    const nt=targetOf(next),st=targetOf(select);
+    return {next,branches:[...select.options].map(o=>({label:(next.innerText||'').trim()+' · '+o.text.trim(),step:{target:nt,select:{target:st,value:o.value}}}))};
+  }
+  function freeze(node){
+    const clone=node.cloneNode(true);
+    const a=node.querySelectorAll('input,select,textarea'),b=clone.querySelectorAll('input,select,textarea');
+    a.forEach((el,i)=>{const c=b[i];if(!c)return;
+      if(el.tagName==='SELECT')[...c.options].forEach((o,j)=>o.toggleAttribute('selected',j===el.selectedIndex));
+      else if(el.type==='checkbox'||el.type==='radio')c.toggleAttribute('checked',el.checked);
+      else if(el.tagName==='TEXTAREA')c.textContent=el.value;else c.setAttribute('value',el.value);});
+    clone.querySelectorAll('script,[data-pa-overlay]').forEach(n=>n.remove());
+    let html=clone.outerHTML;
+    // 弹窗样式常挂在祖先上（.app #modal.show），副本把祖先链的标签和类带上
+    for(let p=node.parentElement;p&&p!==document.body&&p!==document.documentElement;p=p.parentElement){
+      const tag=p.tagName.toLowerCase();
+      html=`<${tag}${p.id?` id="${p.id}"`:''}${p.className?` class="${String(p.className).replace(/"/g,'&quot;')}"`:''}>${html}</${tag}>`;
+    }
+    return html;
+  }
+  // 截图卡片只框住弹窗本体，不要整片遮罩
+  function boxOf(L){
+    let best=null,bestArea=0;const full=innerWidth*innerHeight;
+    for(const el of [L,...L.querySelectorAll('*')].slice(0,400)){
+      const r=el.getBoundingClientRect(),area=r.width*r.height;if(area<full*0.03||area>full*0.92)continue;
+      const bg=getComputedStyle(el).backgroundColor;if(/rgba\(.*,\s*0\)$|transparent/.test(bg))continue;
+      if(area>bestArea){best=r;bestArea=area;}
+    }
+    const r=best||L.getBoundingClientRect();
+    return {x:Math.max(0,r.left),y:Math.max(0,r.top),w:Math.min(innerWidth,r.width),h:Math.min(innerHeight,r.height)};
+  }
+  function pageSig(){
+    const heads=[...document.querySelectorAll('h1,h2,h3,[class*=page-title],[class*=title]')].filter(el=>vis(el)&&!layers().some(l=>l.contains(el))).slice(0,12).map(el=>(el.innerText||'').trim().slice(0,30));
+    return location.hash+'|'+heads.join('/');
+  }
+  function pageTitle(){
+    const h=[...document.querySelectorAll('h1,h2,[class*=page-title],[class*=title]')].find(el=>vis(el)&&!inSkipZone(el)&&(el.innerText||'').trim().length>=2);
+    return ((h&&h.innerText)||document.title||'当前页面').trim().split('\n')[0].slice(0,40);
+  }
+  function stylesOf(){
+    const parts=[...document.querySelectorAll('style,link[rel~=stylesheet]')].filter(n=>!n.closest('[data-pa-overlay]')).map(n=>n.tagName==='STYLE'?'<style>'+n.textContent+'</style>':'<link rel="stylesheet" href="'+n.href+'">');
+    return {head:parts.join('\n'),base:document.baseURI,html:{class:document.documentElement.className,style:document.documentElement.getAttribute('style')||''},body:{class:document.body.className,style:document.body.getAttribute('style')||''}};
+  }
+  async function press(step,base){
+    const scope=step.inLayer?topOpen(base):document;if(!scope)return false;
+    const el=findTarget(step.target,scope);if(!el)return false;
+    if(step.select){const s=findTarget(step.select.target,scope);if(!s)return false;s.value=step.select.value;s.dispatchEvent(new Event('input',{bubbles:true}));s.dispatchEvent(new Event('change',{bubbles:true}));await sleep(60);}
+    el.click();return true;
+  }
+  async function waitOpen(before,ms){
+    const end=Date.now()+ms;
+    while(Date.now()<end){await sleep(50);const L=topOpen(before);if(L){await sleep(140);return topOpen(before)||L;}}
+    return null;
+  }
+  async function closeAll(base){
+    for(let i=0;i<5;i++){
+      const L=topOpen(base);if(!L)return true;const title=keyOf(L);
+      const btn=[...L.querySelectorAll('[data-cx="m-x"],[data-action*="close"],[class*=close],[aria-label*="关闭"],[aria-label*="lose"],button,.btn')].find(b=>vis(b)&&(b.matches('[data-cx="m-x"],[data-action*="close"],[class*=close],[aria-label]')||CLOSE_TEXT.test((b.innerText||'').trim())));
+      if(btn)btn.click();else document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+      await sleep(90);
+      if(L.isConnected&&shown(L)&&keyOf(L)===title&&topOpen(base)===L){L.classList.remove('show','open','active','visible','in','is-open');await sleep(60);if(topOpen(base)===L)return false;}
+    }
+    return !topOpen(base);
+  }
+  let probeBase=null,probeSig='';
+  async function probeInit(full){
+    await sleep(50);probeBase=snapshot();probeSig=pageSig();
+    if(!full)return {sig:probeSig};
+    let page='';try{page=freeze(document.body).replace(/^<body[^>]*>|<\/body>$/g,'');}catch{}
+    if(page.length>1500000)page='';
+    return {sig:probeSig,title:pageTitle(),styles:stylesOf(),page,width:innerWidth,height:innerHeight,triggers:triggersIn(document,false)};
+  }
+  async function probeTry(path,step){
+    if(!await closeAll(probeBase)||pageSig()!==probeSig)return {needReload:true};
+    for(const s of path){const before=snapshot();if(!await press(s,probeBase))return {ok:false,reason:'replay'};if(!await waitOpen(before,1200))return {ok:false,reason:'replay'};}
+    const before=snapshot();
+    if(!await press(step,probeBase))return {ok:false,reason:'missing'};
+    const L=await waitOpen(before,step.select?900:520);
+    let out={ok:true,opened:null};
+    if(L){
+      const wizard=wizardOf(L);
+      out.opened={title:titleOf(L),sig:titleOf(L)+'|'+(L.innerText||'').replace(/\s+/g,' ').slice(0,160),html:freeze(L),box:boxOf(L),
+        triggers:triggersIn(L,true,wizard.next?[wizard.next]:[]),branches:wizard.branches};
+    }
+    const closed=await closeAll(probeBase);
+    out.pageChanged=!closed||pageSig()!==probeSig;
+    return out;
+  }
+  async function replay(path){
+    const prev=mode;mode='interact';const base=snapshot();let title='',at=-1;
+    try{for(let i=0;i<path.length;i++){const before=snapshot();if(!await press(path[i],base)){at=i;break;}const L=await waitOpen(before,1600);if(!L){at=i;break;}title=titleOf(L);}}
+    finally{mode=prev;paint();}
+    return {ok:at<0,title,at};
+  }
+
   window.addEventListener('message',e=>{
     if(e.source!==parent)return;const m=e.data||{};
+    if(m.type==='PA_PROBE_INIT'){probeInit(!!m.full).then(r=>send('PROBE_REPLY',{id:m.id,...r}),err=>send('PROBE_REPLY',{id:m.id,ok:false,error:String(err)}));return;}
+    if(m.type==='PA_PROBE_TRY'){probeTry(m.path||[],m.step).then(r=>send('PROBE_REPLY',{id:m.id,...r}),err=>send('PROBE_REPLY',{id:m.id,ok:false,error:String(err),needReload:true}));return;}
+    if(m.type==='PA_REPLAY'){replay(m.path||[]).then(r=>send('REPLAYED',r),()=>send('REPLAYED',{ok:false,at:0}));return;}
     if(m.type==='PA_SET_MODE'){mode=m.mode;hover=null;dragStart=null;if(m.mode==='interact')picked=[];if(dragBox)dragBox.style.display='none';paint();}
     if(m.type==='PA_SELECT'){
       if(!m.selector&&dragBox)dragBox.style.display='none';

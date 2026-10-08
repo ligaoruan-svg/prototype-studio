@@ -1,7 +1,8 @@
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { PanelsTopLeft, Plus, Upload, History, Download, Settings2, ChevronDown, ChevronRight, X, MessageSquare, Files, MousePointer2, Hand, Code2, Monitor, Tablet, Smartphone, Undo2, ArrowUp, Check, CheckCheck, LoaderCircle, SlidersHorizontal, SquareMousePointer, Palette, AlertCircle, ShieldCheck, Braces, FileCode2, CircleHelp, PanelLeftClose, PanelRightClose, Copy, Pencil, Ruler, Sparkles } from 'lucide-vue-next'
-import { Scan, ImagePlus, Image as ImageIcon, FolderOpen } from 'lucide-vue-next'
+import { Scan, ImagePlus, Image as ImageIcon, FolderOpen, Layers } from 'lucide-vue-next'
+import ExpandBoard from './ExpandBoard.vue'
 import ImageReference from './ImageReference.vue'
 import RegionCapture from './RegionCapture.vue'
 import FileManager from './FileManager.vue'
@@ -33,6 +34,9 @@ const memoryList = ref([]), skillList = ref([])
 const fileManagerRevision = ref(0)
 const runs = ref([]), canvasWidth = ref(0), previewScroll = ref(null), pendingHighlights = ref([]), savedAt = ref('')
 const validationDetails = ref(''), composerIntent = ref('auto'), previewHash = ref('')
+// 展开视图：把这一页的弹窗铺开看；点卡片后在预览里复现打开路径
+const boardOpen = ref(false), boardDoc = ref(''), pendingReplay = ref(null), openedModal = ref(null)
+let reloadNonce = 0
 const currentRuns = computed(() => runs.value.filter(r => r.pageId === pageId.value && r.projectId === project.value?.id && !['complete', 'dismissed'].includes(r.status)))
 let toastTimer, loadSequence = 0
 
@@ -64,10 +68,34 @@ async function api(url, options = {}) {
 const post = (url, body = {}) => api(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
 function toast(message) { notice.value = message; clearTimeout(toastTimer); toastTimer = setTimeout(() => notice.value = '', 3000) }
 function send(message) { previewFrame.value?.contentWindow?.postMessage(previewMessage(message), '*') }
-function setMode(value) { mode.value = value; view.value = 'preview'; send({ type: 'PA_SET_MODE', mode: value }); if (window.innerWidth <= 960) { leftOpen.value = false; rightOpen.value = false } if (value === 'select') toast('点击选中；按住 Shift 或 ⌘ 可以多选几处'); if (value === 'box') toast('按住拖动，框选你想调整的区域') }
+function setMode(value) { mode.value = value; view.value = 'preview'; boardOpen.value = false; send({ type: 'PA_SET_MODE', mode: value }); if (window.innerWidth <= 960) { leftOpen.value = false; rightOpen.value = false } if (value === 'select') toast('点击选中；按住 Shift 或 ⌘ 可以多选几处'); if (value === 'box') toast('按住拖动，框选你想调整的区域') }
+function toggleBoard() {
+  if (!page.value || !previewDoc.value) return
+  if (boardOpen.value) { boardOpen.value = false; return }
+  let stored = {}
+  try { stored = JSON.parse(localStorage.getItem(runtimeKey()) || '{}') } catch {}
+  // 副本从和预览一样的路由、一样的演示数据起步，但它点出来的任何改动都不会写回来
+  boardDoc.value = preparePreviewDocument(previewDoc.value, { stored, route: previewRoute.value, scroll: null, probe: true })
+  view.value = 'preview'; boardOpen.value = true
+}
+const boardKey = computed(() => `${project.value?.id}:${pageId.value}:${page.value?.version}:${previewHash.value}:${previewRoute.value}`)
+function openFromBoard(node) {
+  boardOpen.value = false; openedModal.value = null
+  setMode('select')
+  // 先把预览重新载入到干净的页面状态，再按记下的路径一步步点开
+  pendingReplay.value = node
+  previewDoc.value = preparePreview(previewDoc.value).replace(/\n<!-- pa-open \d+ -->$/, '') + `\n<!-- pa-open ${++reloadNonce} -->`
+}
 function clearSelectionOnly() { selected.value = null; inspection.value = null; note.value = ''; textValue.value = ''; ++regionKey.value; send({ type: 'PA_SELECT', selector: '' }) }
 function closeSelection() { clearSelectionOnly(); if (!keepInspector.value) rightOpen.value = false }
 function hideGuide() { showGuide.value = false; localStorage.setItem('pf-hide-guide', 'true') }
+// 选中的东西在弹窗里时，告诉 AI 是哪个弹窗、怎么点开的——不然它只能满文件搜按钮文字
+function modalContext(target) {
+  const title = target?.modal || target?.targets?.find(t => t.modal)?.modal || ''
+  if (!title) return {}
+  const trail = openedModal.value?.title === title ? openedModal.value.trail : ''
+  return { in_modal: title, modal_trail: trail }
+}
 function elementLabel(target) { const kinds = { button: '按钮', input: '输入框', textarea: '输入框', h1: '标题', h2: '标题', p: '文字', a: '链接' }; return target?.kind === 'region' ? `已选中 ${target.targets.length} 个元素` : `${target?.text?.slice(0, 22) || '选中'} · ${kinds[target?.tag] || '区域'}` }
 function preparePreview(html) {
   let stored = {}
@@ -161,6 +189,11 @@ async function onMessage(event) {
   if (data.type === 'SCROLL_STATE') previewScroll.value = data.state
   if (data.type === 'WIDTH') canvasWidth.value = data.width
   if (data.type === 'SHORTCUT') keydown(data)
+  if (data.type === 'LOADED' && pendingReplay.value) { const node = pendingReplay.value; pendingReplay.value = null; setTimeout(() => send({ type: 'PA_REPLAY', path: node.path }), 450); openedModal.value = { title: node.title, trail: node.trail, pending: true } }
+  if (data.type === 'REPLAYED') {
+    if (data.ok) { openedModal.value = { title: data.title || openedModal.value?.title, trail: openedModal.value?.trail || '' }; toast(`已打开「${openedModal.value.title}」，直接点选要改的地方`) }
+    else { openedModal.value = null; toast('没能自动打开这个弹窗，可以在预览里切到交互模式手动点开') }
+  }
   if (data.type === 'LOADED' && pendingHighlights.value.length) { send({ type: 'PA_HIGHLIGHT', targets: pendingHighlights.value }); pendingHighlights.value = [] }
   if (data.type === 'ROUTE') previewRoute.value = data.hash
   if (data.type === 'STORAGE') { try { localStorage.setItem(runtimeKey(), JSON.stringify(data.data)) } catch {} }
@@ -268,7 +301,7 @@ async function runAgent(text = '', runtimeFeedback = '', options = {}) {
   if (locked.value || !message || !pageId.value) return
   if (!model.value.has_key || (reference.value && !model.value.supports_vision)) { openDialog('settings'); dialogError.value = reference.value ? '这张截图需要支持图片输入和工具调用的模型。' : '请先配置模型密钥。'; return }
   const activeSelection = options.selection === undefined ? selected.value : options.selection
-  const target = activeSelection ? { selector: activeSelection.selector, text: activeSelection.text, tag: activeSelection.tag, outer_html: activeSelection.outer_html, targets: activeSelection.targets || [] } : null
+  const target = activeSelection ? { selector: activeSelection.selector, text: activeSelection.text, tag: activeSelection.tag, outer_html: activeSelection.outer_html, targets: activeSelection.targets || [], ...modalContext(activeSelection) } : null
   const intent = options.intent || composerIntent.value
   const run = { intent, options: { ...options, intent }, id: Date.now(), projectId: project.value.id, pageId: pageId.value, request: message, started: Date.now(), status: 'running', label: '理解需求中', steps: [], error: null, streamText: '', plan: [] }
   runs.value.push(run)
@@ -482,7 +515,8 @@ function keydown(event) {
   if (command && key === 'z' && !event.shiftKey) { event.preventDefault?.(); undo(); return }
   if (command && key === '/') { event.preventDefault?.(); view.value = view.value === 'preview' ? 'code' : 'preview'; return }
   if (command) return
-  if (key === 'escape') { closeSelection(); setMode('interact') }
+  if (key === 'escape') { if (boardOpen.value) { boardOpen.value = false; return } closeSelection(); setMode('interact') }
+  if (key === 'e' && page.value) { event.preventDefault?.(); toggleBoard(); return }
   if ({ h: 'interact', v: 'select', b: 'box' }[key] && page.value) { event.preventDefault?.(); setMode({ h: 'interact', v: 'select', b: 'box' }[key]) }
 }
 
@@ -526,7 +560,7 @@ onUnmounted(() => { window.removeEventListener('message', onMessage); window.rem
 
           </div>
           <div class="composer-area">
-            <div v-if="selected" class="selection-context"><SquareMousePointer :size="14" /><span>{{ elementLabel(selected) }}</span><button class="icon-button" aria-label="清除选中目标" @click="closeSelection"><X :size="12" /></button></div>
+            <div v-if="selected" class="selection-context"><SquareMousePointer :size="14" /><span>{{ elementLabel(selected) }}<em v-if="modalContext(selected).in_modal" class="in-modal">在「{{ modalContext(selected).in_modal }}」弹窗里</em></span><button class="icon-button" aria-label="清除选中目标" @click="closeSelection"><X :size="12" /></button></div>
             <button v-if="annotations.length" class="annotation-count batch-action" :disabled="locked" @click="runAgent('请逐条处理已记下的修改意见，保留其他区域。', '', { intent: 'edit' })"><CheckCheck :size="14" />已记下 {{ annotations.length }} 条，一起修改<ArrowUp :size="14" /></button>
             <div v-if="reference" class="reference-attachment"><button class="reference-open" @click="openDialog('image')"><img :src="reference.data_url" alt="参考截图缩略图"><span>{{ reference.name }}<small>{{ reference.regions.length ? reference.regions.length + ' 个框选区域' : '参考整张图' }}</small></span></button><button class="icon-button" aria-label="移除参考截图" :disabled="locked" @click="reference = null"><X :size="13" /></button></div>
             <div class="composer-mode" role="group" aria-label="对话方式"><div class="mode-switch"><button v-for="option in [{ value: 'auto', label: '自动' }, { value: 'discuss', label: '只讨论' }, { value: 'edit', label: '直接改' }]" :key="option.value" type="button" :class="{ active: composerIntent === option.value }" :aria-pressed="composerIntent === option.value" :disabled="busy" @click="composerIntent = option.value">{{ option.label }}</button></div><span>{{ composerIntent === 'discuss' ? '不改代码' : composerIntent === 'edit' ? '局部修改' : '提问先聊，指令再改' }}</span></div>
@@ -541,8 +575,9 @@ onUnmounted(() => { window.removeEventListener('message', onMessage); window.rem
         <div class="canvas-toolbar"><div class="view-tools"><button v-if="!leftOpen" class="icon-button" aria-label="打开对话" @click="leftOpen = true; rightOpen = window.innerWidth > 960 && rightOpen"><MessageSquare :size="17" /></button><div class="view-tabs"><button :class="{ active: view === 'preview' }" @click="view = 'preview'">预览</button><button :class="{ active: view === 'code' }" :disabled="!page" title="切换预览 / 代码 · ⌘/Ctrl + /" @click="view = 'code'"><Code2 :size="14" />代码</button></div></div><div class="device-tools" v-if="view === 'preview'"><button v-for="d in [{ id: 'desktop', label: '桌面', icon: Monitor }, { id: 'tablet', label: '平板', icon: Tablet }, { id: 'mobile', label: '手机', icon: Smartphone }]" :key="d.id" class="icon-button" :class="{ active: device === d.id }" :aria-label="d.label + '预览'" :title="d.label" @click="device = d.id"><component :is="d.icon" :size="16" /></button><span class="actual-width">{{ canvasWidth }} px</span></div><div class="canvas-actions"><button v-if="page" class="version-tag" @click="openDialog('history')" title="查看版本历史">v{{ page.version }}</button><button class="icon-button" aria-label="撤销上一步" :title="undoCount ? '撤销上一步 · ⌘/Ctrl + Z' : '暂无可撤销的修改'" :disabled="!undoCount || locked" @click="undo()"><Undo2 :size="16" /></button><button class="icon-button" :class="{ active: rightOpen }" aria-label="切换属性面板" @click="rightOpen = !rightOpen; leftOpen = window.innerWidth > 960 && leftOpen"><SlidersHorizontal :size="17" /></button></div></div>
         <div v-if="view === 'preview'" class="canvas" :class="device">
 
-          <div class="preview-shell" :class="{ 'is-selecting': mode !== 'interact' }"><iframe v-if="previewDoc" ref="previewFrame" title="原型预览" :srcdoc="previewDoc" :sandbox="PREVIEW_SANDBOX"></iframe><div v-else class="empty-canvas"><div class="empty-emblem"><PanelsTopLeft :size="30" :stroke-width="1.4" /></div><h1>给想法一个可操作的样子</h1><p>从已有的 HTML 开始修改，<br>或描述需求，让 AI 帮你搭建第一版。</p><div><button class="primary" @click="openDialog('new')"><Plus :size="16" />新建原型</button><button class="outline" @click="fileInput.click()"><Upload :size="16" />导入原型</button></div><span>支持 HTML、包含多页面的 ZIP</span></div><RegionCapture v-if="previewDoc && mode === 'box' && !loading" :key="regionKey" @select="send({ type: 'PA_BOX_RECT', bounds: $event })" @scroll="send({ type: 'PA_SCROLL', ...$event })" /><div v-if="loading" class="loading-veil"><LoaderCircle class="spin" :size="25" /><span>正在加载原型…</span></div></div>
-          <div v-if="page" class="canvas-tool-dock"><button :class="{ active: mode === 'interact' }" :disabled="loading" title="交互 · H" @click="setMode('interact')"><Hand :size="16" />交互<kbd>H</kbd></button><span></span><button :class="{ active: mode === 'select' }" :disabled="loading" title="点选 · V（按住 Shift / ⌘ 多选）" @click="setMode('select')"><MousePointer2 :size="16" />点选<kbd>V</kbd></button><button :class="{ active: mode === 'box' }" :disabled="loading" title="拉框 · B" @click="setMode('box')"><Scan :size="16" />拉框<kbd>B</kbd></button></div>
+          <ExpandBoard v-if="boardOpen" :doc="boardDoc" :width="canvasWidth || 1150" :cache-key="boardKey" :page-name="page?.title" @open="openFromBoard" @close="boardOpen = false" />
+          <div v-show="!boardOpen" class="preview-shell" :class="{ 'is-selecting': mode !== 'interact' }"><iframe v-if="previewDoc" ref="previewFrame" title="原型预览" :srcdoc="previewDoc" :sandbox="PREVIEW_SANDBOX"></iframe><div v-else class="empty-canvas"><div class="empty-emblem"><PanelsTopLeft :size="30" :stroke-width="1.4" /></div><h1>给想法一个可操作的样子</h1><p>从已有的 HTML 开始修改，<br>或描述需求，让 AI 帮你搭建第一版。</p><div><button class="primary" @click="openDialog('new')"><Plus :size="16" />新建原型</button><button class="outline" @click="fileInput.click()"><Upload :size="16" />导入原型</button></div><span>支持 HTML、包含多页面的 ZIP</span></div><RegionCapture v-if="previewDoc && mode === 'box' && !loading" :key="regionKey" @select="send({ type: 'PA_BOX_RECT', bounds: $event })" @scroll="send({ type: 'PA_SCROLL', ...$event })" /><div v-if="loading" class="loading-veil"><LoaderCircle class="spin" :size="25" /><span>正在加载原型…</span></div></div>
+          <div v-if="page" class="canvas-tool-dock"><button :class="{ active: mode === 'interact' && !boardOpen }" :disabled="loading" title="交互 · H" @click="setMode('interact')"><Hand :size="16" />交互<kbd>H</kbd></button><span></span><button :class="{ active: mode === 'select' && !boardOpen }" :disabled="loading" title="点选 · V（按住 Shift / ⌘ 多选）" @click="setMode('select')"><MousePointer2 :size="16" />点选<kbd>V</kbd></button><button :class="{ active: mode === 'box' && !boardOpen }" :disabled="loading" title="拉框 · B" @click="setMode('box')"><Scan :size="16" />拉框<kbd>B</kbd></button><span></span><button :class="{ active: boardOpen }" :disabled="loading || !previewDoc" title="展开这一页的所有弹窗 · E" @click="toggleBoard"><Layers :size="16" />展开<kbd>E</kbd></button></div>
         </div>
         <div v-else class="code-panel"><div class="code-toolbar"><Braces :size="15" /><select aria-label="源码区域" v-model="codeRegion"><option value="all">完整文件 · 只读</option><option v-for="region in sourceInfo.regions" :key="region.name" :value="region.name">{{ region.label || '自定义区域' }}</option></select><span>{{ codeText.split('\n').length }} 行</span><button class="quiet" @click="copySource"><Check v-if="codeCopied" :size="14" /><Copy v-else :size="14" />{{ codeCopied ? '已复制' : '复制' }}</button></div><div class="source-scroll"><pre class="line-numbers" aria-hidden="true">{{ lineNumbers }}</pre><pre class="source-code"><code>{{ codeText }}</code></pre></div></div>
         <div v-if="error" class="error-banner" role="alert"><AlertCircle :size="16" /><span>{{ error }}</span><button class="icon-button" aria-label="关闭错误提示" @click="error = ''"><X :size="14" /></button></div>

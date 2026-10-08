@@ -403,3 +403,4 @@ input[type=color]::-webkit-color-swatch { border: none; border-radius: 2px; }
 .limit-grid small { font-weight: 400; color: #ada4a0; font-size: 11px; }
 .limit-grid input { display: block; width: 100%; padding: 10px 11px; border: 1px solid #e5dfdc; border-radius: 18px; font-weight: 400; color: var(--ink); background: #fff; font-variant-numeric: tabular-nums; }
 @media (max-width: 560px) { .limit-grid { grid-template-columns: 1fr 1fr; } .limit-grid label:last-child { grid-column: 1 / -1; } }
+.selection-context em.in-modal { font-style: normal; margin-left: 6px; color: var(--muted); font-size: 11px; }

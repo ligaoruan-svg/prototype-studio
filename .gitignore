@@ -6,3 +6,7 @@ data/
 release/
 frontend/dist/
 *.egg-info/
+
+.DS_Store
+.idea/
+.probe-test/
