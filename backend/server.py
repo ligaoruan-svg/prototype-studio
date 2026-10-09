@@ -39,6 +39,8 @@ class AnnotationIn(BaseModel):
     kind: str = "element"
     targets: list[dict] = []
     bounds: dict | None = None
+    in_modal: str = ""
+    modal_trail: str = ""
 
 
 class AgentIn(BaseModel):

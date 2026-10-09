@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ChevronRight, Code2, Hand, Layers, Maximize2, Monitor } from 'lucide-vue-next'
 import { cardDocument } from './probeTree.js'
-const props = defineProps({ node: Object, styles: Object, frame: Object, picked: Object, mode: String, crumb: String, large: Boolean })
+const props = defineProps({ node: Object, styles: Object, frame: Object, picked: Object, mode: String, crumb: String, large: Boolean, notes: Number })
 const emit = defineEmits(['pick', 'open', 'focus'])
 const iframe = ref(null), stage = ref(null), width = ref(0)
 const doc = computed(() => cardDocument(props.styles, props.node.html, { pickable: true }))
@@ -35,9 +35,10 @@ onUnmounted(() => { window.removeEventListener('message', listen); observer?.dis
     <header v-if="!large" class="scene-head">
       <component :is="node.isPage ? Monitor : Layers" :size="14" />
       <h3 :title="node.title">{{ node.title }}</h3>
+      <span v-if="notes" class="note-badge" :title="`这张卡上已记下 ${notes} 条修改意见`">已记 {{ notes }}</span>
       <button type="button" :aria-label="`放大编辑${node.title}`" title="放大后选中元素，不切换查看方式" @click="$emit('focus', node)"><Maximize2 :size="13" /><span>放大编辑</span></button>
     </header>
-    <div v-if="!large" class="scene-trail" :title="crumb"><ChevronRight :size="12" /><span>{{ crumb }}</span></div>
+    <div v-if="!large" class="scene-trail" :title="crumb"><ChevronRight :size="12" /><span>{{ crumb }}</span><em v-if="node.stale">· 点不开了，可能已过期</em></div>
     <div ref="stage" class="scene-preview" :class="{ page: node.isPage }">
       <div class="thumb" :style="{ width: view.width + 'px', height: view.height + 'px' }">
         <iframe ref="iframe" sandbox="allow-scripts" :title="`${node.title} · 点选要改的地方`" :srcdoc="doc" :style="{ width: frame.w + 'px', height: frame.h + 'px', transform: view.transform }" @load="sync"></iframe>
@@ -61,6 +62,8 @@ onUnmounted(() => { window.removeEventListener('message', listen); observer?.dis
 .scene-trail{display:flex;align-items:center;gap:5px;min-width:0;padding:8px 12px;font-size:11px;color:var(--muted);background:#fcfbf8;border-bottom:1px solid var(--line)}
 .scene-trail svg{color:var(--subtle)}
 .scene-trail span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.scene-trail em{font-style:normal;color:#9a6a1b;white-space:nowrap}
+.note-badge{flex-shrink:0;font-size:11px;color:#fff;background:var(--primary);border-radius:20px;padding:1px 7px}
 .scene-preview{display:flex;justify-content:center;align-items:flex-start;padding:14px;background:#f5f7fa;max-height:480px;overflow:auto;overscroll-behavior:contain}
 .scene-card.large .scene-preview{max-height:none;padding:0;background:transparent;overflow:visible}
 .thumb{position:relative;flex-shrink:0;overflow:hidden;border-radius:6px;box-shadow:0 1px 4px #2b33200f}

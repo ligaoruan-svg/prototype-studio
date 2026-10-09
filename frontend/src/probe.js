@@ -5,13 +5,13 @@
 const MAX_TRIES = 80, MAX_DEPTH = 3, BUDGET_MS = 150_000
 const plain = value => JSON.parse(JSON.stringify(value ?? null))
 
-export async function probePage({ doc, width = 1150, height = 800, onUpdate = () => {}, cancelled = () => false }) {
+// 一个后台副本：载入、发指令、出问题时重载
+function probeFrame(doc, width, height) {
   const frame = document.createElement('iframe')
   // 不给 allow-modals / allow-popups：副本里就算有人调 alert、window.open，也弹不到用户面前
   frame.setAttribute('sandbox', 'allow-scripts allow-forms')
   frame.setAttribute('aria-hidden', 'true'); frame.tabIndex = -1; frame.title = '后台展开'
   Object.assign(frame.style, { position: 'fixed', left: '-30000px', top: '0', width: width + 'px', height: height + 'px', border: '0' })
-
   let seq = 0, onLoaded = null
   const waiters = new Map()
   const listener = event => {
@@ -34,17 +34,34 @@ export async function probePage({ doc, width = 1150, height = 800, onUpdate = ()
     frame.contentWindow?.postMessage(plain({ type, id, ...payload }), '*')
   })
   const reload = async () => { await load(); await rpc('PA_PROBE_INIT', { full: false }) }
-
+  // 点一个按钮（或沿路径点到底）；没弹出东西的可能改了页面状态，重载回干净状态
+  async function attempt(path, step) {
+    let reply = await rpc('PA_PROBE_TRY', { path, step })
+    if (reply.needReload) { await reload(); reply = await rpc('PA_PROBE_TRY', { path, step }) }
+    if (reply.pageChanged || reply.needReload || (reply.ok && !reply.opened)) await reload()
+    return reply
+  }
   window.addEventListener('message', listener)
   document.body.appendChild(frame)
+  return { load, rpc, attempt, dispose() { window.removeEventListener('message', listener); frame.remove() } }
+}
+
+async function begin(probe, width, height) {
+  await probe.load()
+  const init = await probe.rpc('PA_PROBE_INIT', { full: true }, 15_000)
+  if (init.timeout) throw new Error('原型没有响应')
+  return { init, base: { title: init.title, styles: init.styles, page: init.page, width: init.width || width, height: init.height || height } }
+}
+
+// 第一次展开：从页面上的按钮出发，一层层找出所有弹窗
+export async function probePage({ doc, width = 1150, height = 800, onUpdate = () => {}, cancelled = () => false }) {
+  const probe = probeFrame(doc, width, height)
   const started = Date.now()
   const result = { title: '', styles: null, page: '', width, height, nodes: [], tried: 0, total: 0, cancelled: false }
   const report = current => onUpdate(plain({ ...result, current }))
   try {
-    await load()
-    const init = await rpc('PA_PROBE_INIT', { full: true }, 15_000)
-    if (init.timeout) throw new Error('原型没有响应')
-    Object.assign(result, { title: init.title, styles: init.styles, page: init.page, width: init.width || width, height: init.height || height })
+    const { init, base } = await begin(probe, width, height)
+    Object.assign(result, base)
     const queue = (init.triggers || []).map(target => ({ path: [], step: { target }, label: target.text, parent: null, depth: 1 }))
     result.total = queue.length
     report(queue[0]?.label || '')
@@ -54,10 +71,7 @@ export async function probePage({ doc, width = 1150, height = 800, onUpdate = ()
       const job = queue.shift()
       result.tried++
       report(job.label)
-      let reply = await rpc('PA_PROBE_TRY', { path: job.path, step: job.step })
-      if (reply.needReload) { await reload(); reply = await rpc('PA_PROBE_TRY', { path: job.path, step: job.step }) }
-      // 没弹出东西的按钮可能已经改了页面（筛选、折叠、清空了弹窗容器），重载回干净状态再试下一个
-      if (reply.pageChanged || reply.needReload || (reply.ok && !reply.opened)) await reload()
+      const reply = await probe.attempt(job.path, job.step)
       const opened = reply.ok && reply.opened
       if (!opened || seen.has(opened.sig)) continue
       seen.add(opened.sig)
@@ -74,11 +88,38 @@ export async function probePage({ doc, width = 1150, height = 800, onUpdate = ()
       report(job.label)
     }
     return plain(result)
-  } finally {
-    window.removeEventListener('message', listener)
-    frame.remove()
-  }
+  } finally { probe.dispose() }
+}
+
+// 改完之后同步：已经知道每张卡怎么点开，直接按路径重新点一遍拍新快照，
+// 不再把整页按钮从头试一遍。刚改的那张排第一个，通常一两秒就换上新样子。
+export async function syncNodes({ doc, nodes = [], first = [], width = 1150, height = 800, onUpdate = () => {}, cancelled = () => false }) {
+  const probe = probeFrame(doc, width, height)
+  const result = { title: '', styles: null, page: '', width, height, nodes: plain(nodes), done: 0, total: nodes.length, stale: 0 }
+  const report = () => onUpdate(plain(result))
+  try {
+    const { base } = await begin(probe, width, height)
+    Object.assign(result, base)
+    report()   // 页面本身那张卡先换上
+    const order = [...nodes].sort((a, b) => first.includes(b.id) - first.includes(a.id))
+    for (const node of order) {
+      if (cancelled()) break
+      const reply = await probe.attempt(node.path.slice(0, -1), node.path[node.path.length - 1])
+      const at = result.nodes.findIndex(n => n.id === node.id)
+      const opened = reply.ok && reply.opened
+      // 点不开了（按钮被改名、被删了）就保留旧快照并标出来，刷新时会重新找
+      result.nodes[at] = opened
+        ? { ...result.nodes[at], title: opened.title, html: opened.html, box: opened.box, layerSel: opened.layerSel || result.nodes[at].layerSel, stale: false }
+        : { ...result.nodes[at], stale: true }
+      if (!opened) result.stale++
+      result.done++
+      report()
+    }
+    return plain(result)
+  } finally { probe.dispose() }
 }
 
 // 同一页、同一版本、同一个路由，结果不会变；来回切换展开视图不用每次重新点一遍
 export const probeCache = new Map()
+// 同一页同一路由上一次的结果：版本变了就拿它做底子同步，不用从头找
+export const lastByScope = new Map()

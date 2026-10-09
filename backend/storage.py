@@ -237,6 +237,9 @@ def add_annotation(project_id: str, page_id: str, payload: dict[str, Any]) -> di
         "kind": payload.get("kind", "element"),
         "targets": payload.get("targets", [])[:16],
         "bounds": payload.get("bounds"),
+        # 在弹窗里选中的：记下是哪个弹窗、怎么点开，AI 逐条处理时直接去找拼它的函数
+        "in_modal": str(payload.get("in_modal") or "")[:80],
+        "modal_trail": str(payload.get("modal_trail") or "")[:200],
         "created_at": now_iso(),
         "status": "active",
     }

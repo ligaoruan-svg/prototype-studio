@@ -105,6 +105,8 @@ async function pickFromBoard(data) {
   await inspect(data)
 }
 const boardKey = computed(() => `${project.value?.id}:${pageId.value}:${page.value?.version}:${previewHash.value}:${previewRoute.value}`)
+// 同一页同一路由：版本变了只需同步，换了页或路由才要从头找
+const boardScope = computed(() => `${project.value?.id}:${pageId.value}:${previewRoute.value}`)
 // 预览重新载入：带上最新的路由、滚动位置和演示数据。结尾的编号保证 srcdoc 一定变化、一定重载。
 function reseedPreview() {
   if (previewDoc.value) previewDoc.value = preparePreview(previewDoc.value).replace(/\n<!-- pa-open \d+ -->$/, '') + `\n<!-- pa-open ${++reloadNonce} -->`
@@ -320,7 +322,7 @@ async function saveNote() {
   const wasRegion = selected.value.kind === 'region'
   saving.value = true
   try {
-    await post(endpoint('/annotations'), { ...selected.value, note: content })
+    await post(endpoint('/annotations'), { ...selected.value, ...modalContext(selected.value), note: content })
     if (input.value.trim() === content) input.value = ''
     // 记下之后立刻把这次的选中清掉：保留着它，下一次框选会顶掉它而不是新起一条，
     // 右侧还一直显示上一处，看不出这条到底记住了没有。清干净，留在当前模式，
@@ -615,7 +617,7 @@ onUnmounted(() => { window.removeEventListener('message', onMessage); window.rem
         <div class="canvas-toolbar"><div class="view-tools"><button v-if="!leftOpen" class="icon-button" aria-label="打开对话" @click="leftOpen = true; rightOpen = window.innerWidth > 960 && rightOpen"><MessageSquare :size="17" /></button><div class="view-tabs"><button :class="{ active: view === 'preview' && !boardOpen }" @click="showPreview">预览</button><button :class="{ active: view === 'preview' && boardOpen }" :disabled="!page || !previewDoc" title="展开这一页的所有弹窗 · E" @click="showBoard"><Layers :size="14" />展开<kbd>E</kbd></button><button :class="{ active: view === 'code' }" :disabled="!page" title="切换预览 / 代码 · ⌘/Ctrl + /" @click="view = 'code'"><Code2 :size="14" />代码</button></div></div><div class="device-tools" v-if="view === 'preview'"><button v-for="d in [{ id: 'desktop', label: '桌面', icon: Monitor }, { id: 'tablet', label: '平板', icon: Tablet }, { id: 'mobile', label: '手机', icon: Smartphone }]" :key="d.id" class="icon-button" :class="{ active: device === d.id }" :aria-label="d.label + '预览'" :title="d.label" @click="device = d.id"><component :is="d.icon" :size="16" /></button><span class="actual-width">{{ canvasWidth }} px</span></div><div class="canvas-actions"><button v-if="page" class="version-tag" @click="openDialog('history')" title="查看版本历史">v{{ page.version }}</button><button class="icon-button" aria-label="撤销上一步" :title="undoCount ? '撤销上一步 · ⌘/Ctrl + Z' : '暂无可撤销的修改'" :disabled="!undoCount || locked" @click="undo()"><Undo2 :size="16" /></button><button class="icon-button" :class="{ active: rightOpen }" aria-label="切换属性面板" @click="rightOpen = !rightOpen; leftOpen = window.innerWidth > 960 && leftOpen"><SlidersHorizontal :size="17" /></button></div></div>
         <div v-if="view === 'preview'" class="canvas" :class="device">
 
-          <ExpandBoard v-if="boardOpen" v-model:focus="boardFocus" :doc="boardDoc" :width="canvasWidth || 1150" :cache-key="boardKey" :page-name="page?.title" :selection="selected" :mode="mode" @open="openFromBoard" @leave="showPreview" @select="pickFromBoard" />
+          <ExpandBoard v-if="boardOpen" v-model:focus="boardFocus" :doc="boardDoc" :width="canvasWidth || 1150" :cache-key="boardKey" :scope-key="boardScope" :notes="annotations" :page-name="page?.title" :selection="selected" :mode="mode" @open="openFromBoard" @leave="showPreview" @select="pickFromBoard" />
           <div v-if="!boardOpen" class="preview-shell" :class="{ 'is-selecting': mode !== 'interact' }"><iframe v-if="previewDoc" ref="previewFrame" title="原型预览" :srcdoc="previewDoc" :sandbox="PREVIEW_SANDBOX"></iframe><div v-else class="empty-canvas"><div class="empty-emblem"><PanelsTopLeft :size="30" :stroke-width="1.4" /></div><h1>给想法一个可操作的样子</h1><p>从已有的 HTML 开始修改，<br>或描述需求，让 AI 帮你搭建第一版。</p><div><button class="primary" @click="openDialog('new')"><Plus :size="16" />新建原型</button><button class="outline" @click="fileInput.click()"><Upload :size="16" />导入原型</button></div><span>支持 HTML、包含多页面的 ZIP</span></div><RegionCapture v-if="previewDoc && mode === 'box' && !loading" :key="regionKey" @select="send({ type: 'PA_BOX_RECT', bounds: $event })" @scroll="send({ type: 'PA_SCROLL', ...$event })" /><div v-if="loading" class="loading-veil"><LoaderCircle class="spin" :size="25" /><span>正在加载原型…</span></div></div>
           <div v-if="page" class="canvas-tool-dock"><button :class="{ active: mode === 'interact' && !boardOpen, dim: boardOpen }" :disabled="loading" :title="boardOpen ? '回到预览里交互 · H' : '交互 · H'" @click="setMode('interact')"><Hand :size="16" />交互<kbd>H</kbd></button><span></span><button :class="{ active: mode === 'select' }" :disabled="loading" title="点选 · V（按住 Shift / ⌘ 多选）" @click="setMode('select')"><MousePointer2 :size="16" />点选<kbd>V</kbd></button><button :class="{ active: mode === 'box' }" :disabled="loading" title="拉框 · B" @click="setMode('box')"><Scan :size="16" />拉框<kbd>B</kbd></button><small v-if="boardOpen" class="dock-hint">Shift / ⌘ 多选同一视图内的元素</small></div>
         </div>
