@@ -33,7 +33,6 @@ textarea { resize: vertical; line-height: 1.65; }
 .project-picker select { appearance: none; border: none; outline: none; background: none; max-width: 220px; text-overflow: ellipsis; padding: 6px 0 6px 6px; cursor: pointer; }
 .project-picker>svg { color: var(--muted); pointer-events: none; }
 .divider { height: 18px; width: 1px; background: var(--line); flex-shrink: 0; }
-.header-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 .quiet, .outline, .primary { min-height: 34px; padding: 7px 11px; border-radius: var(--radius); font-weight: 500; font-size: 13px; }
 .quiet { color: #645b57; }
 .quiet:hover:not(:disabled), .icon-button:hover:not(:disabled) { background: var(--quiet); color: var(--ink); }
@@ -113,14 +112,6 @@ textarea { resize: vertical; line-height: 1.65; }
 .annotation-row p { font-size: 12px; color: var(--muted); line-height: 1.6; margin-top: 4px; overflow-wrap: anywhere; }
 .pages-panel>.full-width { margin-top: 24px; }
 .canvas-panel { min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--canvas); position: relative; }
-.canvas-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex: 0 0 52px; padding: 0 16px; background: #fff; border-bottom: 1px solid var(--line); }
-.view-tools, .canvas-actions, .device-tools { display: flex; align-items: center; gap: 8px; }
-.view-tabs { display: flex; align-items: center; gap: 3px; padding: 3px; border-radius: 18px; background: #f6f5f4; }
-.view-tabs>button { min-height: 27px; padding: 3px 12px; border-radius: 13px; font-size: 11px; color: #8a8476; }
-.view-tabs>button.active { background: #fff; color: var(--ink); box-shadow: 0 1px 3px #3b2a2112; }
-.device-tools { gap: 3px; }
-.device-tools .icon-button { width: 29px; height: 28px; }
-.version-tag { display: inline-block; font-size: 11px; color: #999487; white-space: nowrap; }
 .canvas { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; padding: 0 24px 16px; overflow: auto; }
 .preview-shell { width: 100%; flex: 1; min-height: 240px; margin: 0 auto; border: 1px solid #e5e1df; border-radius: 13px; box-shadow: 0 3px 12px #37221705; overflow: hidden; background: #fff; position: relative; }
 .preview-shell iframe { display: block; width: 100%; height: 100%; border: 0; background: #fff; position: absolute; inset: 0; }
@@ -257,10 +248,8 @@ input[type=color]::-webkit-color-swatch { border: none; border-radius: 2px; }
 @media (max-width: 1200px) and (min-width: 961px) {
   :root { --left-width: 280px; --right-width: 260px; }
   .app-header { gap: 12px; padding: 0 16px; }
-  .header-actions { gap: 3px; }
   .project-picker select { max-width: 145px; }
   .canvas { padding-left: 14px; padding-right: 14px; }
-  .canvas-toolbar { padding: 0 10px; }
 }
 @media (max-width: 960px) {
   .workspace, .workspace.left-closed, .workspace.right-closed, .workspace.left-closed.right-closed { display: block; position: relative; }
@@ -275,11 +264,6 @@ input[type=color]::-webkit-color-swatch { border: none; border-radius: 2px; }
   .brand .local-badge { display: none; }
   .project-picker { flex: 1; }
   .project-picker select { max-width: 150px; width: 100%; font-size: 12px; }
-  .header-actions { gap: 2px; }
-  .header-actions .divider { display: none; }
-  .header-actions button { width: 32px; height: 32px; padding: 0; }
-  .header-actions button>span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
-  .canvas-toolbar { padding: 0 12px; }
   .canvas.tablet .preview-shell { margin-left: 0; }
 }
 .mobile-project-picker { display: none; }
@@ -295,7 +279,6 @@ input[type=color]::-webkit-color-swatch { border: none; border-radius: 2px; }
 .composer-actions .quiet { padding: 5px 7px; min-height: 30px; font-size: 12px; }
 .direct-modify { margin-left: auto; min-height: 30px; font-size: 12px; padding: 5px 8px; }
 .actual-width { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 48px; }
-.canvas { padding-top: 16px; }
 .selected-heading small { color: var(--muted); font-size: 11px; }
 .canvas-status { position: relative; gap: 12px; }
 .status-version { color: var(--muted); white-space: nowrap; }
@@ -311,14 +294,7 @@ input[type=color]::-webkit-color-swatch { border: none; border-radius: 2px; }
   .brand-symbol { width: 28px; height: 28px; }
   .brand strong { font-size: 15px; }
   .project-picker { display: none; }
-  .header-actions button { width: 31px; }
   .canvas { padding: 0 10px 70px; }
-  .canvas-toolbar { gap: 5px; padding: 0 8px; min-height: 48px; flex-basis: 48px; }
-  .view-tools, .canvas-actions { gap: 3px; }
-  .view-tabs>button { padding: 3px 8px; }
-  .device-tools { gap: 0; }
-  .device-tools .icon-button { width: 25px; }
-  .version-tag { display: none; }
       kbd { display: none; }
   .canvas-status { font-size: 9px; padding: 6px 10px; }
   .empty-canvas { padding: 24px; }
@@ -409,39 +385,74 @@ input[type=color]::-webkit-color-swatch { border: none; border-radius: 2px; }
 .quick-actions button { justify-content: space-between; width: 100%; padding: 9px 11px; font-size: 12.5px; border: 1px solid var(--line); border-radius: 9px; background: #fff; color: var(--ink); }
 .quick-actions button:hover { border-color: #d9cfc6; background: var(--quiet); }
 .sync-line { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--success); margin-bottom: 4px; }
-.view-tabs kbd { font-family: inherit; font-size: 11px; color: var(--subtle); margin-left: 2px; }
 
 /* 顶栏中间：查看方式 + 操作方式。以前分在画布上方和底部，现在统一放上面，画布多出一整条高度 */
-.header-tools { display: flex; align-items: center; gap: 10px; margin-left: auto; min-width: 0; }
-.header-tools + .header-actions { margin-left: 18px; }
-.header-tools .view-tabs, .mode-tools { display: flex; align-items: center; gap: 2px; padding: 3px; border-radius: 18px; background: #efede6; }
-.header-tools .view-tabs > button, .mode-tools > button { gap: 5px; min-height: 30px; padding: 4px 12px; border-radius: 14px; font-size: 12.5px; color: #7d776a; }
-.header-tools .view-tabs > button:hover:not(:disabled), .mode-tools > button:hover:not(:disabled) { color: var(--ink); }
-.header-tools .view-tabs > button.active { background: #fff; color: var(--ink); box-shadow: 0 1px 3px #3b2a2114; }
-.header-tools .view-tabs > button.active svg { color: var(--primary); }
 .mode-tools > button.active { background: var(--primary-soft); color: var(--primary); }
-.header-tools kbd { font-family: inherit; font-size: 10.5px; color: var(--subtle); margin-left: 1px; }
-.canvas-toolbar .view-tools:empty { display: none; }
-@media (max-width: 1360px) { .header-tools kbd { display: none; } .header-tools .view-tabs > button, .mode-tools > button { padding: 4px 9px; } }
-@media (max-width: 1200px) { .header-tools > div > button > span { display: none; } .header-actions button > span { display: none; } }
-@media (max-width: 960px) { .header-tools { gap: 4px; } .header-tools + .header-actions { margin-left: 6px; } }
 
 /* 窗口不够宽时，低频的项目操作收进「更多」，不再跟中间的查看方式挤在一起 */
-.narrow-only { display: none !important; }
-@media (max-width: 1439px) { .wide-only { display: none !important; } .narrow-only { display: block !important; } }
-.more-menu { position: relative; }
-.more-menu > summary { list-style: none; display: inline-flex; align-items: center; gap: 7px; padding: 7px 10px; border-radius: var(--radius); cursor: pointer; font-size: 14px; }
-.more-menu > summary::-webkit-details-marker { display: none; }
-.more-menu > summary:hover, .more-menu[open] > summary { background: var(--quiet); }
-.more-list { position: absolute; right: 0; top: calc(100% + 6px); z-index: 40; min-width: 168px; display: grid; gap: 2px; padding: 6px; background: #fff; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 30px #39251b1f; }
-.more-list button { justify-content: flex-start; gap: 9px; width: 100%; padding: 8px 10px; font-size: 13px; border-radius: 8px; color: var(--ink); }
-.more-list button:hover:not(:disabled) { background: var(--quiet); }
 /* 画布工具栏左边：操作方式 */
-.canvas-toolbar .view-tools { display: flex; align-items: center; gap: 8px; }
-.canvas-toolbar .mode-tools > button { min-height: 28px; padding: 3px 11px; font-size: 12px; }
-.canvas-toolbar .mode-tools kbd { font-family: inherit; font-size: 10.5px; color: var(--subtle); margin-left: 1px; }
-@media (max-width: 1200px) { .canvas-toolbar .mode-tools kbd { display: none; } }
 
 /* 预览和展开叠在一起，不用的那个藏到后面。
    不能用 display:none：Safari 里被 display:none 过的 iframe 再显示是空白，只能整页重载，切一次等一次 */
 .view-hidden { position: absolute !important; inset: 0 24px 16px; visibility: hidden; pointer-events: none; z-index: -1; }
+
+
+/* ── 顶栏：两行并成一行，把高度让给画布 ──
+   左 = 在哪个项目　中 = 看什么、怎么操作　右 = 画布尺寸、撤销/版本、导出、更多、属性面板 */
+.app-header { display: grid; grid-template-columns: minmax(max-content, 1fr) auto minmax(max-content, 1fr); align-items: center; gap: 16px; height: 52px; flex: 0 0 52px; padding: 0 12px 0 16px; }
+.header-left, .header-center, .header-right { display: flex; align-items: center; min-width: 0; }
+.header-left { gap: 10px; }
+.header-center { gap: 8px; justify-self: center; }
+.header-right { gap: 6px; justify-self: end; }
+.brand { gap: 9px; }
+.brand strong { font-size: 16px; }
+.brand-symbol { width: 28px; height: 28px; border-radius: 14px; }
+.brand-symbol svg { width: 17px; height: 17px; }
+.project-picker { gap: 6px; }
+.project-picker select { font-size: 13.5px; font-weight: 500; }
+
+/* 所有分段按钮组一个样：浅底胶囊，选中的那格浮起来 */
+.view-tabs, .mode-tools, .device-tools, .history-tools { display: flex; align-items: center; gap: 2px; height: 34px; padding: 3px; border-radius: 11px; background: #efede6; }
+.view-tabs > button, .mode-tools > button { gap: 5px; height: 28px; min-height: 0; padding: 0 11px; border-radius: 8px; font-size: 12.5px; font-weight: 500; color: #7d776a; }
+.view-tabs > button:hover:not(:disabled), .mode-tools > button:hover:not(:disabled) { color: var(--ink); background: #ffffff80; }
+.view-tabs > button.active, .mode-tools > button.active, .device-tools .icon-button.active { background: #fff; color: var(--ink); box-shadow: 0 1px 2px #3b2a2118, 0 0 0 .5px #3b2a210f; }
+.view-tabs > button.active svg, .mode-tools > button.active, .mode-tools > button.active svg, .device-tools .icon-button.active { color: var(--primary); }
+.app-header kbd { font-family: inherit; font-size: 10.5px; font-weight: 400; color: var(--subtle); margin-left: 1px; }
+.device-tools .icon-button, .history-tools .icon-button { width: 28px; height: 28px; border-radius: 8px; }
+.device-tools .icon-button:hover:not(:disabled), .history-tools .icon-button:hover:not(:disabled) { background: #ffffff80; }
+.actual-width { min-width: 0; padding: 0 8px 0 6px; font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.history-button { gap: 5px; height: 28px; padding: 0 9px 0 7px; border-radius: 8px; font-size: 12px; font-weight: 500; color: #645b57; font-variant-numeric: tabular-nums; }
+.history-button:hover:not(:disabled) { background: #fff; color: var(--ink); }
+.export-button { gap: 6px; height: 34px; padding: 0 13px; border-radius: 11px; font-size: 13px; font-weight: 500; color: var(--ink); background: #fff; border: 1px solid #e2ded3; }
+.export-button:hover:not(:disabled) { border-color: #c9c1b4; }
+.header-right > .icon-button, .more-menu > summary.icon-button { width: 34px; height: 34px; border-radius: 11px; }
+.header-left > .icon-button { width: 32px; height: 32px; }
+.header-right > .divider { height: 20px; margin: 0 2px; }
+.more-menu { position: relative; }
+.more-menu > summary { list-style: none; display: grid; place-items: center; cursor: pointer; }
+.more-menu > summary::-webkit-details-marker { display: none; }
+.more-menu[open] > summary { background: var(--quiet); color: var(--ink); }
+.more-list { position: absolute; right: 0; top: calc(100% + 6px); z-index: 40; min-width: 170px; display: grid; gap: 2px; padding: 6px; background: #fff; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 30px #39251b1f; }
+.more-list button { justify-content: flex-start; gap: 9px; width: 100%; padding: 8px 10px; font-size: 13px; border-radius: 8px; color: var(--ink); }
+.more-list button:hover:not(:disabled) { background: var(--quiet); }
+.more-list hr { border: 0; border-top: 1px solid var(--line); margin: 4px 6px; }
+
+/* 画布四周的留白收窄，原型本身显得大 */
+.canvas { padding: 10px 12px 12px; }
+.preview-shell { border-radius: 10px; border-color: #e3dfd6; box-shadow: 0 1px 3px #3722170a; }
+.view-hidden { inset: 10px 12px 12px; }
+
+@media (max-width: 1600px) { .app-header kbd { display: none; } }
+@media (max-width: 1440px) { .brand .local-badge, .page-crumb, .actual-width { display: none; } .view-tabs > button, .mode-tools > button { padding: 0 9px; } }
+@media (max-width: 1240px) { .view-tabs > button > span, .mode-tools > button > span, .export-button > span, .brand strong { display: none; } .view-tabs > button, .mode-tools > button { width: 34px; padding: 0; } }
+@media (max-width: 960px) {
+  .app-header { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "left right" "center center"; height: auto; flex-basis: auto; row-gap: 6px; padding: 8px 10px; }
+  .header-left { grid-area: left; } .header-right { grid-area: right; } .header-center { grid-area: center; justify-self: stretch; justify-content: center; }
+  .device-tools, .header-right > .divider { display: none !important; }
+  .brand strong { display: inline; }
+}
+@media (max-width: 540px) {
+  .canvas { padding: 8px 8px 70px; }
+  .brand strong { display: none; }
+  .header-right { gap: 4px; }
+}
