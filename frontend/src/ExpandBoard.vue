@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { ArrowLeft, ExternalLink, Layers, LoaderCircle, LocateFixed, PencilLine, Play, RotateCw, Search, AlertCircle, ChevronDown } from 'lucide-vue-next'
+import { ArrowLeft, Download, ExternalLink, Layers, LoaderCircle, LocateFixed, PencilLine, Play, RotateCw, Search, AlertCircle, ChevronDown } from 'lucide-vue-next'
 import { expand, expandAll, isFresh, requestRoute, touch } from './expandStore.js'
 import { ORIGIN_LABEL, ancestorsOf, buildTree, crumbOf, originOf, pickToSelection, shortLabel, trailOf } from './probeTree.js'
 import SceneCard from './SceneCard.vue'
@@ -8,7 +8,8 @@ import BoardBranch from './BoardBranch.vue'
 import LiveScene from './LiveScene.vue'
 
 const props = defineProps({ route: { type: String, default: '' }, pageName: String, selection: Object, mode: String, focus: [Number, null], notes: { type: Array, default: () => [] }, patch: Object })
-const emit = defineEmits(['open', 'select', 'clear', 'mode', 'update:focus', 'update:route'])
+const emit = defineEmits(['open', 'select', 'clear', 'mode', 'update:focus', 'update:route', 'export'])
+const exportable = computed(() => Object.values(expand.entries).some(e => e?.result?.styles))
 
 const empty = { title: '', styles: null, page: '', width: 1150, height: 800, nodes: [] }
 const filter = ref('all'), query = ref(''), live = ref(null), scroller = ref(null)
@@ -122,6 +123,7 @@ onMounted(() => requestRoute(props.route))
         </div>
         <div class="board-control">
           <button v-if="picked" type="button" class="icon-button tool" title="定位当前选中的视图" aria-label="定位当前选中的视图" @click="reveal(picked.nodeId)"><LocateFixed :size="15" /></button>
+          <button v-if="exportable" type="button" class="export-expand" title="把已展开的所有业务页面导出成一个 HTML 文件：发给别人双击就能看，也能打印成 PDF" @click="$emit('export')"><Download :size="13" />导出展开图</button>
           <button v-if="!allDone" type="button" class="expand-all" :disabled="allRunning" :title="allRunning ? '后台正在展开，预览和展开视图照常能用' : '把原型里的每个业务页面都展开一遍，之后改动会自动同步'" @click="expandAll(route)"><LoaderCircle v-if="allRunning" :size="13" class="spin" /><Layers v-else :size="13" />{{ allRunning ? (expand.discovering ? '正在找页面…' : `业务页面 ${allProgress.done} / ${allProgress.total}`) : '一键展开全部业务页面' }}</button>
           <span v-else class="all-done" title="所有业务页面都已展开，改动会自动同步">{{ allProgress.total }} 个业务页面已展开</span>
           <label class="search"><Search :size="14" /><input v-model="query" type="search" placeholder="查找弹窗" aria-label="查找弹窗"></label>
@@ -182,6 +184,7 @@ onMounted(() => requestRoute(props.route))
 .scene-ghost span{display:block;border-radius:8px;background:linear-gradient(90deg,#efece4 0,#f7f5ef 50%,#efece4 100%);background-size:200% 100%;animation:shimmer 1.3s linear infinite}
 .scene-ghost span:nth-child(1){height:16px;width:45%}.scene-ghost span:nth-child(2){height:12px;width:70%}.scene-ghost span:nth-child(3){height:170px}
 @keyframes shimmer{to{background-position:-200% 0}}
+.export-expand{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 12px;border:1px solid #e2ded3;border-radius:10px;background:#fff;font-size:12.5px;color:var(--ink);white-space:nowrap}.export-expand:hover{border-color:#c9c1b4}
 .focus-head{display:flex;align-items:center;gap:10px;padding:11px 18px;background:#fff;border-bottom:1px solid var(--line);flex-shrink:0;min-width:0}
 .focus-head .quiet{gap:6px;font-size:12px;padding:5px 8px;border-radius:8px}
 .focus-head .quiet:hover{background:var(--quiet)}

@@ -3,7 +3,8 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { PanelsTopLeft, Plus, Upload, History, Download, Settings2, ChevronDown, ChevronRight, X, MessageSquare, Files, MousePointer2, Hand, Code2, Monitor, Tablet, Smartphone, Undo2, ArrowUp, Check, CheckCheck, LoaderCircle, SlidersHorizontal, SquareMousePointer, Palette, AlertCircle, ShieldCheck, Braces, FileCode2, CircleHelp, PanelLeftClose, PanelRightClose, Copy, Pencil, Ruler, Sparkles } from 'lucide-vue-next'
 import { Scan, ImagePlus, Image as ImageIcon, FolderOpen, Layers, Maximize2, MoreHorizontal } from 'lucide-vue-next'
 import ExpandBoard from './ExpandBoard.vue'
-import { adoptPresync, bindExpand, dropPresync, presync, setFocusRoute } from './expandStore.js'
+import { adoptPresync, bindExpand, dropPresync, presync, setFocusRoute, expand } from './expandStore.js'
+import { buildExpandExport } from './expandExport.js'
 import ImageReference from './ImageReference.vue'
 import RegionCapture from './RegionCapture.vue'
 import FileManager from './FileManager.vue'
@@ -613,6 +614,18 @@ async function restore(version) {
   try { const result = await post(endpoint(`/restore/${version}`)); await checkAndCommit(result); closeSelection(); await refresh(false); dialog.value.close(); toast(`已退回到 v${version}`) } catch (e) { dialogError.value = e.message; status.value = '退回失败 · 页面没变' } finally { dialogBusy.value = false }
 }
 async function copySource() { try { await navigator.clipboard.writeText(codeText.value); codeCopied.value = true; setTimeout(() => codeCopied.value = false, 1800) } catch { toast('请选中源码后复制') } }
+// 导出展开图：已展开的业务页面一页一棵树，存成一个独立 HTML，发给别人双击就能看、也能打印成 PDF
+function exportExpand() {
+  if (!project.value || !page.value) return
+  const name = project.value.name || '原型', file = page.value.path || page.value.title || ''
+  const { html, pages, views, missing } = buildExpandExport({ projectName: name, fileName: file, version: page.value.version, routes: expand.routes, entries: expand.entries, currentHash: expand.hash, notes: annotations.value })
+  if (!pages) { toast('还没有展开好的页面可以导出'); return }
+  const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }))
+  const a = document.createElement('a')
+  a.href = url; a.download = `${name}-展开图-v${page.value.version}.html`.replace(/[\\/:*?"<>|]/g, '_')
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 5000)
+  toast(`已导出 ${pages} 个业务页面、${views} 个视图${missing ? `；还有 ${missing} 个页面没展开，先点「一键展开」可以导出完整的` : ''}`)
+}
 function download(zip = false) { if (project.value) window.location.assign(zip ? `/api/projects/${project.value.id}/export` : endpoint('/download')) }
 function formatTime(value) { return new Date(value).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) }
 function keydown(event) {
@@ -675,7 +688,7 @@ onUnmounted(() => { window.removeEventListener('message', onMessage); window.rem
       <section class="canvas-panel" aria-label="原型画布">
         <div v-if="view === 'preview'" class="canvas" :class="device">
 
-          <ExpandBoard v-if="boardMounted" :class="{ 'view-hidden': !boardOpen }" :aria-hidden="!boardOpen" v-model:focus="boardFocus" v-model:route="boardRoute" :notes="annotations" :patch="cardPatch" :page-name="page?.title" :selection="selected" :mode="mode" @open="openFromBoard" @select="pickFromBoard" @clear="closeSelection" @mode="setMode" />
+          <ExpandBoard v-if="boardMounted" :class="{ 'view-hidden': !boardOpen }" :aria-hidden="!boardOpen" v-model:focus="boardFocus" v-model:route="boardRoute" :notes="annotations" :patch="cardPatch" :page-name="page?.title" :selection="selected" :mode="mode" @open="openFromBoard" @select="pickFromBoard" @clear="closeSelection" @mode="setMode" @export="exportExpand" />
           <div class="preview-shell" :class="{ 'is-selecting': mode !== 'interact', 'view-hidden': boardOpen }" :aria-hidden="boardOpen"><iframe v-if="previewDoc" ref="previewFrame" title="原型预览" :srcdoc="previewDoc" :sandbox="PREVIEW_SANDBOX"></iframe><div v-else class="empty-canvas"><div class="empty-emblem"><PanelsTopLeft :size="30" :stroke-width="1.4" /></div><h1>给想法一个可操作的样子</h1><p>从已有的 HTML 开始修改，<br>或描述需求，让 AI 帮你搭建第一版。</p><div><button class="primary" @click="openDialog('new')"><Plus :size="16" />新建原型</button><button class="outline" @click="fileInput.click()"><Upload :size="16" />导入原型</button></div><span>支持 HTML、包含多页面的 ZIP</span></div><RegionCapture v-if="previewDoc && mode === 'box' && !loading" :key="regionKey" @select="send({ type: 'PA_BOX_RECT', bounds: $event })" @scroll="send({ type: 'PA_SCROLL', ...$event })" /><div v-if="loading" class="loading-veil"><LoaderCircle class="spin" :size="25" /><span>正在加载原型…</span></div></div>
           
         </div>
