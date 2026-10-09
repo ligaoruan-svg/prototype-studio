@@ -1,9 +1,9 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { ChevronRight, Code2, Hand, Layers, Maximize2, Monitor } from 'lucide-vue-next'
+import { ChevronRight, Code2, Hand, Layers, Maximize2, Monitor, Play } from 'lucide-vue-next'
 import { cardDocument } from './probeTree.js'
-const props = defineProps({ node: Object, styles: Object, frame: Object, picked: Object, mode: String, crumb: String, large: Boolean, notes: Number })
-const emit = defineEmits(['pick', 'open', 'focus'])
+const props = defineProps({ node: Object, styles: Object, frame: Object, picked: Object, mode: String, crumb: String, large: Boolean, notes: Number, compact: Boolean })
+const emit = defineEmits(['pick', 'open', 'focus', 'play'])
 const iframe = ref(null), stage = ref(null), width = ref(0)
 const doc = computed(() => cardDocument(props.styles, props.node.html, { pickable: true }))
 const box = computed(() => props.node.box || { x: 0, y: 0, w: props.frame.w, h: props.frame.h })
@@ -38,8 +38,10 @@ onUnmounted(() => { window.removeEventListener('message', listen); observer?.dis
       <span v-if="notes" class="note-badge" :title="`这张卡上已记下 ${notes} 条修改意见`">已记 {{ notes }}</span>
       <button type="button" :aria-label="`放大编辑${node.title}`" title="放大后选中元素，不切换查看方式" @click="$emit('focus', node)"><Maximize2 :size="13" /><span>放大编辑</span></button>
     </header>
-    <div v-if="!large" class="scene-trail" :title="crumb"><ChevronRight :size="12" /><span>{{ crumb }}</span><em v-if="node.stale">· 点不开了，可能已过期</em></div>
+     <div v-if="!large && !compact" class="scene-trail" :title="crumb"><ChevronRight :size="12" /><span>{{ crumb }}</span><em v-if="node.stale">· 点不开了，可能已过期</em></div>
     <div ref="stage" class="scene-preview" :class="{ page: node.isPage }">
+      <!-- 交互模式：卡片是快照不能点，点一下放大成真的在跑的原型，随便试 -->
+      <button v-if="mode === 'interact' && !large" type="button" class="play-cover" :aria-label="`试玩${node.title}`" @click="$emit('play', node)"><span><Play :size="14" />点一下试玩</span></button>
       <div class="thumb" :style="{ width: view.width + 'px', height: view.height + 'px' }">
         <iframe ref="iframe" sandbox="allow-scripts" :title="`${node.title} · 点选要改的地方`" :srcdoc="doc" :style="{ width: frame.w + 'px', height: frame.h + 'px', transform: view.transform }" @load="sync"></iframe>
       </div>
@@ -64,7 +66,7 @@ onUnmounted(() => { window.removeEventListener('message', listen); observer?.dis
 .scene-trail span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .scene-trail em{font-style:normal;color:#9a6a1b;white-space:nowrap}
 .note-badge{flex-shrink:0;font-size:11px;color:#fff;background:var(--primary);border-radius:20px;padding:1px 7px}
-.scene-preview{display:flex;justify-content:center;align-items:flex-start;padding:14px;background:#f5f7fa;max-height:480px;overflow:auto;overscroll-behavior:contain}
+.scene-preview{position:relative;display:flex;justify-content:center;align-items:flex-start;padding:14px;background:#f5f7fa;max-height:480px;overflow:auto;overscroll-behavior:contain}
 .scene-card.large .scene-preview{max-height:none;padding:0;background:transparent;overflow:visible}
 .thumb{position:relative;flex-shrink:0;overflow:hidden;border-radius:6px;box-shadow:0 1px 4px #2b33200f}
 .scene-card.large .thumb{border-radius:10px;box-shadow:0 8px 24px #2b332016}
@@ -74,4 +76,8 @@ onUnmounted(() => { window.removeEventListener('message', listen); observer?.dis
 .scene-foot button{gap:5px;margin-left:auto;padding:3px 7px;border-radius:7px;font-size:11px;color:var(--muted)}
 .scene-foot button:hover{background:var(--quiet);color:var(--primary)}
 @media (prefers-reduced-motion: reduce){.scene-card{transition:none}}
+.play-cover{position:absolute;inset:0;z-index:2;display:flex;align-items:center;justify-content:center;padding:0;border-radius:0;background:transparent;cursor:pointer}
+.play-cover span{display:inline-flex;align-items:center;gap:6px;padding:7px 13px;border-radius:20px;background:#141413cc;color:#fff;font-size:12px;opacity:0;transform:translateY(4px);transition:opacity .15s,transform .15s}
+.play-cover:hover{background:#14141308}.play-cover:hover span,.play-cover:focus-visible span{opacity:1;transform:none}
+@media (prefers-reduced-motion: reduce){.play-cover span{transition:none}}
 </style>

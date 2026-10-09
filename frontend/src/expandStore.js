@@ -24,6 +24,8 @@ const touched = {}    // 路由 → 最近点选 / 记过意见的卡片 id，�
 const api = (url, options) => fetch(url, options).then(r => r.ok ? r.json() : Promise.reject(new Error('保存展开结果失败')))
 const base = () => `/api/projects/${ctx.pid}/pages/${ctx.pageId}/expand`
 
+// 试玩用的副本源码：和后台展开同一份
+export function liveDoc(route) { return ctx ? ctx.makeDoc(route) : '' }
 export function isFresh(route) { const e = expand.entries[route]; return !!e && !e.partial && e.hash === expand.hash }
 export function touch(route, nodeId) { (touched[route] ||= new Set()).add(nodeId) }
 

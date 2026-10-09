@@ -121,16 +121,12 @@ textarea { resize: vertical; line-height: 1.65; }
 .device-tools { gap: 3px; }
 .device-tools .icon-button { width: 29px; height: 28px; }
 .version-tag { display: inline-block; font-size: 11px; color: #999487; white-space: nowrap; }
-.canvas { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; padding: 0 24px 76px; overflow: auto; }
+.canvas { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; padding: 0 24px 16px; overflow: auto; }
 .preview-shell { width: 100%; flex: 1; min-height: 240px; margin: 0 auto; border: 1px solid #e5e1df; border-radius: 13px; box-shadow: 0 3px 12px #37221705; overflow: hidden; background: #fff; position: relative; }
 .preview-shell iframe { display: block; width: 100%; height: 100%; border: 0; background: #fff; position: absolute; inset: 0; }
 .preview-shell.is-selecting { border-color: #b88d78; }
 .canvas.tablet .preview-shell { width: 768px; max-width: none; flex-shrink: 0; align-self: center; }
 .canvas.mobile .preview-shell { width: 390px; max-width: 100%; border-radius: 18px; }
-.canvas-tool-dock { display: flex; gap: 5px; align-items: center; position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); padding: 5px; background: #fff; border: 1px solid #e6e2e0; box-shadow: 0 4px 16px #39251b12; border-radius: 18px; z-index: 5; }
-.canvas-tool-dock button { height: 33px; padding: 7px 11px; font-size: 12px; border-radius: 11px; color: #8a8475; }
-.canvas-tool-dock button.active { color: var(--primary); background: var(--primary-soft); }
-.canvas-tool-dock>span { width: 1px; height: 17px; background: var(--line); }
 kbd { font-family: inherit; font-size: 9px; color: #a79d98; margin-left: 6px; }
 .canvas-status { min-height: 30px; flex-shrink: 0; padding: 5px 16px; background: #fff; border-top: 1px solid var(--line); font-size: 10px; color: #99908c; display: flex; justify-content: space-between; gap: 12px; }
 .canvas-status>span { display: flex; align-items: center; gap: 5px; }
@@ -300,7 +296,6 @@ input[type=color]::-webkit-color-swatch { border: none; border-radius: 2px; }
 .direct-modify { margin-left: auto; min-height: 30px; font-size: 12px; padding: 5px 8px; }
 .actual-width { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 48px; }
 .canvas { padding-top: 16px; }
-.canvas-tool-dock kbd { margin-left: 4px; font-size: 10px; color: var(--muted); }
 .selected-heading small { color: var(--muted); font-size: 11px; }
 .canvas-status { position: relative; gap: 12px; }
 .status-version { color: var(--muted); white-space: nowrap; }
@@ -324,9 +319,7 @@ input[type=color]::-webkit-color-swatch { border: none; border-radius: 2px; }
   .device-tools { gap: 0; }
   .device-tools .icon-button { width: 25px; }
   .version-tag { display: none; }
-  .canvas-tool-dock { bottom: 15px; }
-  .canvas-tool-dock button { padding: 6px 9px; }
-  kbd { display: none; }
+      kbd { display: none; }
   .canvas-status { font-size: 9px; padding: 6px 10px; }
   .empty-canvas { padding: 24px; }
   .empty-canvas h1 { font-size: 19px; }
@@ -416,6 +409,19 @@ input[type=color]::-webkit-color-swatch { border: none; border-radius: 2px; }
 .quick-actions button { justify-content: space-between; width: 100%; padding: 9px 11px; font-size: 12.5px; border: 1px solid var(--line); border-radius: 9px; background: #fff; color: var(--ink); }
 .quick-actions button:hover { border-color: #d9cfc6; background: var(--quiet); }
 .sync-line { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--success); margin-bottom: 4px; }
-.canvas-tool-dock button.dim { opacity: .55; }
-.canvas-tool-dock .dock-hint { padding: 0 8px 0 4px; font-size: 11px; color: var(--muted); white-space: nowrap; }
 .view-tabs kbd { font-family: inherit; font-size: 11px; color: var(--subtle); margin-left: 2px; }
+
+/* 顶栏中间：查看方式 + 操作方式。以前分在画布上方和底部，现在统一放上面，画布多出一整条高度 */
+.header-tools { display: flex; align-items: center; gap: 10px; margin-left: auto; min-width: 0; }
+.header-tools + .header-actions { margin-left: 18px; }
+.header-tools .view-tabs, .mode-tools { display: flex; align-items: center; gap: 2px; padding: 3px; border-radius: 18px; background: #efede6; }
+.header-tools .view-tabs > button, .mode-tools > button { gap: 5px; min-height: 30px; padding: 4px 12px; border-radius: 14px; font-size: 12.5px; color: #7d776a; }
+.header-tools .view-tabs > button:hover:not(:disabled), .mode-tools > button:hover:not(:disabled) { color: var(--ink); }
+.header-tools .view-tabs > button.active { background: #fff; color: var(--ink); box-shadow: 0 1px 3px #3b2a2114; }
+.header-tools .view-tabs > button.active svg { color: var(--primary); }
+.mode-tools > button.active { background: var(--primary-soft); color: var(--primary); }
+.header-tools kbd { font-family: inherit; font-size: 10.5px; color: var(--subtle); margin-left: 1px; }
+.canvas-toolbar .view-tools:empty { display: none; }
+@media (max-width: 1360px) { .header-tools kbd { display: none; } .header-tools .view-tabs > button, .mode-tools > button { padding: 4px 9px; } }
+@media (max-width: 1200px) { .header-tools > div > button > span { display: none; } .header-actions button > span { display: none; } }
+@media (max-width: 960px) { .header-tools { gap: 4px; } .header-tools + .header-actions { margin-left: 6px; } }

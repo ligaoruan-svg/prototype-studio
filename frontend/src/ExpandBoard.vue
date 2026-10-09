@@ -4,12 +4,15 @@ import { ArrowLeft, Hand, Layers, LoaderCircle, RotateCw, Search, AlertCircle, C
 import { expand, expandAll, isFresh, requestRoute, touch } from './expandStore.js'
 import { ORIGIN_LABEL, crumbOf, originOf, pickToSelection, shortLabel, trailOf } from './probeTree.js'
 import SceneCard from './SceneCard.vue'
+import BoardBranch from './BoardBranch.vue'
+import LiveScene from './LiveScene.vue'
+import { buildTree } from './probeTree.js'
 
 const props = defineProps({ route: { type: String, default: '' }, pageName: String, selection: Object, mode: String, focus: [Number, null], notes: { type: Array, default: () => [] } })
 const emit = defineEmits(['open', 'leave', 'select', 'update:focus', 'update:route'])
 
 const empty = { title: '', styles: null, page: '', width: 1150, height: 800, nodes: [] }
-const filter = ref('all'), query = ref('')
+const filter = ref('all'), query = ref(''), live = ref(null)
 const entry = computed(() => expand.entries[props.route] || null)
 const job = computed(() => expand.jobs[props.route] || null)
 const state = computed(() => entry.value?.result || empty)
@@ -32,12 +35,15 @@ const title = computed(() => state.value.title || routeTitle(props.route) || pro
 // 页面本身也是一张卡：静态元素在这里点选，能直接微调
 const pageNode = computed(() => state.value.styles && state.value.page ? { id: 0, isPage: true, title: title.value, html: state.value.page, box: null } : null)
 const scenes = computed(() => [...(pageNode.value ? [pageNode.value] : []), ...state.value.nodes].map(node => ({ node, origin: originOf(node), crumb: crumbOf(state.value.nodes, node) })))
+// 一棵树：页面在左边，从它的按钮出发一条条链，链上是依次打开的弹窗
+const tree = computed(() => buildTree(state.value.nodes.map(n => ({ ...n, crumb: crumbOf(state.value.nodes, n), notes: notesOf(n) }))))
+const matches = node => !query.value.trim() || `${node.title} ${node.label}`.includes(query.value.trim()) || node.children.some(matches)
+const roots = computed(() => tree.value.filter(n => (filter.value === 'all' || originOf(n) === filter.value) && matches(n)))
 const groups = computed(() => {
   const counts = {}
-  for (const s of scenes.value) counts[s.origin] = (counts[s.origin] || 0) + 1
-  return [{ key: 'all', label: '全部视图', count: scenes.value.length }, ...Object.keys(ORIGIN_LABEL).filter(k => counts[k]).map(k => ({ key: k, label: ORIGIN_LABEL[k], count: counts[k] }))]
+  for (const n of tree.value) counts[originOf(n)] = (counts[originOf(n)] || 0) + 1
+  return [{ key: 'all', label: '全部视图', count: scenes.value.length }, ...['button', 'row'].filter(k => counts[k]).map(k => ({ key: k, label: ORIGIN_LABEL[k], count: counts[k] }))]
 })
-const shown = computed(() => scenes.value.filter(s => (filter.value === 'all' || s.origin === filter.value) && (!query.value.trim() || `${s.node.title} ${s.crumb}`.includes(query.value.trim()))))
 const frame = computed(() => ({ w: state.value.width || 1150, h: state.value.height || 800 }))
 const picked = computed(() => props.selection?.card?.route === props.route ? props.selection.card : null)
 const focused = computed(() => props.focus == null ? null : scenes.value.find(s => s.node.id === props.focus) || null)
@@ -63,11 +69,14 @@ onMounted(() => requestRoute(props.route))
         <span class="divider"></span>
         <strong>{{ focused.node.title }}</strong>
         <span class="focus-crumb">{{ focused.crumb }}</span>
+        <span v-if="mode === 'interact'" class="live-tag">试玩中 · 改动不会保存</span>
+        <button v-if="mode === 'interact'" type="button" class="outline focus-live" @click="live?.restart()"><RotateCw :size="14" />重新开始</button>
         <button type="button" class="outline focus-live" @click="open(focused.node)"><Hand :size="14" />交互预览</button>
       </div>
       <div class="focus-content">
-        <SceneCard :key="'focus-' + focused.node.id" :node="focused.node" :styles="state.styles" :frame="frame" :picked="picked" :mode="mode" :crumb="focused.crumb" large @pick="pick" />
-        <p class="focus-tip">放大后仍可点选或拉框；修改后保持当前视图与目标</p>
+        <LiveScene v-if="mode === 'interact'" ref="live" :key="'live-' + focused.node.id" :node="focused.node" :route="route" :frame="frame" />
+        <SceneCard v-else :key="'focus-' + focused.node.id" :node="focused.node" :styles="state.styles" :frame="frame" :picked="picked" :mode="mode" :crumb="focused.crumb" large @pick="pick" />
+        <p class="focus-tip">{{ mode === 'interact' ? '这里是真的在跑的原型，可以随便点；切回点选或拉框就能选中要改的地方' : '放大后仍可点选或拉框；修改后保持当前视图与目标' }}</p>
       </div>
     </template>
     <template v-else>
@@ -98,12 +107,18 @@ onMounted(() => requestRoute(props.route))
       </div>
       <div v-if="expand.error" class="board-error"><AlertCircle :size="15" /><span>{{ expand.error }}，可以点右上角的刷新再试一次。</span></div>
       <div class="board-scroll">
-        <div class="board-grid">
-          <SceneCard v-for="s in shown" :key="s.node.id" :node="s.node" :styles="state.styles" :frame="frame" :picked="picked" :mode="mode" :crumb="s.crumb" :notes="notesOf(s.node)" @pick="pick" @open="open" @focus="$emit('update:focus', $event.id)" />
-          <div v-if="status === 'running' || status === 'queued'" class="scene-ghost" aria-hidden="true"><span></span><span></span><span></span></div>
-          <div v-if="!busy && !shown.length" class="empty-board">
-            <template v-if="query || filter !== 'all'"><Search :size="22" /><h3>没有找到对应视图</h3><p>试试其他名称，或者清空当前筛选。</p><button type="button" class="outline" @click="query = ''; filter = 'all'">清空筛选</button></template>
-            <template v-else><h3>这一页没有点出弹窗</h3><p>如果弹窗要先切到某个页签、选中某一行才出现，先在预览里切过去，再点右上角的刷新。</p></template>
+        <div class="board-tree">
+          <div class="tree-root">
+            <SceneCard v-if="pageNode" :node="pageNode" :styles="state.styles" :frame="frame" :picked="picked" :mode="mode" crumb="当前页面" :notes="notesOf(pageNode)" compact @pick="pick" @open="open" @focus="$emit('update:focus', $event.id)" @play="$emit('update:focus', $event.id)" />
+            <div v-else class="scene-ghost" aria-hidden="true"><span></span><span></span><span></span></div>
+          </div>
+          <div class="tree-branches">
+            <BoardBranch v-for="node in roots" :key="node.id" :node="node" :styles="state.styles" :frame="frame" :picked="picked" :mode="mode" @pick="pick" @open="open" @focus="$emit('update:focus', $event.id)" @play="$emit('update:focus', $event.id)" />
+            <div v-if="status === 'running' || status === 'queued'" class="branch-ghost" aria-hidden="true"><span></span><div class="scene-ghost"><span></span><span></span><span></span></div></div>
+            <div v-if="!busy && !roots.length" class="empty-board">
+              <template v-if="query || filter !== 'all'"><Search :size="22" /><h3>没有找到对应视图</h3><p>试试其他名称，或者清空当前筛选。</p><button type="button" class="outline" @click="query = ''; filter = 'all'">清空筛选</button></template>
+              <template v-else><h3>这一页没有点出弹窗</h3><p>如果弹窗要先切到某个页签、选中某一行才出现，先在预览里切过去，再点右上角的刷新。</p></template>
+            </div>
           </div>
         </div>
       </div>
@@ -131,7 +146,7 @@ onMounted(() => requestRoute(props.route))
 .board-filter button:hover{background:#fff}
 .board-filter button.active{color:var(--primary);background:#fff;border-color:#e1cabd}
 .board-error{display:flex;align-items:center;gap:8px;margin:0 18px 12px;padding:9px 12px;border-radius:9px;background:var(--danger-bg);color:var(--danger);font-size:12.5px}
-.board-scroll{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:0 18px 90px;scrollbar-width:thin}
+.board-scroll{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:0 18px 24px;scrollbar-width:thin}
 .board-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px;align-items:start}
 .empty-board{grid-column:1/-1;padding:56px 20px;text-align:center;color:var(--muted);line-height:2;display:flex;flex-direction:column;align-items:center;gap:2px}
 .empty-board h3{font-size:15px;color:var(--ink)}
@@ -148,7 +163,7 @@ onMounted(() => requestRoute(props.route))
 .focus-head strong{font-size:14px;white-space:nowrap}
 .focus-crumb{flex:1;min-width:0;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .focus-live{gap:6px;font-size:12px;padding:6px 11px;border:1px solid var(--line);border-radius:9px;background:#fff}
-.focus-content{flex:1;min-height:0;overflow:auto;padding:28px 24px 96px}
+.focus-content{flex:1;min-height:0;overflow:auto;padding:28px 24px 32px}
 .focus-tip{text-align:center;font-size:12px;color:var(--muted);margin-top:18px}
 @media (prefers-reduced-motion: reduce){.scene-ghost span{animation:none}}
 .page-switch{position:relative;display:flex;align-items:center;gap:4px;min-width:0;border-radius:7px;padding:2px 4px;margin:-2px -4px;cursor:pointer}
@@ -160,4 +175,11 @@ onMounted(() => requestRoute(props.route))
 .expand-all:hover:not(:disabled){background:var(--primary-hover)}
 .expand-all:disabled{opacity:1;background:#fff;color:var(--primary);border:1px solid #e1cabd}
 .all-done{font-size:12px;color:var(--success);white-space:nowrap}
+.board-tree{display:flex;align-items:flex-start;gap:22px;min-width:max-content}
+.tree-root{position:sticky;left:0;top:0;z-index:3;width:340px;flex-shrink:0}
+.tree-branches{display:flex;flex-direction:column;gap:18px;padding-left:16px;border-left:1.5px solid var(--line);min-width:420px}
+.branch-ghost{display:flex;gap:10px;align-items:flex-start}
+.branch-ghost>span{display:block;width:90px;height:26px;margin-top:14px;border-radius:12px;background:#efece4}
+.branch-ghost .scene-ghost{width:360px}
+.live-tag{font-size:11.5px;color:var(--primary);background:var(--primary-soft);border-radius:20px;padding:2px 9px;white-space:nowrap}
 </style>
