@@ -20,6 +20,7 @@ export const expand = reactive({
   focusRoute: null,   // 展开视图正在看的那一页：改完同步时永远排第一
 })
 const adopted = new Map()   // 预同步的令牌 → 提交后的正式版本哈希
+const candidates = new Map() // 预同步的令牌 → 候选版本的副本源码
 let ctx = null        // { pid, pageId, makeDoc(route), width }
 const queue = []
 let active = 0
@@ -65,9 +66,11 @@ export function requestRoute(route, { force = false } = {}) {
 export async function expandAll(currentRoute = '') {
   if (!ctx || expand.discovering) return
   expand.discovering = true; expand.error = ''
+  const scope = expand.scope
   try {
     if (!expand.routes.length) {
       const found = await discoverRoutes({ doc: ctx.makeDoc(currentRoute), width: ctx.width })
+      if (expand.scope !== scope) return   // 找页面的时候已经切到别的项目了
       expand.routes = found.routes.length ? found.routes : [{ hash: currentRoute, title: '当前页面' }]
       api(`${base()}/routes`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ routes: expand.routes }) }).catch(() => {})
     }
@@ -89,9 +92,10 @@ export function setFocusRoute(route) { expand.focusRoute = route }
 
 // ===== 预同步：AI 改完、还在做运行检查的时候，就用候选版本先把正在看的那页拍出来 =====
 // 检查 + 提交要一两秒，这段时间副本已经在跑了；提交成功直接认领成正式结果，失败就退回旧快照。
-export function presync(token, route) {
+export function presync(token, route, makeDoc) {
   const e = expand.entries[route]
   if (!ctx || route == null || !e?.result?.nodes?.length || e.partial) return
+  if (makeDoc) candidates.set(token, makeDoc)
   schedule(route, 'sync', true, true, token)
 }
 export function adoptPresync(token, rawHash) {
@@ -135,20 +139,20 @@ function pump() {
 }
 
 async function run({ route, kind, token }) {
-  const scope = expand.scope
+  const scope = expand.scope, c = ctx
   // 预同步拍的是候选版本：先挂在「pending:令牌」名下，提交成功再认领
   let hash = token ? `pending:${token}` : expand.hash
   const alive = () => expand.scope === scope
   const entry = expand.entries[route]
   expand.jobs[route] = { kind, progress: null }
   try {
-    const doc = ctx.makeDoc(route)
+    const doc = ((token && candidates.get(token)) || c.makeDoc)(route)
     let result
     if (kind === 'sync' && entry?.result?.nodes?.length) {
-      result = await syncNodes({ doc, nodes: entry.result.nodes, first: [...(touched[route] || [])], width: ctx.width, height: 800, cancelled: () => !alive() || adopted.get(token) === null,
+      result = await syncNodes({ doc, nodes: entry.result.nodes, first: [...(touched[route] || [])], width: c.width, height: 800, cancelled: () => !alive() || adopted.get(token) === null,
         onUpdate: update => { if (!alive() || adopted.get(token) === null) return; expand.jobs[route].progress = update; expand.entries[route] = { ...expand.entries[route], result: update, ...(token ? { hash, prev: entry } : {}) } } })
     } else {
-      result = await probePage({ doc, width: ctx.width, height: 800, cancelled: () => !alive(),
+      result = await probePage({ doc, width: c.width, height: 800, cancelled: () => !alive(),
         onUpdate: update => { if (!alive()) return; expand.jobs[route].progress = update; if (!entry || entry.partial) expand.entries[route] = { hash, result: update, partial: true } } })
     }
     if (!alive()) return

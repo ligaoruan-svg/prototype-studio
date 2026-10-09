@@ -35,6 +35,7 @@ const memoryList = ref([]), skillList = ref([])
 const fileManagerRevision = ref(0)
 const runs = ref([]), canvasWidth = ref(0), previewScroll = ref(null), pendingHighlights = ref([]), savedAt = ref('')
 const validationDetails = ref(''), composerIntent = ref('auto'), previewHash = ref('')
+const previewOwner = ref('')   // 当前预览源码属于哪个「项目:页面」——切项目时源码还没换完，不能拿旧源码去展开
 // 展开视图：把这一页的弹窗铺开看；点卡片后在预览里复现打开路径
 const moreMenu = ref(null)
 const cardPatch = ref(null)
@@ -107,15 +108,19 @@ function quickFill(kind) {
   toAI()
 }
 // 后台副本的源码：和预览同一份、同样的演示数据，只是路由换成要展开的那一页；它点出来的改动不会写回来
-function makeProbeDoc(route) {
+function makeProbeDoc(route, html = previewDoc.value) {
   let stored = {}
   try { stored = JSON.parse(localStorage.getItem(runtimeKey()) || '{}') } catch {}
-  return preparePreviewDocument(previewDoc.value.replace(/\n<!-- pa-open \d+ -->$/, ''), { stored, route, scroll: null, probe: true })
+  return preparePreviewDocument(html.replace(/\n<!-- pa-open \d+ -->$/, ''), { stored, route, scroll: null, probe: true })
 }
 watch([boardOpen, boardRoute, previewRoute], () => setFocusRoute(boardOpen.value ? boardRoute.value : previewRoute.value), { immediate: true })
 // 换页、提交新版本时告诉展开总管：已展开过的页面会在后台自动同步
-watch([() => project.value?.id, pageId, previewHash], ([pid, id, hash]) => {
-  if (pid && id && hash && previewDoc.value) bindExpand({ pid, pageId: id, hash, makeDoc: makeProbeDoc, width: canvasWidth.value || 1150 })
+// 只在新项目 / 新页面的源码真正载入后才绑：切项目那一刻 project 已经换了、预览还是旧的，
+// 以前就是拿旧原型去展开、结果还存进了新项目。源码在绑定时定格，后台展开用的永远是这一版
+watch([previewOwner, previewHash], ([owner, hash]) => {
+  const pid = project.value?.id, id = pageId.value, html = previewDoc.value
+  if (!pid || !id || !hash || !html || owner !== `${pid}:${id}`) return
+  bindExpand({ pid, pageId: id, hash, makeDoc: route => makeProbeDoc(route, html), width: canvasWidth.value || 1150 })
 })
 // 在展开视图的卡片里点选：和预览里点选走同一条路，改的是同一份源码
 async function pickFromBoard(data) {
@@ -181,13 +186,13 @@ async function refresh(reload = true) {
     if (!response.ok) throw new Error('预览加载失败，请重试')
     const html = await response.text()
     if (serial !== loadSequence) return
-    runtimeErrors.value = []; previewDoc.value = preparePreview(html); previewHash.value = info.hash
+    runtimeErrors.value = []; previewDoc.value = preparePreview(html); previewHash.value = info.hash; previewOwner.value = `${pid}:${id}`
   }
   await nextTick(); if (chatBox.value) chatBox.value.scrollTop = chatBox.value.scrollHeight
 }
 async function chooseProject(id) {
   if (locked.value || !id) return
-  loading.value = true; error.value = ''; closeSelection(); previewRoute.value = ''; previewScroll.value = null; runs.value = []
+  loading.value = true; error.value = ''; closeSelection(); previewRoute.value = ''; boardRoute.value = ''; boardFocus.value = null; previewScroll.value = null; runs.value = []
   try {
     project.value = await api(`/api/projects/${id}`); pageId.value = project.value.pages[0]?.id || ''
     if (!pageId.value) { previewDoc.value = ''; sourceInfo.value = { source: '', hash: '', tokens: {}, defaults: {}, regions: [] }; runtimeErrors.value = [] }
@@ -197,7 +202,7 @@ async function chooseProject(id) {
 }
 async function choosePage(id) {
   if (locked.value || id === pageId.value) return
-  pageId.value = id; previewRoute.value = ''; previewScroll.value = null; runs.value = []; closeSelection(); loading.value = true
+  pageId.value = id; previewRoute.value = ''; boardRoute.value = ''; boardFocus.value = null; previewScroll.value = null; runs.value = []; closeSelection(); loading.value = true
   try { await refresh(); status.value = '已就绪' } catch (e) { error.value = e.message } finally { loading.value = false }
 }
 async function loadProjects(preferred = '') {
@@ -262,7 +267,7 @@ async function onMessage(event) {
     else { openedModal.value = null; toast('没能自动打开这个弹窗，可以在预览里切到交互模式手动点开') }
   }
   if (data.type === 'LOADED' && pendingHighlights.value.length) { send({ type: 'PA_HIGHLIGHT', targets: pendingHighlights.value }); pendingHighlights.value = [] }
-  if (data.type === 'ROUTE') previewRoute.value = data.hash
+  if (data.type === 'ROUTE') { previewRoute.value = data.hash; if (boardOpen.value && !boardRoute.value) boardRoute.value = data.hash }
   if (data.type === 'STORAGE') { try { localStorage.setItem(runtimeKey(), JSON.stringify(data.data)) } catch {} }
   if (data.type === 'RUNTIME_ERROR' && !runtimeErrors.value.includes(data.message)) runtimeErrors.value.push(data.message)
   if (data.type === 'NAVIGATE') {
@@ -280,7 +285,7 @@ async function checkAndCommit(candidate) {
   pendingHighlights.value = candidate.targets || []
   previewDoc.value = html
   // 运行检查要一两秒：这段时间展开副本已经用候选版本去拍正在看的那页了
-  presync(candidate.pending_id, boardOpen.value ? boardRoute.value : previewRoute.value)
+  { const html = previewDoc.value; presync(candidate.pending_id, boardOpen.value ? boardRoute.value : previewRoute.value, route => makeProbeDoc(route, html)) }
   try {
     const errors = await new Promise((resolve, reject) => {
       const frame = document.createElement('iframe')
