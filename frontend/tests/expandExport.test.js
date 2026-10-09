@@ -15,8 +15,11 @@ test('按页面清单导出，没展开的列进目录', () => {
   const r = buildExpandExport({ projectName: '零碳', routes: [{ hash: '#a', title: 'A页' }, { hash: '#b', title: 'B页' }], entries: { '#a': { hash: 'h', result: result(nodes) } }, currentHash: 'h' })
   assert.equal(r.pages, 1); assert.equal(r.views, 4); assert.equal(r.missing, 1)
   assert.match(r.html, /B页<\/td><td>—<\/td><td class="muted">未展开/)
-  assert.match(r.html, /在上一层里点「下一步」打开/)
-  assert.match(r.html, /列表行操作「详情」打开/)
+  assert.match(r.html, /<span class="edge" title="下一步">下一步<\/span>/)
+  assert.match(r.html, /<i>列表行<\/i>详情/)
+  // 树的层级：第二步挂在新增弹窗那一枝下面
+  const sub = r.html.split('新增弹窗</h3>')[1]
+  assert.ok(sub.indexOf('第二步') < sub.indexOf('详情'), '第二步应在新增弹窗的下一层，排在下一条按钮链之前')
 })
 
 test('快照里的 </script> 不会截断导出文件，卡片不跑脚本', () => {

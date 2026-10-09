@@ -3,7 +3,8 @@
 // 发给别人双击就能看，不需要原型工坊；要 PDF 就用浏览器「打印 → 存储为 PDF」。
 import { buildTree, cardDocument, thumbFrame } from './probeTree.js'
 
-const CARD_W = 560
+// 树里的卡片要小：一页十几个视图横着排得下；看不清就点卡片放大
+const PAGE_W = 300, MODAL_W = 320, MAX_H = 440
 const esc = v => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 const clean = label => String(label || '').replace(/^表格行 · /, '')
 const BODY = '\u0000PA_BODY\u0000'
@@ -25,24 +26,27 @@ export function buildExpandExport({ projectName = '', fileName = '', version = '
     return styleKey.get(key)
   }
   // 一张卡：只在导出文件里留个占位，打开时滚到附近才真正渲染，几十张卡也不卡
-  function card(result, node) {
+  function card(result, node, title) {
     const frame = { w: result.width || 1150, h: result.height || 800 }
     const pageLike = node.isPage || node.kind === 'subpage'
     const box = pageLike ? { x: 0, y: 0, w: frame.w, h: frame.h } : (node.box || { x: 0, y: 0, ...frame })
-    const t = thumbFrame(box, CARD_W, 100000, pageLike ? 1 : 0.8)
+    const t = thumbFrame(box, pageLike ? PAGE_W : MODAL_W, MAX_H, 0.6)
     const i = cards.length
     bodies.push(node.html || '')
-    cards.push({ s: styleOf(result.styles, pageLike), w: frame.w, h: frame.h, t: t.transform })
-    return `<div class="thumb${pageLike ? ' scroll' : ''}" style="width:${t.width}px;height:${t.height}px" data-card="${i}"></div>`
+    cards.push({ s: styleOf(result.styles, pageLike), w: frame.w, h: frame.h, t: t.transform, b: [box.x, box.y, box.w, box.h], p: pageLike ? 1 : 0, n: title })
+    const cut = Math.round(box.h * t.scale) > t.height
+    return `<button type="button" class="thumb${cut ? ' cut' : ''}" style="width:${t.width}px;height:${t.height}px" data-card="${i}" title="点击放大查看"></button>`
   }
-  const kind = node => node.isPage ? '页面' : node.kind === 'subpage' ? '子页面' : '弹窗'
-  function block(route, result, node, depth) {
+const kind = node => node.isPage ? '页面' : node.kind === 'subpage' ? '子页面' : '弹窗'
+  // 横向树：页面在最左，从它的按钮出发一条条往右长；同一层的视图上下排，连线画在 CSS 里
+  function block(route, result, node) {
     const own = notesFor(notes, route.hash, node)
-    const head = `<header class="card-head"><span class="tag ${node.isPage ? 'page' : node.kind === 'subpage' ? 'sub' : 'modal'}">${kind(node)}</span><h3>${esc(node.title)}</h3>${node.stale ? '<span class="warn">按原路径已打不开，显示的是旧样子</span>' : ''}</header>`
-    const list = own.length ? `<ol class="notes">${own.map(a => `<li>${esc(a.note || '')}${a.text ? `<small>「${esc(String(a.text).slice(0, 40))}」</small>` : ''}</li>`).join('')}</ol>` : ''
-    const edge = node.isPage ? '' : `<div class="edge">${node.parent == null ? (/^表格行 · /.test(node.label || '') ? '列表行操作' : '页面按钮') : '在上一层里点'}「${esc(clean(node.label))}」打开</div>`
-    const kids = (node.children || []).map(c => block(route, result, c, depth + 1)).join('')
-    return `<div class="node">${edge}<article class="card">${head}${card(result, node)}${list}</article>${kids ? `<div class="kids">${kids}</div>` : ''}</div>`
+    const head = `<header class="card-head"><span class="tag ${node.isPage ? 'page' : node.kind === 'subpage' ? 'sub' : 'modal'}">${kind(node)}</span><h3 title="${esc(node.title)}">${esc(node.title)}</h3>${own.length ? `<span class="badge">意见 ${own.length}</span>` : ''}</header>`
+    const warn = node.stale ? '<p class="stale">按原路径已打不开，显示的是旧样子</p>' : ''
+    const list = own.length ? `<ol class="notes">${own.map(a => `<li>${esc(a.note || '')}${a.text ? `<small>「${esc(String(a.text).slice(0, 30))}」</small>` : ''}</li>`).join('')}</ol>` : ''
+    const edge = node.isPage ? '' : `<span class="edge" title="${esc(clean(node.label))}">${node.parent == null && /^表格行 · /.test(node.label || '') ? '<i>列表行</i>' : ''}${esc(clean(node.label))}</span>`
+    const kids = (node.children || []).map(c => `<div class="kid">${block(route, result, c)}</div>`).join('')
+    return `<div class="branch">${edge}<article class="card${node.isPage ? ' root' : ''}">${head}${card(result, node, node.title)}${warn}${list}</article>${kids ? `<div class="kids">${kids}</div>` : ''}</div>`
   }
 
   const sections = [], toc = []
@@ -57,7 +61,7 @@ export function buildExpandExport({ projectName = '', fileName = '', version = '
     total += views
     const pageNode = { id: 0, isPage: true, title: route.title, html: result.page, children: buildTree(nodes) }
     toc.push(`<tr><td><a href="#p${i}">${esc(route.title)}</a></td><td>${views}</td><td class="${state ? 'warn' : 'ok'}">${state || '已展开'}</td></tr>`)
-    sections.push(`<section id="p${i}" class="route"><h2>${esc(route.title)}<small>${views} 个视图${route.hash ? ' · ' + esc(route.hash) : ''}${state ? ` · <b class="warn">${state}</b>` : ''}</small></h2><div class="tree">${block(route, result, pageNode, 0)}</div></section>`)
+    sections.push(`<section id="p${i}" class="route"><h2>${esc(route.title)}<small>${views} 个视图${route.hash ? ' · ' + esc(route.hash) : ''}${state ? ` · <b class="warn">${state}</b>` : ''}</small></h2><div class="tree">${block(route, result, pageNode)}</div></section>`)
   })
 
   const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
@@ -66,42 +70,73 @@ export function buildExpandExport({ projectName = '', fileName = '', version = '
   const data = JSON.stringify({ styleSets, bodies, cards }).replace(/</g, '\\u003c')
   const html = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>${CSS}</style></head><body>
 <header class="top"><div><p class="eyebrow">原型工坊 · 展开图</p><h1>${esc(projectName)}</h1><p class="meta">${esc(fileName)}${version ? ' · v' + esc(version) : ''} · 导出于 ${stamp} · ${sections.length} 个业务页面 · ${total} 个视图${missing ? ` · ${missing} 个页面未展开` : ''}</p></div><button type="button" id="print">打印 / 存为 PDF</button></header>
-<main><nav class="toc"><h2>目录</h2><table><thead><tr><th>业务页面</th><th>视图</th><th>状态</th></tr></thead><tbody>${toc.join('')}</tbody></table><p class="hint">每张卡是导出时的界面快照：页面和子页面可以在卡片里滚动查看，弹窗只截弹窗本身。卡片下方的编号列表是当时记下、还没处理的修改意见。</p></nav>${sections.join('') || '<p class="empty">还没有展开过任何页面。</p>'}</main>
+<main><nav class="toc"><h2>目录</h2><table><thead><tr><th>业务页面</th><th>视图</th><th>状态</th></tr></thead><tbody>${toc.join('')}</tbody></table><p class="hint">每个业务页面一棵树：最左是页面本身，往右是点了哪个按钮打开的弹窗 / 子页面，再往右是弹窗里继续点开的。点任意卡片放大查看，页面和子页面放大后可以滚动。卡片下的编号列表是当时记下、还没处理的修改意见。</p></nav>${sections.join('') || '<p class="empty">还没有展开过任何页面。</p>'}</main>
 <script type="application/json" id="pa-data">${data}</script>
 <script>${RUNTIME}</script></body></html>`
   return { html, pages: sections.length, views: total, missing }
 }
 
 const CSS = `
-:root{--ink:#141413;--muted:#6f6e69;--line:#e5e2d6;--shell:#faf9f5;--canvas:#f0eee6;--primary:#b8532f;--soft:#f6e9e2;--warn:#8a5a0b}
+:root{--ink:#141413;--muted:#6f6e69;--line:#e5e2d6;--shell:#faf9f5;--canvas:#f0eee6;--primary:#b8532f;--soft:#f6e9e2;--warn:#8a5a0b;--wire:#d3ccbd}
 *{box-sizing:border-box}body{margin:0;background:var(--canvas);color:var(--ink);font:14px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
-.top{position:sticky;top:0;z-index:5;display:flex;align-items:flex-end;justify-content:space-between;gap:16px;padding:18px 28px;background:var(--shell);border-bottom:1px solid var(--line)}
-.eyebrow{margin:0;font-size:12px;color:var(--primary);font-weight:600}h1{margin:2px 0;font-size:22px}.meta{margin:0;color:var(--muted);font-size:12.5px}
+.top{position:sticky;top:0;z-index:5;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 28px;background:var(--shell);border-bottom:1px solid var(--line)}
+.eyebrow{margin:0;font-size:12px;color:var(--primary);font-weight:600}h1{margin:0;font-size:20px;line-height:1.4}.meta{margin:0;color:var(--muted);font-size:12.5px}
 #print{flex-shrink:0;border:1px solid #e2ded3;background:#fff;border-radius:10px;padding:8px 14px;font:inherit;cursor:pointer}#print:hover{border-color:#c9c1b4}
 main{padding:20px 28px 60px}
-.toc{max-width:720px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 20px;margin-bottom:28px}.toc h2{margin:0 0 8px;font-size:15px}
+.toc{max-width:760px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 20px;margin-bottom:28px}.toc h2{margin:0 0 8px;font-size:15px}
 table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}th{color:var(--muted);font-weight:500}
 td a{color:var(--ink)}td.ok{color:#4c7a52}td.warn,.warn{color:var(--warn)}td.muted{color:var(--muted)}.hint{margin:10px 0 0;font-size:12px;color:var(--muted)}
-.route{margin:0 0 36px}.route h2{display:flex;align-items:baseline;gap:12px;margin:0 0 14px;font-size:18px}.route h2 small{font-size:12px;font-weight:400;color:var(--muted)}
-.node{position:relative}.kids{margin:12px 0 0 28px;padding-left:22px;border-left:2px solid #dcd7cb;display:grid;gap:16px}
-.edge{display:inline-block;margin-bottom:6px;padding:2px 10px;font-size:12px;color:var(--muted);background:#fff;border:1px solid var(--line);border-radius:20px}
-.card{width:${CARD_W + 26}px;max-width:100%;background:#fff;border:1px solid #dfddd5;border-radius:12px;overflow:hidden}
-.card-head{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--line)}.card-head h3{margin:0;font-size:13.5px;flex:1;min-width:0}
-.card-head .warn{font-size:11px}
+.route{margin:0 0 22px;background:#f7f5ef;border:1px solid var(--line);border-radius:14px}
+.route h2{position:sticky;left:0;display:flex;align-items:baseline;gap:12px;margin:0;padding:14px 18px 0;font-size:17px}.route h2 small{font-size:12px;font-weight:400;color:var(--muted)}
+.tree{overflow-x:auto;padding:16px 18px 20px}
+/* 树：branch 一行 = [按钮][卡片][下一层]；kid 左边的竖线把兄弟串起来，横线接到自己的按钮上 */
+.branch{display:flex;align-items:flex-start;width:max-content}
+.kids{position:relative;display:flex;flex-direction:column;gap:18px;margin-left:30px}
+.kids::before{content:'';position:absolute;left:-30px;top:22px;width:30px;border-top:2px solid var(--wire)}
+.kid{position:relative;padding-left:26px}
+.kid::before{content:'';position:absolute;left:0;top:22px;width:26px;border-top:2px solid var(--wire)}
+.kid::after{content:'';position:absolute;left:0;top:-9px;bottom:-9px;border-left:2px solid var(--wire)}
+.kid:first-child::after{top:22px}.kid:last-child::after{bottom:auto;top:-9px;height:31px}.kid:only-child::after{display:none}
+.edge{flex-shrink:0;max-width:150px;margin:10px 8px 0 0;padding:2px 10px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:12px;line-height:20px;color:#55504a;background:#fff;border:1px solid var(--line);border-radius:20px}
+.edge i{font-style:normal;color:var(--muted);margin-right:4px}
+.card{flex-shrink:0;background:#fff;border:1px solid #dfddd5;border-radius:12px;overflow:hidden;box-shadow:0 1px 2px #2b33200a}
+.card.root{border-color:#e4c9bc}
+.card-head{display:flex;align-items:center;gap:7px;height:44px;padding:0 12px;border-bottom:1px solid var(--line)}.card-head h3{margin:0;font-size:13px;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tag{flex-shrink:0;font-size:11px;padding:1px 7px;border-radius:20px;background:#eef0f3;color:#55606e}.tag.page{background:var(--soft);color:var(--primary)}.tag.sub{background:#eef4ec;color:#4c7a52}
-.thumb{position:relative;margin:12px;overflow:hidden;border-radius:6px;background:#f5f7fa;box-shadow:0 1px 4px #2b33200f}
-.thumb iframe{position:absolute;left:0;top:0;border:0;transform-origin:0 0;background:#fff}
-.notes{margin:0;padding:8px 14px 10px 32px;border-top:1px dashed var(--line);font-size:12.5px;background:#fffaf6}.notes li{margin:2px 0}.notes small{margin-left:6px;color:var(--muted)}
+.badge{flex-shrink:0;font-size:11px;color:#fff;background:var(--primary);border-radius:20px;padding:1px 7px}
+.thumb{position:relative;display:block;margin:10px;padding:0;overflow:hidden;border:0;border-radius:6px;background:#f5f7fa;box-shadow:0 1px 4px #2b33200f;cursor:zoom-in}
+.thumb.cut::after{content:'点击看全部';position:absolute;left:0;right:0;bottom:0;padding:18px 0 6px;text-align:center;font-size:11px;color:var(--muted);background:linear-gradient(#fff0,#fffffff0)}
+.thumb iframe{position:absolute;left:0;top:0;border:0;transform-origin:0 0;background:#fff;pointer-events:none}
+.stale{margin:0 12px 8px;font-size:11.5px;color:var(--warn)}
+.notes{max-width:340px;margin:0;padding:8px 12px 10px 30px;border-top:1px dashed var(--line);font-size:12px;background:#fffaf6}.notes li{margin:2px 0}.notes small{margin-left:4px;color:var(--muted)}
 .empty{color:var(--muted)}
-@media (max-width:700px){main,.top{padding-left:14px;padding-right:14px}.kids{margin-left:8px;padding-left:12px}}
-@media print{.top{position:static}#print{display:none}body{background:#fff}.card,.edge{break-inside:avoid}.edge{break-after:avoid}.route{break-before:page}.toc{break-after:page}}
+/* 放大查看 */
+.zoom{position:fixed;inset:0;z-index:20;display:none;align-items:center;justify-content:center;padding:28px;background:#1a161299}
+.zoom.open{display:flex}.zoom-box{position:relative;display:flex;flex-direction:column;max-width:100%;max-height:100%;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 20px 60px #0004}
+.zoom-head{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line);font-weight:600}.zoom-head button{margin-left:auto;border:0;background:var(--canvas);border-radius:8px;padding:4px 10px;font:inherit;font-weight:400;cursor:pointer}
+.zoom-stage{position:relative;overflow:hidden}.zoom-stage iframe{position:absolute;left:0;top:0;border:0;transform-origin:0 0;background:#fff}
+@media (max-width:700px){main,.top{padding-left:14px;padding-right:14px}}
+@page{size:A4 landscape;margin:12mm}
+@media print{.top{position:static}#print,.zoom{display:none!important}body{background:#fff}.card,.edge{break-inside:avoid}.route{break-before:page;border:0;background:#fff}.toc{break-after:page}.tree{overflow:visible}.thumb.cut::after{display:none}.thumb{cursor:auto}}
 `
 
 // 导出文件里唯一的脚本：滚到附近再把卡片渲染出来；打印前全部渲染好
 const RUNTIME = `(()=>{const D=JSON.parse(document.getElementById('pa-data').textContent);
-function show(el){if(el.firstChild)return;const c=D.cards[+el.dataset.card],s=D.styleSets[c.s],f=document.createElement('iframe');
-f.setAttribute('sandbox','');f.setAttribute('loading','eager');f.title='界面快照';f.style.width=c.w+'px';f.style.height=c.h+'px';f.style.transform=c.t;f.srcdoc=s[0]+D.bodies[+el.dataset.card]+s[1];el.appendChild(f)}
+const doc=i=>{const c=D.cards[i],s=D.styleSets[c.s];return s[0]+D.bodies[i]+s[1]};
+function frame(i,w,h,t){const f=document.createElement('iframe');f.setAttribute('sandbox','');f.title='界面快照';f.style.width=w+'px';f.style.height=h+'px';f.style.transform=t;f.srcdoc=doc(i);return f}
+function show(el){if(el.firstChild)return;const i=+el.dataset.card,c=D.cards[i];el.appendChild(frame(i,c.w,c.h,c.t))}
 const all=[...document.querySelectorAll('[data-card]')];
-if('IntersectionObserver' in window){const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){show(e.target);io.unobserve(e.target)}}),{rootMargin:'800px'});all.forEach(el=>io.observe(el))}else all.forEach(show);
-document.getElementById('print').onclick=()=>{all.forEach(show);const b=document.getElementById('print');b.textContent='准备中…';setTimeout(()=>{b.textContent='打印 / 存为 PDF';print()},1500)};
-addEventListener('beforeprint',()=>all.forEach(show));})();`
+if('IntersectionObserver' in window){const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){show(e.target);io.unobserve(e.target)}}),{root:null,rootMargin:'600px'});all.forEach(el=>io.observe(el))}else all.forEach(show);
+// 放大：弹窗按弹窗本身放到最大；页面 / 子页面按原尺寸铺满宽度，可以在里面滚动
+const z=document.createElement('div');z.className='zoom';z.innerHTML='<div class="zoom-box"><div class="zoom-head"><span></span><button type="button">关闭 Esc</button></div><div class="zoom-stage"></div></div>';document.body.appendChild(z);
+const close=()=>{z.classList.remove('open');z.querySelector('.zoom-stage').innerHTML=''};
+z.addEventListener('click',e=>{if(e.target===z||e.target.closest('.zoom-head button'))close()});addEventListener('keydown',e=>{if(e.key==='Escape')close()});
+document.addEventListener('click',e=>{const el=e.target.closest('[data-card]');if(!el)return;const i=+el.dataset.card,c=D.cards[i],[x,y,w,h]=c.b;
+const maxW=innerWidth-56,maxH=innerHeight-56-46,stage=z.querySelector('.zoom-stage');stage.innerHTML='';z.querySelector('.zoom-head span').textContent=c.n;
+if(c.p){const k=Math.min(1,maxW/c.w),f=frame(i,c.w,maxH/k,'scale('+k+')');stage.style.width=Math.round(c.w*k)+'px';stage.style.height=Math.round(maxH)+'px';stage.appendChild(f)}
+else{const k=Math.min(1.2,maxW/w,maxH/h),f=frame(i,c.w,c.h,'translate('+(-x*k)+'px,'+(-y*k)+'px) scale('+k+')');stage.style.width=Math.round(w*k)+'px';stage.style.height=Math.round(h*k)+'px';stage.appendChild(f)}
+z.classList.add('open')});
+// 打印：先全部渲染；树太宽就整棵缩小到一页宽
+const fit=()=>{all.forEach(show);document.querySelectorAll('.tree').forEach(t=>{t.style.zoom='';const k=Math.min(1,1040/t.scrollWidth);if(k<1)t.style.zoom=k})};
+addEventListener('beforeprint',fit);addEventListener('afterprint',()=>document.querySelectorAll('.tree').forEach(t=>t.style.zoom=''));
+document.getElementById('print').onclick=()=>{fit();const b=document.getElementById('print');b.textContent='准备中…';setTimeout(()=>{b.textContent='打印 / 存为 PDF';print()},1500)};})();`
