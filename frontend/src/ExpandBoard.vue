@@ -1,25 +1,34 @@
 <script setup>
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { ArrowLeft, Hand, Layers, LoaderCircle, RotateCw, Search, AlertCircle } from 'lucide-vue-next'
-import { probePage, probeCache, syncNodes, lastByScope } from './probe.js'
+import { computed, onMounted, ref, watch } from 'vue'
+import { ArrowLeft, Hand, Layers, LoaderCircle, RotateCw, Search, AlertCircle, ChevronDown } from 'lucide-vue-next'
+import { expand, expandAll, isFresh, requestRoute, touch } from './expandStore.js'
 import { ORIGIN_LABEL, crumbOf, originOf, pickToSelection, shortLabel, trailOf } from './probeTree.js'
 import SceneCard from './SceneCard.vue'
 
-const props = defineProps({ doc: String, width: Number, cacheKey: String, scopeKey: String, pageName: String, selection: Object, mode: String, focus: [Number, null], notes: { type: Array, default: () => [] } })
-const emit = defineEmits(['open', 'leave', 'select', 'update:focus'])
+const props = defineProps({ route: { type: String, default: '' }, pageName: String, selection: Object, mode: String, focus: [Number, null], notes: { type: Array, default: () => [] } })
+const emit = defineEmits(['open', 'leave', 'select', 'update:focus', 'update:route'])
 
-const empty = () => ({ title: '', styles: null, page: '', width: props.width || 1150, height: 800, nodes: [], tried: 0, total: 0, current: '' })
-const state = ref(empty())        // 画布上正在显示的结果
-const progress = ref(empty())     // 正在跑的这一轮
-const status = ref('running')     // running | refreshing | syncing | done | error
-const failure = ref('')
+const empty = { title: '', styles: null, page: '', width: 1150, height: 800, nodes: [] }
 const filter = ref('all'), query = ref('')
-let stop = false, round = 0
-// 最近点选过、记过意见的卡：改完同步时排在最前面，刚改的地方最先换上新样子
-const touched = new Set()
-watch(() => props.notes, notes => { for (const n of state.value.nodes) if (notes.some(a => a.in_modal && a.in_modal === n.title)) touched.add(n.id) }, { immediate: true })
+const entry = computed(() => expand.entries[props.route] || null)
+const job = computed(() => expand.jobs[props.route] || null)
+const state = computed(() => entry.value?.result || empty)
+const progress = computed(() => job.value?.progress || {})
+// running：第一次展开这一页；refreshing：重新查找；syncing：改过一版在同步；queued：排着队
+const status = computed(() => job.value ? (job.value.kind === 'sync' ? 'syncing' : entry.value && !entry.value.partial ? 'refreshing' : 'running')
+  : expand.queued.includes(props.route) ? 'queued' : entry.value ? 'done' : 'idle')
+const busy = computed(() => status.value !== 'done' && status.value !== 'idle')
+const staleCount = computed(() => state.value.nodes.filter(n => n.stale).length)
 
-const title = computed(() => state.value.title || props.pageName || '当前页面')
+// 全部页面：导航里的每个路由一项
+const routeTitle = route => expand.routes.find(r => r.hash === route)?.title
+const pages = computed(() => expand.routes.map(r => ({ ...r, count: expand.entries[r.hash]?.result?.nodes?.length,
+  state: expand.jobs[r.hash] ? '展开中' : isFresh(r.hash) ? '' : expand.entries[r.hash] ? '待同步' : expand.queued.includes(r.hash) ? '排队中' : '未展开' })))
+const allDone = computed(() => expand.routes.length > 0 && expand.routes.every(r => isFresh(r.hash)))
+const allProgress = computed(() => ({ done: expand.routes.filter(r => isFresh(r.hash)).length, total: expand.routes.length }))
+const allRunning = computed(() => expand.discovering || (expand.routes.length > 0 && !allDone.value && (Object.keys(expand.jobs).length > 0 || expand.queued.length > 0)))
+
+const title = computed(() => state.value.title || routeTitle(props.route) || props.pageName || '当前页面')
 // 页面本身也是一张卡：静态元素在这里点选，能直接微调
 const pageNode = computed(() => state.value.styles && state.value.page ? { id: 0, isPage: true, title: title.value, html: state.value.page, box: null } : null)
 const scenes = computed(() => [...(pageNode.value ? [pageNode.value] : []), ...state.value.nodes].map(node => ({ node, origin: originOf(node), crumb: crumbOf(state.value.nodes, node) })))
@@ -29,62 +38,22 @@ const groups = computed(() => {
   return [{ key: 'all', label: '全部视图', count: scenes.value.length }, ...Object.keys(ORIGIN_LABEL).filter(k => counts[k]).map(k => ({ key: k, label: ORIGIN_LABEL[k], count: counts[k] }))]
 })
 const shown = computed(() => scenes.value.filter(s => (filter.value === 'all' || s.origin === filter.value) && (!query.value.trim() || `${s.node.title} ${s.crumb}`.includes(query.value.trim()))))
-const frame = computed(() => ({ w: state.value.width, h: state.value.height }))
-const picked = computed(() => props.selection?.card || null)
+const frame = computed(() => ({ w: state.value.width || 1150, h: state.value.height || 800 }))
+const picked = computed(() => props.selection?.card?.route === props.route ? props.selection.card : null)
 const focused = computed(() => props.focus == null ? null : scenes.value.find(s => s.node.id === props.focus) || null)
-const busy = computed(() => ['running', 'refreshing', 'syncing'].includes(status.value))
-const staleCount = computed(() => state.value.nodes.filter(n => n.stale).length)
-// 卡片右上角的「已记 N 条」：先记下的意见按所在弹窗归到对应的卡上
-function notesOf(node) { return props.notes.filter(a => (a.in_modal || '') === (node.isPage ? '' : node.title)).length }
 
-function finish(result) {
-  state.value = { ...result, current: '', scope: props.scopeKey }
-  probeCache.set(props.cacheKey, state.value)
-  lastByScope.set(props.scopeKey, state.value)
-  status.value = 'done'
-  touched.clear()
-}
-async function run(force = false) {
-  stop = false; failure.value = ''
-  const mine = ++round
-  const alive = () => !stop && mine === round
-  if (!force && probeCache.has(props.cacheKey)) { state.value = probeCache.get(props.cacheKey); status.value = 'done'; return }
-  // 改过一版：已经知道每张卡怎么点开，按路径重拍快照就行，不用从头找。刚改的那张最先换上。
-  const base = state.value.nodes.length && state.value.scope === props.scopeKey ? state.value : lastByScope.get(props.scopeKey)
-  if (!force && base?.nodes?.length) {
-    state.value = { ...base }
-    status.value = 'syncing'; progress.value = { ...empty(), done: 0, total: base.nodes.length }
-    try {
-      const result = await syncNodes({ doc: props.doc, nodes: base.nodes, first: [...touched, ...(props.selection?.card ? [props.selection.card.nodeId] : [])], width: props.width || 1150, height: 800,
-        cancelled: () => !alive(), onUpdate: update => { if (!alive()) return; state.value = { ...update, scope: props.scopeKey }; progress.value = update } })
-      if (alive()) finish(result)
-    } catch (e) { if (alive()) { failure.value = e.message || '同步失败'; status.value = 'done' } }
-    return
-  }
-  // 第一次展开，或者点了「重新查找」：从页面按钮出发全部重找。旧卡片先留着，新结果整批换上
-  const keep = state.value.nodes.length > 0
-  status.value = keep ? 'refreshing' : 'running'
-  progress.value = empty()
-  if (!keep) state.value = empty()
-  try {
-    const result = await probePage({ doc: props.doc, width: props.width || 1150, height: 800, cancelled: () => !alive(),
-      onUpdate: update => { if (!alive()) return; progress.value = update; if (!keep) state.value = update } })
-    if (alive()) finish(result)
-  } catch (e) {
-    if (!alive()) return
-    failure.value = e.message || '展开失败'
-    status.value = keep ? 'done' : 'error'
-  }
-}
-function open(node) { if (node.isPage) emit('leave'); else emit('open', { ...node, trail: trailOf(state.value.nodes, node) }) }
+function notesOf(node) { return props.notes.filter(a => (a.in_modal || '') === (node.isPage ? '' : node.title)).length }
+function open(node) { if (node.isPage) emit('leave'); else emit('open', { ...node, route: props.route, trail: trailOf(state.value.nodes, node) }) }
 function pick({ node, items }) {
   if (!items.length) return
-  touched.add(node.id)
-  emit('select', { ...pickToSelection(node, items, title.value), trail: node.isPage ? '' : trailOf(state.value.nodes, node) })
+  touch(props.route, node.id)
+  const sel = pickToSelection(node, items, title.value)
+  emit('select', { ...sel, card: { ...sel.card, route: props.route }, trail: node.isPage ? '' : trailOf(state.value.nodes, node) })
 }
-watch(() => props.cacheKey, () => run(false))
-onMounted(() => run())
-onUnmounted(() => { stop = true })
+// 记过意见的卡：改完同步时先拍
+watch(() => props.notes, notes => { for (const n of state.value.nodes) if (notes.some(a => a.in_modal && a.in_modal === n.title)) touch(props.route, n.id) }, { immediate: true })
+watch(() => [props.route, expand.hash, expand.scope], () => requestRoute(props.route))
+onMounted(() => requestRoute(props.route))
 </script>
 <template>
   <section class="board" aria-label="展开这一页的所有视图">
@@ -104,27 +73,35 @@ onUnmounted(() => { stop = true })
     <template v-else>
       <div class="board-tools">
         <div class="board-heading-wrap">
-          <div class="board-heading"><Layers :size="16" /><strong>{{ title }}</strong><span class="board-count">{{ scenes.length }} 个视图</span></div>
-          <p v-if="status === 'running'" class="board-sub live" aria-live="polite"><LoaderCircle :size="12" class="spin" />正在试「{{ shortLabel(progress.current) || '准备中' }}」· 已试 {{ progress.tried }} / {{ progress.total || '…' }} · 找到 {{ progress.nodes.length }} 个</p>
-          <p v-else-if="status === 'refreshing'" class="board-sub live" aria-live="polite"><LoaderCircle :size="12" class="spin" />正在重新查找 · 已试 {{ progress.tried }} / {{ progress.total || '…' }}</p>
-          <p v-else-if="status === 'syncing'" class="board-sub live" aria-live="polite"><LoaderCircle :size="12" class="spin" />正在同步改动 · {{ progress.done || 0 }} / {{ progress.total }}</p>
+          <div class="board-heading">
+            <Layers :size="16" />
+            <label v-if="pages.length" class="page-switch" title="切换要展开的页面"><select :value="route" aria-label="切换页面" @change="$emit('update:route', $event.target.value); $emit('update:focus', null)"><option v-if="!pages.some(p => p.hash === route)" :value="route">{{ title }}</option><option v-for="p in pages" :key="p.hash" :value="p.hash">{{ p.title }}{{ p.count != null ? ' · ' + p.count : '' }}{{ p.state ? '（' + p.state + '）' : '' }}</option></select><strong>{{ title }}</strong><ChevronDown :size="14" /></label>
+            <strong v-else>{{ title }}</strong>
+            <span class="board-count">{{ scenes.length }} 个视图</span>
+          </div>
+          <p v-if="status === 'running'" class="board-sub live" aria-live="polite"><LoaderCircle :size="12" class="spin" />正在试「{{ shortLabel(progress.current) || '准备中' }}」· 已试 {{ progress.tried || 0 }} / {{ progress.total || '…' }} · 找到 {{ progress.nodes?.length || 0 }} 个</p>
+          <p v-else-if="status === 'refreshing'" class="board-sub live" aria-live="polite"><LoaderCircle :size="12" class="spin" />正在重新查找 · 已试 {{ progress.tried || 0 }} / {{ progress.total || '…' }}</p>
+          <p v-else-if="status === 'syncing'" class="board-sub live" aria-live="polite"><LoaderCircle :size="12" class="spin" />正在同步改动 · {{ progress.done || 0 }} / {{ progress.total || state.nodes.length }}</p>
+          <p v-else-if="status === 'queued'" class="board-sub live" aria-live="polite"><LoaderCircle :size="12" class="spin" />排队中，马上轮到这一页</p>
           <p v-else-if="staleCount" class="board-sub warn">有 {{ staleCount }} 张卡点不开了，可能按钮改了名——点右上角重新查找</p>
           <p v-else class="board-sub">点选要改的地方；太小时可放大编辑。多处一起改：每处「先记下」，最后一次修改</p>
         </div>
         <div class="board-control">
+          <button v-if="!allDone" type="button" class="expand-all" :disabled="allRunning" :title="allRunning ? '后台正在展开，预览和展开视图照常能用' : '把原型里的每个页面都展开一遍，之后改动会自动同步'" @click="expandAll(route)"><LoaderCircle v-if="allRunning" :size="13" class="spin" /><Layers v-else :size="13" />{{ allRunning ? (expand.discovering ? '正在找页面…' : `全部页面 ${allProgress.done} / ${allProgress.total}`) : '一键展开全部页面' }}</button>
+          <span v-else class="all-done" title="所有页面都已展开，改动会自动同步">全部 {{ allProgress.total }} 页已展开</span>
           <label class="search"><Search :size="14" /><input v-model="query" type="search" placeholder="查找弹窗" aria-label="查找弹窗"></label>
-          <button type="button" class="icon-button refresh" :disabled="busy" title="重新查找这一页的所有弹窗（新加了按钮时用）" aria-label="重新查找这一页的所有弹窗" @click="run(true)"><RotateCw :size="15" :class="{ spin: busy }" /></button>
+          <button type="button" class="icon-button refresh" :disabled="busy" title="重新查找这一页的所有弹窗（新加了按钮时用）" aria-label="重新查找这一页的所有弹窗" @click="requestRoute(route, { force: true })"><RotateCw :size="15" :class="{ spin: busy }" /></button>
         </div>
       </div>
       <div class="board-filter" role="tablist" aria-label="按来源筛选">
         <button v-for="g in groups" :key="g.key" type="button" role="tab" :aria-selected="filter === g.key" :class="{ active: filter === g.key }" @click="filter = g.key">{{ g.label }}<span>{{ g.count }}</span></button>
       </div>
-      <div v-if="status === 'error'" class="board-error"><AlertCircle :size="15" /><span>{{ failure }}，可以点右上角的刷新再试一次。</span></div>
+      <div v-if="expand.error" class="board-error"><AlertCircle :size="15" /><span>{{ expand.error }}，可以点右上角的刷新再试一次。</span></div>
       <div class="board-scroll">
         <div class="board-grid">
           <SceneCard v-for="s in shown" :key="s.node.id" :node="s.node" :styles="state.styles" :frame="frame" :picked="picked" :mode="mode" :crumb="s.crumb" :notes="notesOf(s.node)" @pick="pick" @open="open" @focus="$emit('update:focus', $event.id)" />
-          <div v-if="status === 'running'" class="scene-ghost" aria-hidden="true"><span></span><span></span><span></span></div>
-          <div v-if="status !== 'running' && !shown.length" class="empty-board">
+          <div v-if="status === 'running' || status === 'queued'" class="scene-ghost" aria-hidden="true"><span></span><span></span><span></span></div>
+          <div v-if="!busy && !shown.length" class="empty-board">
             <template v-if="query || filter !== 'all'"><Search :size="22" /><h3>没有找到对应视图</h3><p>试试其他名称，或者清空当前筛选。</p><button type="button" class="outline" @click="query = ''; filter = 'all'">清空筛选</button></template>
             <template v-else><h3>这一页没有点出弹窗</h3><p>如果弹窗要先切到某个页签、选中某一行才出现，先在预览里切过去，再点右上角的刷新。</p></template>
           </div>
@@ -174,4 +151,13 @@ onUnmounted(() => { stop = true })
 .focus-content{flex:1;min-height:0;overflow:auto;padding:28px 24px 96px}
 .focus-tip{text-align:center;font-size:12px;color:var(--muted);margin-top:18px}
 @media (prefers-reduced-motion: reduce){.scene-ghost span{animation:none}}
+.page-switch{position:relative;display:flex;align-items:center;gap:4px;min-width:0;border-radius:7px;padding:2px 4px;margin:-2px -4px;cursor:pointer}
+.page-switch:hover{background:#fff}
+.page-switch strong{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.page-switch svg{color:var(--muted);flex-shrink:0}
+.page-switch select{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}
+.expand-all{gap:6px;height:32px;padding:0 11px;font-size:12px;border-radius:8px;color:#fff;background:var(--primary)}
+.expand-all:hover:not(:disabled){background:var(--primary-hover)}
+.expand-all:disabled{opacity:1;background:#fff;color:var(--primary);border:1px solid #e1cabd}
+.all-done{font-size:12px;color:var(--success);white-space:nowrap}
 </style>

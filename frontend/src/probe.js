@@ -119,7 +119,12 @@ export async function syncNodes({ doc, nodes = [], first = [], width = 1150, hei
   } finally { probe.dispose() }
 }
 
-// 同一页、同一版本、同一个路由，结果不会变；来回切换展开视图不用每次重新点一遍
-export const probeCache = new Map()
-// 同一页同一路由上一次的结果：版本变了就拿它做底子同步，不用从头找
-export const lastByScope = new Map()
+// 这个原型里有哪些页面（导航里的 #路由）
+export async function discoverRoutes({ doc, width = 1150, height = 800 }) {
+  const probe = probeFrame(doc, width, height)
+  try {
+    await probe.load()
+    const reply = await probe.rpc('PA_PROBE_ROUTES', {}, 9_000)
+    return { routes: reply.routes || [], current: reply.current || '' }
+  } finally { probe.dispose() }
+}

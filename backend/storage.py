@@ -265,3 +265,54 @@ def append_chat(project_id: str, role: str, content: str, extra: dict[str, Any] 
     meta["chat"] = meta["chat"][-40:]
     meta["updated_at"] = now_iso()
     save_meta(meta)
+
+
+# ===== 展开视图的快照 =====
+# 一键展开全部页面要几分钟，结果存在磁盘上：重启服务、刷新浏览器都不用重来。
+# 每个页面（原型里的路由）一个文件，改了版本也先留着，前端拿它做底子同步。
+def _expand_dir(project_id: str, page_id: str) -> Path:
+    if not re.fullmatch(r"page_[\w-]+", page_id):
+        raise ValueError("页面编号无效")
+    return project_dir(project_id) / "expand" / page_id
+
+
+def _route_file(route: str) -> str:
+    # 路由是 #factor-list 这样的东西；文件名只留安全字符，再带一段哈希防重名
+    import hashlib
+    slug = re.sub(r"[^\w-]+", "_", route.lstrip("#"))[:40] or "default"
+    return f"{slug}-{hashlib.sha1(route.encode('utf-8')).hexdigest()[:8]}.json"
+
+
+def load_expand(project_id: str, page_id: str) -> dict[str, Any]:
+    load_meta(project_id)
+    root = _expand_dir(project_id, page_id)
+    out: dict[str, Any] = {"routes": [], "entries": {}}
+    index = root / "routes.json"
+    if index.exists():
+        try:
+            out["routes"] = json.loads(index.read_text(encoding="utf-8")).get("routes", [])
+        except (OSError, ValueError):
+            pass
+    for path in sorted(root.glob("*.json")) if root.exists() else []:
+        if path.name == "routes.json":
+            continue
+        try:
+            item = json.loads(path.read_text(encoding="utf-8"))
+            out["entries"][item["route"]] = {"hash": item.get("hash", ""), "result": item.get("result")}
+        except (OSError, ValueError, KeyError):
+            continue
+    return out
+
+
+def save_expand_routes(project_id: str, page_id: str, routes: list[dict[str, Any]]) -> None:
+    load_meta(project_id)
+    clean = [{"hash": str(r.get("hash", ""))[:200], "title": str(r.get("title", ""))[:60]} for r in routes[:80]]
+    write_atomic(_expand_dir(project_id, page_id) / "routes.json", json.dumps({"routes": clean}, ensure_ascii=False))
+
+
+def save_expand_entry(project_id: str, page_id: str, route: str, version_hash: str, result: dict[str, Any]) -> None:
+    load_meta(project_id)
+    body = json.dumps({"route": route[:200], "hash": version_hash[:80], "result": result}, ensure_ascii=False)
+    if len(body) > 8_000_000:
+        raise ValueError("这个页面的展开结果太大，没有保存")
+    write_atomic(_expand_dir(project_id, page_id) / _route_file(route), body)

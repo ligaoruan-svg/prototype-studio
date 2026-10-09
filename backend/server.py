@@ -350,6 +350,42 @@ def add_annotation(project_id: str, page_id: str, body: AnnotationIn):
         raise HTTPException(400, str(exc))
 
 
+class ExpandRoutesIn(BaseModel):
+    routes: list[dict] = []
+
+
+class ExpandEntryIn(BaseModel):
+    route: str = ""
+    hash: str = ""
+    result: dict
+
+
+@app.get("/api/projects/{project_id}/pages/{page_id}/expand")
+def get_expand(project_id: str, page_id: str):
+    try:
+        return storage.load_expand(project_id, page_id)
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(404, str(exc))
+
+
+@app.put("/api/projects/{project_id}/pages/{page_id}/expand/routes")
+def put_expand_routes(project_id: str, page_id: str, body: ExpandRoutesIn):
+    try:
+        storage.save_expand_routes(project_id, page_id, body.routes)
+        return {"ok": True}
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.put("/api/projects/{project_id}/pages/{page_id}/expand/entry")
+def put_expand_entry(project_id: str, page_id: str, body: ExpandEntryIn):
+    try:
+        storage.save_expand_entry(project_id, page_id, body.route, body.hash, body.result)
+        return {"ok": True}
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(400, str(exc))
+
+
 @app.delete("/api/projects/{project_id}/annotations/{annotation_id}")
 def del_annotation(project_id: str, annotation_id: str):
     storage.delete_annotation(project_id, annotation_id)

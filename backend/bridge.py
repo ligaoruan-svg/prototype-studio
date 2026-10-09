@@ -356,6 +356,17 @@ _TEMPLATE = r'''
     }
     return !topOpen(base);
   }
+  // 原型里有哪些页面：导航里指向 #路由 的链接。折叠起来的分组里的链接也算（不要求看得见）
+  function routesOf(){
+    const seen=new Set(),out=[];
+    for(const a of document.querySelectorAll('a[href^="#"]')){
+      const h=a.getAttribute('href')||'';if(h.length<2||seen.has(h))continue;
+      if(!inSkipZone(a)&&!inChrome(a))continue;
+      seen.add(h);out.push({hash:h,title:(a.textContent||'').replace(/\s+/g,' ').trim().slice(0,30)||h});
+      if(out.length>=60)break;
+    }
+    return out;
+  }
   let probeBase=null,probeSig='';
   async function probeInit(full){
     await sleep(50);probeBase=snapshot();probeSig=pageSig();
@@ -389,6 +400,7 @@ _TEMPLATE = r'''
 
   window.addEventListener('message',e=>{
     if(e.source!==parent)return;const m=e.data||{};
+    if(m.type==='PA_PROBE_ROUTES'){send('PROBE_REPLY',{id:m.id,routes:routesOf(),current:location.hash});return;}
     if(m.type==='PA_PROBE_INIT'){probeInit(!!m.full).then(r=>send('PROBE_REPLY',{id:m.id,...r}),err=>send('PROBE_REPLY',{id:m.id,ok:false,error:String(err)}));return;}
     if(m.type==='PA_PROBE_TRY'){probeTry(m.path||[],m.step).then(r=>send('PROBE_REPLY',{id:m.id,...r}),err=>send('PROBE_REPLY',{id:m.id,ok:false,error:String(err),needReload:true}));return;}
     if(m.type==='PA_REPLAY'){replay(m.path||[]).then(r=>send('REPLAYED',r),()=>send('REPLAYED',{ok:false,at:0}));return;}
