@@ -39,6 +39,7 @@ const validationDetails = ref(''), composerIntent = ref('auto'), previewHash = r
 const moreMenu = ref(null)
 const cardPatch = ref(null)
 let patchSeq = 0
+const boardMounted = ref(false)   // 展开第一次打开后就一直留着，卡片不用每次重新载入
 const boardOpen = ref(false), boardFocus = ref(null), boardRoute = ref(''), pendingReplay = ref(null), openedModal = ref(null)
 let reloadNonce = 0
 const currentRuns = computed(() => runs.value.filter(r => r.pageId === pageId.value && r.projectId === project.value?.id && !['complete', 'dismissed'].includes(r.status)))
@@ -75,19 +76,23 @@ function send(message) { previewFrame.value?.contentWindow?.postMessage(previewM
 function setMode(value) { mode.value = value; if (view.value === 'code') view.value = 'preview'; send({ type: 'PA_SET_MODE', mode: value }); if (window.innerWidth <= 960) { leftOpen.value = false; rightOpen.value = false } if (value === 'select') toast('点击选中；按住 Shift 或 ⌘ 可以多选几处'); if (value === 'box') toast('按住拖动，框选你想调整的区域') }
 function toggleBoard() {
   if (!page.value || !previewDoc.value) return
-  if (boardOpen.value) { boardOpen.value = false; return }
+  if (boardOpen.value) { showPreview(); return }
   showBoard()
 }
 // 展开是一种查看方式：在里面只能点选或拉框，「交互」要回到预览
 function showBoard() {
   if (!page.value || !previewDoc.value) return
   if (!boardOpen.value) boardRoute.value = previewRoute.value
+  boardMounted.value = true
   view.value = 'preview'; boardOpen.value = true
   // 展开主要是用来选中修改的：从预览的交互模式进来，默认切到点选；想试玩再切回交互
   if (mode.value === 'interact') { mode.value = 'select'; send({ type: 'PA_SET_MODE', mode: 'select' }) }
 }
 // 从展开视图回到预览：预览跟到展开里正在看的那一页
-function showPreview() { if (boardOpen.value && boardRoute.value !== previewRoute.value) previewRoute.value = boardRoute.value; view.value = 'preview'; boardOpen.value = false; boardFocus.value = null }
+// 预览和展开都一直挂着，切换只是换哪个露在前面：不重载、不重拍，点一下就到
+function showPreview() { if (boardOpen.value) gotoRoute(boardRoute.value); view.value = 'preview'; boardOpen.value = false; boardFocus.value = null }
+// 预览跟到展开里正在看的那一页：原型是单页应用，换个 #路由 就行，不用整页重载
+function gotoRoute(route) { if (route == null || route === previewRoute.value) return; previewRoute.value = route; send({ type: 'PA_ROUTE', hash: route }) }
 // 右侧「放大编辑」：回到展开视图，把选中元素所在的那张卡放大
 function focusSelected() {
   const card = selected.value?.card
@@ -126,16 +131,16 @@ function reseedPreview() {
 }
 function openFromBoard(node) {
   // 页面本身：预览切到那一页就行
-  if (node.isPage) { previewRoute.value = node.route ?? boardRoute.value; boardOpen.value = false; boardFocus.value = null; return }
+  if (node.isPage) { gotoRoute(node.route ?? boardRoute.value); boardOpen.value = false; boardFocus.value = null; return }
   // 先把预览重新载入到干净的页面状态，再按记下的路径一步步点开
   pendingReplay.value = node; openedModal.value = null
   previewRoute.value = node.route ?? boardRoute.value   // 在展开视图里切到了别的页，预览也跟过去
   boardOpen.value = false; boardFocus.value = null
   setMode('select')
+  reseedPreview()   // 只有「在预览中打开某个弹窗」才需要重载：回到干净状态再按路径点开
 }
 // 展开视图打开时，预览 iframe 整个卸掉，收起时重新挂上、重新载入。
 // 以前用 display:none 藏着：Safari 里藏过的 iframe 再显示出来是一片空白，换了 srcdoc 也不重绘。
-watch(boardOpen, open => { if (!open) reseedPreview() })
 function clearSelectionOnly() { selected.value = null; inspection.value = null; note.value = ''; textValue.value = ''; ++regionKey.value; send({ type: 'PA_SELECT', selector: '' }) }
 function closeSelection() { clearSelectionOnly(); if (!keepInspector.value) rightOpen.value = false }
 function hideGuide() { showGuide.value = false; localStorage.setItem('pf-hide-guide', 'true') }
@@ -583,7 +588,7 @@ function keydown(event) {
   if (command && key === 'z' && !event.shiftKey) { event.preventDefault?.(); undo(); return }
   if (command && key === '/') { event.preventDefault?.(); view.value = view.value === 'preview' ? 'code' : 'preview'; return }
   if (command) return
-  if (key === 'escape') { if (boardFocus.value != null) { boardFocus.value = null; return } if (boardOpen.value) { boardOpen.value = false; return } closeSelection(); setMode('interact') }
+  if (key === 'escape') { if (boardFocus.value != null) { boardFocus.value = null; return } if (boardOpen.value) { showPreview(); return } closeSelection(); setMode('interact') }
   if (key === 'e' && page.value) { event.preventDefault?.(); toggleBoard(); return }
   if ({ h: 'interact', v: 'select', b: 'box' }[key] && page.value) { event.preventDefault?.(); setMode({ h: 'interact', v: 'select', b: 'box' }[key]) }
 }
@@ -645,8 +650,8 @@ onUnmounted(() => { window.removeEventListener('message', onMessage); window.rem
         <div class="canvas-toolbar"><div class="view-tools"><button v-if="!leftOpen" class="icon-button" aria-label="打开对话" @click="leftOpen = true; rightOpen = window.innerWidth > 960 && rightOpen"><MessageSquare :size="17" /></button><div v-if="page" class="mode-tools" role="group" aria-label="操作方式"><button :class="{ active: mode === 'interact' }" :disabled="loading" title="交互 · H：像真用户一样点；在展开里点卡片可以试玩" @click="setMode('interact')"><Hand :size="15" /><span>交互</span><kbd>H</kbd></button><button :class="{ active: mode === 'select' }" :disabled="loading" title="点选 · V（按住 Shift / ⌘ 多选同一视图内的元素）" @click="setMode('select')"><MousePointer2 :size="15" /><span>点选</span><kbd>V</kbd></button><button :class="{ active: mode === 'box' }" :disabled="loading" title="拉框 · B" @click="setMode('box')"><Scan :size="15" /><span>拉框</span><kbd>B</kbd></button></div></div><div class="device-tools" v-if="view === 'preview' && !boardOpen"><button v-for="d in [{ id: 'desktop', label: '桌面', icon: Monitor }, { id: 'tablet', label: '平板', icon: Tablet }, { id: 'mobile', label: '手机', icon: Smartphone }]" :key="d.id" class="icon-button" :class="{ active: device === d.id }" :aria-label="d.label + '预览'" :title="d.label" @click="device = d.id"><component :is="d.icon" :size="16" /></button><span class="actual-width">{{ canvasWidth }} px</span></div><div class="canvas-actions"><button v-if="page" class="version-tag" @click="openDialog('history')" title="查看版本历史">v{{ page.version }}</button><button class="icon-button" aria-label="撤销上一步" :title="undoCount ? '撤销上一步 · ⌘/Ctrl + Z' : '暂无可撤销的修改'" :disabled="!undoCount || locked" @click="undo()"><Undo2 :size="16" /></button><button class="icon-button" :class="{ active: rightOpen }" aria-label="切换属性面板" @click="rightOpen = !rightOpen; leftOpen = window.innerWidth > 960 && leftOpen"><SlidersHorizontal :size="17" /></button></div></div>
         <div v-if="view === 'preview'" class="canvas" :class="device">
 
-          <ExpandBoard v-if="boardOpen" v-model:focus="boardFocus" v-model:route="boardRoute" :notes="annotations" :patch="cardPatch" :page-name="page?.title" :selection="selected" :mode="mode" @open="openFromBoard" @select="pickFromBoard" @clear="closeSelection" @mode="setMode" />
-          <div v-if="!boardOpen" class="preview-shell" :class="{ 'is-selecting': mode !== 'interact' }"><iframe v-if="previewDoc" ref="previewFrame" title="原型预览" :srcdoc="previewDoc" :sandbox="PREVIEW_SANDBOX"></iframe><div v-else class="empty-canvas"><div class="empty-emblem"><PanelsTopLeft :size="30" :stroke-width="1.4" /></div><h1>给想法一个可操作的样子</h1><p>从已有的 HTML 开始修改，<br>或描述需求，让 AI 帮你搭建第一版。</p><div><button class="primary" @click="openDialog('new')"><Plus :size="16" />新建原型</button><button class="outline" @click="fileInput.click()"><Upload :size="16" />导入原型</button></div><span>支持 HTML、包含多页面的 ZIP</span></div><RegionCapture v-if="previewDoc && mode === 'box' && !loading" :key="regionKey" @select="send({ type: 'PA_BOX_RECT', bounds: $event })" @scroll="send({ type: 'PA_SCROLL', ...$event })" /><div v-if="loading" class="loading-veil"><LoaderCircle class="spin" :size="25" /><span>正在加载原型…</span></div></div>
+          <ExpandBoard v-if="boardMounted" :class="{ 'view-hidden': !boardOpen }" :aria-hidden="!boardOpen" v-model:focus="boardFocus" v-model:route="boardRoute" :notes="annotations" :patch="cardPatch" :page-name="page?.title" :selection="selected" :mode="mode" @open="openFromBoard" @select="pickFromBoard" @clear="closeSelection" @mode="setMode" />
+          <div class="preview-shell" :class="{ 'is-selecting': mode !== 'interact', 'view-hidden': boardOpen }" :aria-hidden="boardOpen"><iframe v-if="previewDoc" ref="previewFrame" title="原型预览" :srcdoc="previewDoc" :sandbox="PREVIEW_SANDBOX"></iframe><div v-else class="empty-canvas"><div class="empty-emblem"><PanelsTopLeft :size="30" :stroke-width="1.4" /></div><h1>给想法一个可操作的样子</h1><p>从已有的 HTML 开始修改，<br>或描述需求，让 AI 帮你搭建第一版。</p><div><button class="primary" @click="openDialog('new')"><Plus :size="16" />新建原型</button><button class="outline" @click="fileInput.click()"><Upload :size="16" />导入原型</button></div><span>支持 HTML、包含多页面的 ZIP</span></div><RegionCapture v-if="previewDoc && mode === 'box' && !loading" :key="regionKey" @select="send({ type: 'PA_BOX_RECT', bounds: $event })" @scroll="send({ type: 'PA_SCROLL', ...$event })" /><div v-if="loading" class="loading-veil"><LoaderCircle class="spin" :size="25" /><span>正在加载原型…</span></div></div>
           
         </div>
         <div v-else class="code-panel"><div class="code-toolbar"><Braces :size="15" /><select aria-label="源码区域" v-model="codeRegion"><option value="all">完整文件 · 只读</option><option v-for="region in sourceInfo.regions" :key="region.name" :value="region.name">{{ region.label || '自定义区域' }}</option></select><span>{{ codeText.split('\n').length }} 行</span><button class="quiet" @click="copySource"><Check v-if="codeCopied" :size="14" /><Copy v-else :size="14" />{{ codeCopied ? '已复制' : '复制' }}</button></div><div class="source-scroll"><pre class="line-numbers" aria-hidden="true">{{ lineNumbers }}</pre><pre class="source-code"><code>{{ codeText }}</code></pre></div></div>

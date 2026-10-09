@@ -441,3 +441,7 @@ input[type=color]::-webkit-color-swatch { border: none; border-radius: 2px; }
 .canvas-toolbar .mode-tools > button { min-height: 28px; padding: 3px 11px; font-size: 12px; }
 .canvas-toolbar .mode-tools kbd { font-family: inherit; font-size: 10.5px; color: var(--subtle); margin-left: 1px; }
 @media (max-width: 1200px) { .canvas-toolbar .mode-tools kbd { display: none; } }
+
+/* 预览和展开叠在一起，不用的那个藏到后面。
+   不能用 display:none：Safari 里被 display:none 过的 iframe 再显示是空白，只能整页重载，切一次等一次 */
+.view-hidden { position: absolute !important; inset: 0 24px 16px; visibility: hidden; pointer-events: none; z-index: -1; }

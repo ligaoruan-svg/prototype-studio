@@ -427,6 +427,7 @@ _TEMPLATE = r'''
 
   window.addEventListener('message',e=>{
     if(e.source!==parent)return;const m=e.data||{};
+    if(m.type==='PA_ROUTE'){if(typeof m.hash==='string'&&location.hash!==m.hash)location.hash=m.hash;return;}
     if(m.type==='PA_PROBE_ROUTES'){send('PROBE_REPLY',{id:m.id,routes:routesOf(),current:location.hash});return;}
     if(m.type==='PA_PROBE_INIT'){probeInit(!!m.full).then(r=>send('PROBE_REPLY',{id:m.id,...r}),err=>send('PROBE_REPLY',{id:m.id,ok:false,error:String(err)}));return;}
     if(m.type==='PA_PROBE_TRY'){probeTry(m.path||[],m.step).then(r=>send('PROBE_REPLY',{id:m.id,...r}),err=>send('PROBE_REPLY',{id:m.id,ok:false,error:String(err),needReload:true}));return;}
