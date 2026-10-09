@@ -405,8 +405,10 @@ _TEMPLATE = r'''
     if(!await press(step,probeBase))return {ok:false,reason:'missing'};
     const L=await waitOpen(before,step.select?900:520);
     let out={ok:true,opened:null};
-    // 没弹窗、但同一个路由下页面整个换了：记成子页面，它上面的按钮接着往下找
-    if(!L&&!step.inLayer&&location.hash===hashBefore&&(pageSig()!==sigBefore||await waitChange(sigBefore,250)))out.subpage=subpageOf();
+    // 没弹窗、但页面整个换了：记成子页面，它上面的按钮接着往下找。
+    // 换了路由也算（「配置单元/设备」跳到 #boundary-device），只要跳去的不是侧栏里另一张业务页面——那张自己会展开
+    const own=h=>h===hashBefore||!routesOf().some(r=>r.hash===h);
+    if(!L&&!step.inLayer&&(pageSig()!==sigBefore||await waitChange(sigBefore,250))&&own(location.hash))out.subpage=subpageOf();
     if(L){
       const wizard=wizardOf(L);
       out.opened={layerSel:selectorFor(L),title:titleOf(L),sig:titleOf(L)+'|'+(L.innerText||'').replace(/\s+/g,' ').slice(0,160),html:freeze(L),box:boxOf(L),

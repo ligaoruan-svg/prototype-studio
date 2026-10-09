@@ -7,7 +7,7 @@ import { discoverRoutes, probePage, syncNodes } from './probe.js'
 
 const CONCURRENCY = 2
 // 展开结果的格式版本：找法变了（比如开始找子页面）就升一下，旧结果作废重找，免得一直用缺了第二层的老快照
-const SCHEMA = 's2'
+const SCHEMA = 's3'  // s3：换路由的子页面（配置单元/设备）也展开，旧结果要重拍
 export const expand = reactive({
   scope: '',          // 项目:页面
   hash: '',           // 当前版本的源码哈希

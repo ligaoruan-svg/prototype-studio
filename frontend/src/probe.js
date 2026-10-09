@@ -79,6 +79,9 @@ export async function probePage({ doc, width = 1150, height = 800, onUpdate = ()
         seen.add(sub.sig)
         // 原型的详情页常常没有自己的大标题，取到的还是整站标题；那就用点进来的那个按钮的字
         const subTitle = sub.title && sub.title !== result.title ? sub.title : String(job.label || '').replace(/^表格行 · /, '')
+        // 子页面里点左边的树、切个筛选，标题没变只是内容换了：还是同一页，不再当一层
+        const parentNode = job.parent != null && result.nodes.find(n => n.id === job.parent)
+        if (parentNode?.kind === 'subpage' && parentNode.title === subTitle) continue
         const node = { id: result.nodes.length + 1, parent: job.parent, label: job.label, title: subTitle, html: sub.html, box: null, kind: 'subpage', path: [...job.path, { ...job.step, nav: true }] }
         result.nodes.push(node)
         const children = (sub.triggers || []).slice(0, 24).map(target => ({ step: { target }, label: target.text }))
