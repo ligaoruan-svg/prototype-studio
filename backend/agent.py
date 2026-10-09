@@ -255,6 +255,12 @@ def _search_source(source: str, query: str) -> dict:
     return out
 
 
+CONTEXT_KEYS = ("in_modal", "in_subpage", "modal_trail", "view_route")
+
+
+def context_text(a: dict) -> str:
+    return "".join(f" {k}={a[k]!r}" for k in CONTEXT_KEYS if a.get(k))
+
 
 def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, model: str,
               base_url: str = "https://api.deepseek.com", selection: dict | None = None,
@@ -270,23 +276,23 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
     meta = storage.load_meta(project_id)
     page = storage.get_page(meta, page_id)
     saved_annotations = storage.active_annotations(meta, page_id) if include_annotations else []
-    anns = [{**target, "note": annotation.get("note", ""), "annotation_id":annotation['id']}
+    # 在哪个业务页面 / 哪个弹窗 / 哪个子页面、怎么点进去的：多选时每个元素都带上整次选择的上下文。
+    # 以前只有「先记下」的意见带着，直接选中就改时丢了——原型里同名的「保存」「下一步」一多就容易改错地方
+    def placed(target, source):
+        return {**{k: source[k] for k in CONTEXT_KEYS if source.get(k)}, **target}
+    anns = [{**placed(target, annotation), "note": annotation.get("note", ""), "annotation_id":annotation['id']}
             for annotation in saved_annotations for target in (annotation.get("targets") or [annotation])[:16]]
     if selection and not any(a['selector'] == selection.get('selector') for a in saved_annotations):
-        anns += [{**target, "note":user_message} for target in (selection.get('targets') or [selection])[:16]]
+        anns += [{**placed(target, selection), "note":user_message} for target in (selection.get('targets') or [selection])[:16]]
     for ann in anns:
         ann['name'] = element_name(ann)
     source = working_source = storage.read_page(project_id, page_id)
     if not runtime_feedback:
         storage.append_chat(project_id, "user", user_message, {"page_id":page_id,"annotation_count":len(saved_annotations),"intent":intent})
     history = history_context(meta.get('chat',[]), page_id)
-    annotation_text = "\n".join(f"意见 {i+1} id={a['id']} name={element_name(a)} note={a.get('note','')!r}"
-                               + (f" in_modal={a['in_modal']!r}" if a.get('in_modal') else "")
-                               + (f" in_subpage={a['in_subpage']!r}" if a.get('in_subpage') else "")
-                               + (f" modal_trail={a['modal_trail']!r}" if a.get('modal_trail') else "")
-                               + (f" view_route={a['view_route']!r}" if a.get('view_route') else "")
+    annotation_text = "\n".join(f"意见 {i+1} id={a['id']} name={element_name(a)} note={a.get('note','')!r}" + context_text(a)
                                for i,a in enumerate(saved_annotations)) or "（没有保存的修改意见）"
-    target_text = "\n".join(f"name={a['name']} selector={a['selector']} note={a.get('note','')!r}" for a in anns)
+    target_text = "\n".join(f"name={a['name']} selector={a['selector']} note={a.get('note','')!r}" + context_text(a) for a in anns)
     # 背景资料和用户这轮说的话必须分开：以前一股脑灌进去，用户问「你能做什么」
     # 也会被页面骨架带着跑，答成一份页面状态报告。
     background = (f"当前项目：{meta.get('name')}\n当前页面：{page.get('title')} / v{page.get('version')}\n"

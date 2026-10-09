@@ -6,10 +6,11 @@ const attrs = a => (a?.class ? ` class="${attr(a.class)}"` : '') + (a?.style ? `
 
 // 卡片是一张"静态快照"：带上原型的全部样式，但不带任何脚本。
 // 动画、过渡关掉，否则拍下来的是淡入的第一帧（半透明、偏移）。
-export function cardDocument(styles = {}, body = '', { pickable = false } = {}) {
+// scroll：放大编辑整页 / 子页面时要能滚到底，不能沿用缩略图的「只看第一屏」；滚动交给原型自己的样式决定，和预览一致
+export function cardDocument(styles = {}, body = '', { pickable = false, scroll = false } = {}) {
   const base = /^https?:/i.test(styles.base || '') ? `<base href="${attr(styles.base)}">` : ''
   return '<!doctype html><html' + attrs(styles.html) + '><head><meta charset="utf-8">' + base + (styles.head || '') +
-    '<style>html,body{overflow:hidden!important}*,*::before,*::after{animation:none!important;transition:none!important}' +
+    '<style>' + (scroll ? '' : 'html,body{overflow:hidden!important}') + '*,*::before,*::after{animation:none!important;transition:none!important}' +
     (pickable ? '[data-pa-layer] *{cursor:crosshair!important}*{user-select:none!important;-webkit-user-select:none!important}' : '') + '</style>' +
     '</head><body' + attrs(styles.body) + '>' + body + (pickable ? '<script>' + CARD_SCRIPT + '</scr' + 'ipt>' : '') + '</body></html>'
 }
@@ -33,6 +34,7 @@ function paint(){while(boxes.length<picked.length)boxes.push(mk('#b8532f','#b853
 function report(add){paint();parent.postMessage({source:'pa-card',type:'CARD_PICK',items:picked.map(info),additive:add},'*')}
 addEventListener('pointermove',e=>{if(drag){const x=Math.min(drag.x,e.clientX),y=Math.min(drag.y,e.clientY);Object.assign(band.style,{display:'block',left:x+'px',top:y+'px',width:Math.abs(e.clientX-drag.x)+'px',height:Math.abs(e.clientY-drag.y)+'px'});return}place(hover,mode==='select'?own(e.target):null)},true);
 document.addEventListener('mouseleave',()=>place(hover,null));
+let scrollTimer=0;addEventListener('scroll',e=>{paint();place(hover,null);const t=e.target===document?document.scrollingElement:e.target;if(!(t instanceof Element))return;clearTimeout(scrollTimer);scrollTimer=setTimeout(()=>parent.postMessage({source:'pa-card',type:'CARD_SCROLL',at:[...document.querySelectorAll('*')].indexOf(t),top:t.scrollTop,left:t.scrollLeft},'*'),120)},true);
 addEventListener('pointerdown',e=>{e.preventDefault();if(mode==='box'&&e.button===0){drag={x:e.clientX,y:e.clientY};place(hover,null)}},true);
 addEventListener('pointerup',e=>{if(!drag)return;const r={l:Math.min(drag.x,e.clientX),t:Math.min(drag.y,e.clientY),r:Math.max(drag.x,e.clientX),b:Math.max(drag.y,e.clientY)};drag=null;band.style.display='none';
 if(r.r-r.l<6||r.b-r.t<6)return;
@@ -44,6 +46,7 @@ for(const t of ['mousedown','submit','dblclick','dragstart'])addEventListener(t,
 addEventListener('message',e=>{const m=e.data||{};
 if(m.type==='CARD_MODE'){mode=m.mode==='box'?'box':'select';document.documentElement.style.cursor=mode==='box'?'crosshair':'';place(hover,null)}
 if(m.type==='CARD_PATCH'){if(String(m.prop).startsWith('--'))document.documentElement.style.setProperty(m.prop,m.value);else (m.rels||[]).map(r=>{try{return root.querySelector(':scope > '+r)}catch{return null}}).filter(Boolean).forEach(el=>{if(m.prop==='text')el.textContent=m.value;else el.style.setProperty(m.prop,m.value,'important')});paint()}
+if(m.type==='CARD_SCROLL_TO'){const t=document.querySelectorAll('*')[m.at];if(t){t.scrollTop=m.top;t.scrollLeft=m.left}}
 if(m.type==='CARD_SHOW'){picked=(m.rels||[]).map(r=>{try{return root.querySelector(':scope > '+r)}catch{return null}}).filter(Boolean);paint();if(m.reveal&&picked[0])picked[0].scrollIntoView({block:'nearest'})}});
 })();`
 

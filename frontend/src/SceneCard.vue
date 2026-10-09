@@ -5,8 +5,10 @@ import { cardDocument } from './probeTree.js'
 const props = defineProps({ node: Object, styles: Object, frame: Object, picked: Object, mode: String, crumb: String, large: Boolean, notes: Number, compact: Boolean, width: Number, patch: Object })
 const emit = defineEmits(['pick', 'edit', 'play', 'refind'])
 const iframe = ref(null), stage = ref(null), measured = ref(0)
-const doc = computed(() => cardDocument(props.styles, props.node.html, { pickable: true }))
 const pageLike = computed(() => props.node.isPage || props.node.kind === 'subpage')
+const doc = computed(() => cardDocument(props.styles, props.node.html, { pickable: true, scroll: props.large && pageLike.value }))
+// 放大编辑时滚到哪了：卡片重拍（改完同步）会重新载入，载入后回到原来的位置
+let scrolled = null
 const box = computed(() => props.node.box || { x: 0, y: 0, w: props.frame.w, h: props.frame.h })
 // 按卡片实际宽度取景：弹窗本体铺满卡片，最多放大到原尺寸（编辑视图里到 1.3 倍）
 const view = computed(() => {
@@ -17,7 +19,11 @@ const view = computed(() => {
 const rels = computed(() => props.picked?.nodeId === props.node.id ? props.picked.rels : [])
 const kindLabel = computed(() => props.node.isPage ? '静态页面' : props.node.kind === 'subpage' ? '子页面 · 页内跳转' : '动态弹窗')
 const post = message => iframe.value?.contentWindow?.postMessage(message, '*')
-function sync() { post({ type: 'CARD_MODE', mode: props.mode }); post({ type: 'CARD_SHOW', rels: [...rels.value], reveal: props.large }) }
+function sync() {
+  post({ type: 'CARD_MODE', mode: props.mode })
+  if (scrolled) post({ type: 'CARD_SCROLL_TO', ...scrolled })
+  post({ type: 'CARD_SHOW', rels: [...rels.value], reveal: props.large && !scrolled })
+}
 watch(rels, () => post({ type: 'CARD_SHOW', rels: [...rels.value] }))
 watch(() => props.mode, () => post({ type: 'CARD_MODE', mode: props.mode }))
 // 属性面板里改颜色、字号、文字：先在卡片快照上直接改，不等保存和同步
@@ -30,6 +36,7 @@ function listen(event) {
   if (event.source !== iframe.value?.contentWindow || event.data?.source !== 'pa-card') return
   // 空的也要报：Shift 把最后一个取消掉，外面的选中也得跟着清掉
   if (event.data.type === 'CARD_PICK') emit('pick', { node: props.node, items: event.data.items || [] })
+  if (event.data.type === 'CARD_SCROLL' && props.large) scrolled = { at: event.data.at, top: event.data.top, left: event.data.left }
 }
 let observer
 onMounted(() => {

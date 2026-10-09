@@ -51,7 +51,9 @@ const page = computed(() => project.value?.pages.find(p => p.id === pageId.value
 const annotations = computed(() => (project.value?.annotations || []).filter(a => a.page_id === pageId.value && a.status === 'active'))
 const messages = computed(() => (project.value?.chat || []).filter(m => !m.page_id || m.page_id === pageId.value))
 const locked = computed(() => busy.value || saving.value || loading.value)
-const canEdit = computed(() => !!inspection.value?.editable && !locked.value)
+// 展开里放大试玩：演示数据不保存。这时属性面板也不能往源码里写，否则「不保存」和「已保存」同时出现
+const playing = computed(() => boardOpen.value && boardFocus.value != null && mode.value === 'interact')   // 页面卡的编号是 0，不能用真假判断
+const canEdit = computed(() => !!inspection.value?.editable && !locked.value && !playing.value)
 const undoCount = computed(() => page.value?.undo_count || 0)
 const colorNames = { '--color-primary': '主色', '--color-bg': '页面背景', '--color-surface': '表面色', '--color-text': '正文', '--color-muted': '辅助文字', '--color-border': '边框', '--color-danger': '警示', '--color-success': '成功' }
 const colors = computed(() => Object.entries({ ...sourceInfo.value.defaults, ...sourceInfo.value.tokens }).filter(([, v]) => /^#[\da-f]{3,8}$/i.test(v.trim())).map(([key, value]) => ({ key, value: value.trim(), label: colorNames[key] || key.replace(/^--/, '') })))
@@ -191,11 +193,17 @@ async function refresh(reload = true) {
   }
   await nextTick(); if (chatBox.value) chatBox.value.scrollTop = chatBox.value.scrollHeight
 }
+// 没发出去的输入和参考截图跟着「项目:原型文件」走：切走时收好，切回来还在；不会被带到别的项目里发出去
+const drafts = new Map()
+const draftKey = () => project.value && pageId.value ? `${project.value.id}:${pageId.value}` : ''
+function stashDraft() { const k = draftKey(); if (!k) return; if (input.value.trim() || reference.value) drafts.set(k, { input: input.value, reference: reference.value }); else drafts.delete(k) }
+function restoreDraft() { const d = drafts.get(draftKey()); input.value = d?.input || ''; reference.value = d?.reference || null }
 async function chooseProject(id) {
   if (locked.value || !id) return
+  stashDraft()
   loading.value = true; error.value = ''; closeSelection(); previewRoute.value = ''; boardRoute.value = ''; boardFocus.value = null; pendingReplay.value = null; openedModal.value = null; previewScroll.value = null; runs.value = []
   try {
-    project.value = await api(`/api/projects/${id}`); pageId.value = project.value.pages[0]?.id || ''
+    project.value = await api(`/api/projects/${id}`); pageId.value = project.value.pages[0]?.id || ''; restoreDraft()
     if (!pageId.value) { previewDoc.value = ''; sourceInfo.value = { source: '', hash: '', tokens: {}, defaults: {}, regions: [] }; runtimeErrors.value = [] }
     localStorage.setItem('pf-project', id); lastResult.value = null; status.value = '已就绪'
     await refresh()
@@ -203,7 +211,8 @@ async function chooseProject(id) {
 }
 async function choosePage(id) {
   if (locked.value || id === pageId.value) return
-  pageId.value = id; previewRoute.value = ''; boardRoute.value = ''; boardFocus.value = null; pendingReplay.value = null; openedModal.value = null; previewScroll.value = null; runs.value = []; closeSelection(); loading.value = true
+  stashDraft()
+  pageId.value = id; restoreDraft(); previewRoute.value = ''; boardRoute.value = ''; boardFocus.value = null; pendingReplay.value = null; openedModal.value = null; previewScroll.value = null; runs.value = []; closeSelection(); loading.value = true
   try { await refresh(); status.value = '已就绪' } catch (e) { error.value = e.message } finally { loading.value = false }
 }
 async function loadProjects(preferred = '') {
@@ -320,7 +329,7 @@ async function checkAndCommit(candidate) {
 
 
 async function edit(prop, value) {
-  if (locked.value || (!prop.startsWith('--') && !inspection.value?.editable)) return
+  if (locked.value || (!prop.startsWith('--') && (!inspection.value?.editable || playing.value))) return
   const selector = selected.value?.selector || ''
   saving.value = true; error.value = ''; status.value = '修改中'
   send({ type: 'PA_PREVIEW', selector, prop, value: String(value) })
@@ -330,6 +339,7 @@ async function edit(prop, value) {
   try {
     const result = await post(endpoint('/edit'), { selector, prop, value: String(value), expected_hash: sourceInfo.value.hash })
     await checkAndCommit(result); committed = !!result.changed
+    if (committed && selected.value?.selector === selector && !prop.startsWith('--')) selected.value = { ...selected.value, styles: { ...(selected.value.styles || {}), [prop]: String(value) } }
     if (!result.changed) status.value = '没有新的改动'
     await refresh(false)
   } catch (e) {
@@ -573,7 +583,8 @@ async function useReference(createNew = false) {
   if (locked.value) { dialogError.value = 'AI 正在修改，等它完成再用截图'; return }
   if (createNew || !project.value) {
     dialogBusy.value = true
-    try { const result = await post('/api/projects/new', { name: reference.value.name.replace(/\.[^.]+$/, '') }); await loadProjects(result.id) } catch (e) { dialogError.value = e.message; return } finally { dialogBusy.value = false }
+    const carried = reference.value
+    try { const result = await post('/api/projects/new', { name: carried.name.replace(/\.[^.]+$/, '') }); reference.value = null; await loadProjects(result.id); reference.value = carried } catch (e) { dialogError.value = e.message; return } finally { dialogBusy.value = false }
   }
   if (!input.value.trim()) input.value = reference.value.regions.length ? '参考截图中框选区域的意见，修改对应位置，保留其他区域。' : '参考这张截图，调整当前原型的布局和样式。'
   closeDialog(); await toAI(); toast('截图和框选意见已加入本轮需求')
@@ -693,6 +704,7 @@ onUnmounted(() => { window.removeEventListener('message', onMessage); window.rem
             </template>
             <div v-else-if="!inspection.editable" class="dynamic-note"><Scan v-if="selected.kind === 'region'" :size="16" /><AlertCircle v-else :size="16" /><div><b>{{ selected.kind === 'region' ? `已框选 ${selected.targets.length} 个元素` : '这是动态生成的内容' }}</b><p>{{ selected.kind === 'region' ? '在对话中写下这片区域需要怎么改，可以直接修改或先记下。' : '这个位置由页面交互生成，无法直接微调。可以在对话中描述修改需求。' }}</p><div v-if="selected.targets" class="region-targets"><span v-for="(target, index) in selected.targets" :key="index">{{ target.text?.slice(0, 28) || target.tag }}</span></div><button class="text-button" @click="toAI">交给 AI 修改<ChevronRight :size="13" /></button></div></div>
             <template v-else>
+              <div v-if="playing" class="dynamic-note play-note"><Hand :size="16" /><div><b>试玩中 · 属性只读</b><p>试玩时的操作不会保存。要改这个元素，先回到编辑。</p><button class="outline" @click="setMode('select')">返回编辑</button></div></div>
               <section class="property-section"><div class="section-label">内容<span>当前元素</span></div><label class="field-label" for="element-text">文字</label><textarea id="element-text" class="text-property" v-model="textValue" :disabled="!canEdit || !inspection.text_editable" @change="edit('text', textValue)"></textarea><p v-if="!inspection.text_editable" class="field-hint">包含子元素，请点选具体文字进行编辑。</p></section>
               <section class="property-section"><div class="section-label">外观<span>当前元素</span></div><label v-for="field in [{ key: 'color', label: '文字颜色' }, { key: 'background-color', label: '背景颜色' }]" :key="field.key" class="color-field"><span>{{ field.label }}</span><div><i :style="{ background: selected.styles?.[field.key] }"></i><select :aria-label="field.label" value="" :disabled="!canEdit" @change="edit(field.key, $event.target.value)"><option value="" disabled>当前颜色</option><option v-for="color in colors" :key="color.key" :value="`var(${color.key})`">{{ color.label }} · {{ color.value }}</option></select></div></label><div class="number-grid"><label v-for="field in numericFields" :key="field.key"><span>{{ field.label }}</span><div class="number-control"><input type="number" min="0" max="160" :step="field.step" :aria-label="field.label" :value="Number.isFinite(parseFloat(selected.styles?.[field.key])) ? parseFloat(selected.styles[field.key]) : ''" placeholder="未读取" :disabled="!canEdit" @change="changeNumber(field.key, $event)"><span>px</span></div></label></div><label class="visibility-control"><span>显示元素</span><input type="checkbox" role="switch" :checked="selected.styles?.display !== 'none'" :disabled="!canEdit" @change="edit('display', $event.target.checked ? 'revert' : 'none')"><span class="switch-track"></span></label></section>
             </template>
