@@ -2,7 +2,7 @@
 // 真正的识别和点击在 backend/bridge.py 注入的脚本里，这里只负责调度：
 // 排队、出问题时重载副本、把进度一条条报给界面。
 
-const MAX_TRIES = 80, MAX_DEPTH = 3, BUDGET_MS = 150_000
+const MAX_TRIES = 120, MAX_DEPTH = 4, BUDGET_MS = 240_000
 const plain = value => JSON.parse(JSON.stringify(value ?? null))
 
 // 一个后台副本：载入、发指令、出问题时重载
@@ -72,6 +72,21 @@ export async function probePage({ doc, width = 1150, height = 800, onUpdate = ()
       result.tried++
       report(job.label)
       const reply = await probe.attempt(job.path, job.step)
+      // 第二层：点了进到详情这类子页面。记成一张页面卡，它上面的按钮接着往下找
+      const sub = reply.ok && !reply.opened && reply.subpage
+      if (sub) {
+        if (seen.has(sub.sig) || job.depth >= MAX_DEPTH) continue
+        seen.add(sub.sig)
+        // 原型的详情页常常没有自己的大标题，取到的还是整站标题；那就用点进来的那个按钮的字
+        const subTitle = sub.title && sub.title !== result.title ? sub.title : String(job.label || '').replace(/^表格行 · /, '')
+        const node = { id: result.nodes.length + 1, parent: job.parent, label: job.label, title: subTitle, html: sub.html, box: null, kind: 'subpage', path: [...job.path, { ...job.step, nav: true }] }
+        result.nodes.push(node)
+        const children = (sub.triggers || []).slice(0, 24).map(target => ({ step: { target }, label: target.text }))
+        for (const child of children) queue.push({ ...child, path: node.path, parent: node.id, depth: job.depth + 1 })
+        result.total += children.length
+        report(job.label)
+        continue
+      }
       const opened = reply.ok && reply.opened
       if (!opened || seen.has(opened.sig)) continue
       seen.add(opened.sig)
@@ -106,10 +121,10 @@ export async function syncNodes({ doc, nodes = [], first = [], width = 1150, hei
       if (cancelled()) break
       const reply = await probe.attempt(node.path.slice(0, -1), node.path[node.path.length - 1])
       const at = result.nodes.findIndex(n => n.id === node.id)
-      const opened = reply.ok && reply.opened
+      const opened = reply.ok && (node.kind === 'subpage' ? reply.subpage : reply.opened)
       // 点不开了（按钮被改名、被删了）就保留旧快照并标出来，刷新时会重新找
       result.nodes[at] = opened
-        ? { ...result.nodes[at], title: opened.title, html: opened.html, box: opened.box, layerSel: opened.layerSel || result.nodes[at].layerSel, stale: false }
+        ? { ...result.nodes[at], title: opened.title, html: opened.html, box: node.kind === 'subpage' ? null : opened.box, layerSel: opened.layerSel || result.nodes[at].layerSel, stale: false }
         : { ...result.nodes[at], stale: true }
       if (!opened) result.stale++
       result.done++

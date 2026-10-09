@@ -323,12 +323,17 @@ _TEMPLATE = r'''
     const r=best||L.getBoundingClientRect();
     return {x:Math.max(0,r.left),y:Math.max(0,r.top),w:Math.min(innerWidth,r.width),h:Math.min(innerHeight,r.height)};
   }
+  // 页面现在是哪一屏：路由 + 内容区的标题 + 内容区有哪些按钮。
+  // 侧栏、顶栏不算——以前标题里混进了侧栏的「智慧双碳管理」，列表点进详情页认不出页面换了
   function pageSig(){
-    const heads=[...document.querySelectorAll('h1,h2,h3,[class*=page-title],[class*=title]')].filter(el=>vis(el)&&!layers().some(l=>l.contains(el))).slice(0,12).map(el=>(el.innerText||'').trim().slice(0,30));
-    return location.hash+'|'+heads.join('/');
+    const open=layers();
+    const inside=el=>vis(el)&&!open.some(l=>l.contains(el))&&!inSkipZone(el)&&!inChrome(el);
+    const heads=[...document.querySelectorAll('h1,h2,h3,h4,[class*=page-title],[class*=title],[class*=panel-head]')].filter(inside).slice(0,12).map(el=>(el.innerText||'').trim().split('\n')[0].slice(0,30));
+    const btns=[...new Set([...document.querySelectorAll('button,[role=button],.btn')].filter(inside).slice(0,60).map(el=>(el.innerText||'').replace(/\s+/g,' ').trim().slice(0,12)))].sort();
+    return location.hash+'|'+heads.join('/')+'|'+btns.join(',');
   }
   function pageTitle(){
-    const h=[...document.querySelectorAll('h1,h2,[class*=page-title],[class*=title]')].find(el=>vis(el)&&!inSkipZone(el)&&!inChrome(el)&&(el.innerText||'').trim().length>=2);
+    const h=[...document.querySelectorAll('h1,h2,[class*=page-title],[class*=title],[class*=panel-head]')].find(el=>vis(el)&&!inSkipZone(el)&&!inChrome(el)&&!layers().some(l=>l.contains(el))&&(el.innerText||'').trim().length>=2);
     return ((h&&h.innerText)||document.title||'当前页面').trim().split('\n')[0].slice(0,40);
   }
   function stylesOf(){
@@ -345,6 +350,21 @@ _TEMPLATE = r'''
     const end=Date.now()+ms;
     while(Date.now()<end){await sleep(50);const L=topOpen(before);if(L){await sleep(140);return topOpen(before)||L;}}
     return null;
+  }
+  // 页内跳转：点了没弹窗，但页面换了一套内容（列表 → 详情），这是「第二层」
+  async function waitChange(before,ms){
+    const end=Date.now()+ms;
+    while(Date.now()<end){await sleep(60);if(pageSig()!==before){await sleep(220);return true;}}
+    return false;
+  }
+  function subpageOf(){
+    const triggers=triggersIn(document,false);
+    let html='';try{html=freeze(document.body).replace(/^<body[^>]*>|<\/body>$/g,'');}catch{}
+    if(html.length>1500000)html='';
+    // 同一种详情页（不同行点进去长得一样）只算一个：按它上面有哪些按钮认
+    // 取不到内容区标题时 pageTitle 会退回整站标题，那对子页面没意义，交给宿主用按钮文字
+    const t=pageTitle(),site=(document.title||'').trim().split('\n')[0].slice(0,40);
+    return {title:t===site?'':t,html,triggers,sig:'sub|'+triggers.map(t=>t.text).sort().join(',').slice(0,400)};
   }
   async function closeAll(base){
     for(let i=0;i<5;i++){
@@ -377,11 +397,16 @@ _TEMPLATE = r'''
   }
   async function probeTry(path,step){
     if(!await closeAll(probeBase)||pageSig()!==probeSig)return {needReload:true};
-    for(const s of path){const before=snapshot();if(!await press(s,probeBase))return {ok:false,reason:'replay'};if(!await waitOpen(before,1200))return {ok:false,reason:'replay'};}
-    const before=snapshot();
+    for(const s of path){
+      if(s.nav){const was=pageSig();if(!await press(s,probeBase))return {ok:false,reason:'replay'};if(!await waitChange(was,1500))return {ok:false,reason:'replay'};continue;}
+      const before=snapshot();if(!await press(s,probeBase))return {ok:false,reason:'replay'};if(!await waitOpen(before,1200))return {ok:false,reason:'replay'};
+    }
+    const before=snapshot(),sigBefore=pageSig(),hashBefore=location.hash;
     if(!await press(step,probeBase))return {ok:false,reason:'missing'};
     const L=await waitOpen(before,step.select?900:520);
     let out={ok:true,opened:null};
+    // 没弹窗、但同一个路由下页面整个换了：记成子页面，它上面的按钮接着往下找
+    if(!L&&!step.inLayer&&location.hash===hashBefore&&(pageSig()!==sigBefore||await waitChange(sigBefore,250)))out.subpage=subpageOf();
     if(L){
       const wizard=wizardOf(L);
       out.opened={layerSel:selectorFor(L),title:titleOf(L),sig:titleOf(L)+'|'+(L.innerText||'').replace(/\s+/g,' ').slice(0,160),html:freeze(L),box:boxOf(L),
@@ -393,7 +418,9 @@ _TEMPLATE = r'''
   }
   async function replay(path){
     const prev=mode;mode='interact';const base=snapshot();let title='',at=-1;
-    try{for(let i=0;i<path.length;i++){const before=snapshot();if(!await press(path[i],base)){at=i;break;}const L=await waitOpen(before,1600);if(!L){at=i;break;}title=titleOf(L);}}
+    try{for(let i=0;i<path.length;i++){
+      if(path[i].nav){const was=pageSig();if(!await press(path[i],base)||!await waitChange(was,2000)){at=i;break;}title=pageTitle();continue;}
+      const before=snapshot();if(!await press(path[i],base)){at=i;break;}const L=await waitOpen(before,1600);if(!L){at=i;break;}title=titleOf(L);}}
     finally{mode=prev;paint();}
     return {ok:at<0,title,at};
   }

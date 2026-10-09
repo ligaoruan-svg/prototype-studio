@@ -13,6 +13,7 @@ const view = computed(() => {
   return { scale, width: Math.round(box.value.w * scale), height: Math.round(box.value.h * scale),
     transform: `translate(${-box.value.x * scale}px, ${-box.value.y * scale}px) scale(${scale})` }
 })
+const pageLike = computed(() => props.node.isPage || props.node.kind === 'subpage')
 const rels = computed(() => props.picked?.nodeId === props.node.id ? props.picked.rels : [])
 const post = message => iframe.value?.contentWindow?.postMessage(message, '*')
 function sync() { post({ type: 'CARD_MODE', mode: props.mode }); post({ type: 'CARD_SHOW', rels: [...rels.value], reveal: props.large }) }
@@ -33,7 +34,7 @@ onUnmounted(() => { window.removeEventListener('message', listen); observer?.dis
 <template>
   <article class="scene-card" :class="{ 'selected-card': rels.length, large }">
     <header v-if="!large" class="scene-head">
-      <component :is="node.isPage ? Monitor : Layers" :size="14" />
+      <component :is="pageLike ? Monitor : Layers" :size="14" />
       <h3 :title="node.title">{{ node.title }}</h3>
       <span v-if="notes" class="note-badge" :title="`这张卡上已记下 ${notes} 条修改意见`">已记 {{ notes }}</span>
       <button type="button" :aria-label="`放大编辑${node.title}`" title="放大后选中元素，不切换查看方式" @click="$emit('focus', node)"><Maximize2 :size="13" /><span>放大编辑</span></button>
@@ -47,7 +48,7 @@ onUnmounted(() => { window.removeEventListener('message', listen); observer?.dis
       </div>
     </div>
     <footer v-if="!large" class="scene-foot">
-      <span class="source-type"><component :is="node.isPage ? Code2 : Layers" :size="12" />{{ node.isPage ? '静态页面' : '动态弹窗' }}</span>
+      <span class="source-type"><component :is="pageLike ? Code2 : Layers" :size="12" />{{ node.isPage ? '静态页面' : node.kind === 'subpage' ? '子页面 · 页内跳转' : '动态弹窗' }}</span>
       <button type="button" :title="node.isPage ? '回到预览' : `在预览里打开「${node.title}」，可以真的点一点`" @click="$emit('open', node)"><Hand :size="12" />交互预览</button>
     </footer>
   </article>

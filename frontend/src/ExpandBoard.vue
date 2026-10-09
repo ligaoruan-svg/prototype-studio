@@ -31,7 +31,8 @@ const allDone = computed(() => expand.routes.length > 0 && expand.routes.every(r
 const allProgress = computed(() => ({ done: expand.routes.filter(r => isFresh(r.hash)).length, total: expand.routes.length }))
 const allRunning = computed(() => expand.discovering || (expand.routes.length > 0 && !allDone.value && (Object.keys(expand.jobs).length > 0 || expand.queued.length > 0)))
 
-const title = computed(() => state.value.title || routeTitle(props.route) || props.pageName || '当前页面')
+// 导航里的菜单名最准（「碳排核算模板配置」）；原型页面里取到的常常是整站标题
+const title = computed(() => routeTitle(props.route) || state.value.title || props.pageName || '当前页面')
 // 页面本身也是一张卡：静态元素在这里点选，能直接微调
 const pageNode = computed(() => state.value.styles && state.value.page ? { id: 0, isPage: true, title: title.value, html: state.value.page, box: null } : null)
 const scenes = computed(() => [...(pageNode.value ? [pageNode.value] : []), ...state.value.nodes].map(node => ({ node, origin: originOf(node), crumb: crumbOf(state.value.nodes, node) })))

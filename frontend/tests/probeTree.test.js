@@ -118,3 +118,10 @@ test('卡片拉框用指针事件：取消 pointerdown 会让浏览器吞掉后�
   assert.match(CARD_SCRIPT, /addEventListener\('pointerup'/)
   assert.doesNotMatch(CARD_SCRIPT, /addEventListener\('mouseup'/)
 })
+
+test('子页面（列表点进去的详情）里点中的元素：选择器从 body 往下，位置写清是哪个子页面', () => {
+  const sel = pickToSelection({ id: 5, kind: 'subpage', title: '公共建筑运营碳核算模板', layerSel: '' }, [{ rel: 'div.app > main > button', tag: 'button', text: '新增子类别', outer_html: '<button>' }], '碳排核算模板配置')
+  assert.equal(sel.selector, 'body > div.app > main > button')
+  assert.equal(sel.modal, '')
+  assert.equal(sel.place, '碳排核算模板配置 › 公共建筑运营碳核算模板')
+})

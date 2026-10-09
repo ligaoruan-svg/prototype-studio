@@ -6,6 +6,8 @@ import { reactive } from 'vue'
 import { discoverRoutes, probePage, syncNodes } from './probe.js'
 
 const CONCURRENCY = 2
+// 展开结果的格式版本：找法变了（比如开始找子页面）就升一下，旧结果作废重找，免得一直用缺了第二层的老快照
+const SCHEMA = 's2'
 export const expand = reactive({
   scope: '',          // 项目:页面
   hash: '',           // 当前版本的源码哈希
@@ -33,6 +35,7 @@ export function touch(route, nodeId) { (touched[route] ||= new Set()).add(nodeId
 export async function bindExpand({ pid, pageId, hash, makeDoc, width }) {
   const scope = `${pid}:${pageId}`
   ctx = { pid, pageId, makeDoc, width: width || 1150 }
+  hash = `${SCHEMA}:${hash}`
   if (scope !== expand.scope) {
     expand.scope = scope; expand.hash = hash; expand.routes = []; expand.entries = {}; expand.jobs = {}; expand.queued = []; expand.error = ''
     queue.length = 0
@@ -40,7 +43,7 @@ export async function bindExpand({ pid, pageId, hash, makeDoc, width }) {
       const saved = await api(base())
       if (expand.scope !== scope) return
       expand.routes = saved.routes || []
-      expand.entries = Object.fromEntries(Object.entries(saved.entries || {}).filter(([, e]) => e?.result).map(([route, e]) => [route, { hash: e.hash, result: e.result }]))
+      expand.entries = Object.fromEntries(Object.entries(saved.entries || {}).filter(([, e]) => e?.result && String(e.hash || '').startsWith(SCHEMA + ':')).map(([route, e]) => [route, { hash: e.hash, result: e.result }]))
     } catch { /* 没存过就从空的开始 */ }
     syncStale()
     return

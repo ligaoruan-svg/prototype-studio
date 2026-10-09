@@ -48,8 +48,10 @@ if(m.type==='CARD_SHOW'){picked=(m.rels||[]).map(r=>{try{return root.querySelect
 // 卡片里点中的元素 → 和预览里点选一样的选中数据。
 // 弹窗卡片：layerSel 是这一层在真实页面里的选择器；页面卡片：从 body 往下的路径。
 export function pickToSelection(node, items = [], pageTitle = '') {
-  const prefix = node.isPage ? 'body' : node.layerSel
-  const modal = node.isPage ? '' : node.title
+  // 子页面（列表点进去的详情）和页面本身一样是整页快照，选择器从 body 往下
+  const pageLike = node.isPage || node.kind === 'subpage'
+  const prefix = pageLike ? 'body' : node.layerSel
+  const modal = pageLike ? '' : node.title
   const place = node.isPage ? pageTitle : `${pageTitle} › ${node.title}`
   const one = item => ({
     selector: prefix ? `${prefix} > ${item.rel}` : item.rel,
@@ -63,7 +65,7 @@ export function pickToSelection(node, items = [], pageTitle = '') {
 }
 
 // 卡片按「从哪儿打开的」分组：页面上的按钮、表格某一行的操作、弹窗里点下一步打开的
-export const ORIGIN_LABEL = { page: '页面本身', button: '页面按钮', row: '列表行操作', step: '弹窗里的下一步' }
+export const ORIGIN_LABEL = { page: '页面本身', button: '页面按钮', row: '列表行操作', step: '弹窗里的下一步', subpage: '子页面' }
 export function originOf(node) {
   if (node.isPage) return 'page'
   if (node.parent != null) return 'step'
