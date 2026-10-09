@@ -316,7 +316,8 @@ _TEMPLATE = r'''
     let best=null,bestArea=0;const full=innerWidth*innerHeight;
     for(const el of [L,...L.querySelectorAll('*')].slice(0,400)){
       const r=el.getBoundingClientRect(),area=r.width*r.height;if(area<full*0.03||area>full*0.92)continue;
-      const bg=getComputedStyle(el).backgroundColor;if(/rgba\(.*,\s*0\)$|transparent/.test(bg))continue;
+      // 半透明的是遮罩，不是弹窗本体；只认几乎不透明的底色
+      const bg=getComputedStyle(el).backgroundColor,alpha=/rgba\([^)]*,\s*([\d.]+)\)/.exec(bg);if(bg==='transparent'||(alpha&&Number(alpha[1])<0.9))continue;
       if(area>bestArea){best=r;bestArea=area;}
     }
     const r=best||L.getBoundingClientRect();

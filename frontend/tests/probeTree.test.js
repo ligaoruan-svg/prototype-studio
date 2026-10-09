@@ -83,3 +83,38 @@ test('能点选的卡片才带脚本，页面缩略图仍然是纯静态', () =>
   assert.doesNotMatch(cardDocument({}, '<div></div>'), /<script/)
   assert.doesNotThrow(() => new Function(CARD_SCRIPT), '注入的脚本至少要能被解析')
 })
+
+import { originOf, crumbOf, ORIGIN_LABEL } from '../src/probeTree.js'
+
+test('卡片按从哪儿打开分组：页面按钮 / 列表行 / 弹窗里的下一步', () => {
+  assert.equal(originOf({ isPage: true }), 'page')
+  assert.equal(originOf(nodes[0]), 'button')
+  assert.equal(originOf({ id: 9, parent: null, label: '表格行 · 编辑' }), 'row')
+  assert.equal(originOf(nodes[2]), 'step')
+  assert.equal(ORIGIN_LABEL.row, '列表行操作')
+})
+
+test('来源一行写清楚是怎么点开的', () => {
+  assert.equal(crumbOf(nodes, nodes[2]), '页面按钮 → 新增因子 → 下一步 · 运输因子')
+  assert.equal(crumbOf([{ id: 1, parent: null, label: '表格行 · 设为当前版本' }], { id: 1, parent: null, label: '表格行 · 设为当前版本' }), '列表行 → 设为当前版本')
+  assert.equal(crumbOf(nodes, { isPage: true }), '当前页面')
+})
+
+test('页面卡片里点中的是静态元素：选择器从 body 往下，不挂弹窗', () => {
+  const sel = pickToSelection({ id: 0, isPage: true, title: '环境影响因子库清单' }, [{ rel: 'div.app > main > h1', tag: 'h1', text: '环境影响因子库清单', outer_html: '<h1>' }], '环境影响因子库清单')
+  assert.equal(sel.selector, 'body > div.app > main > h1')
+  assert.equal(sel.modal, '')
+  assert.equal(sel.place, '环境影响因子库清单')
+})
+
+test('弹窗卡片的选中带上位置：页面 › 弹窗', () => {
+  const sel = pickToSelection(gwp, [{ rel: 'p', tag: 'p', text: '说明', outer_html: '<p>' }], '环境影响因子库管理')
+  assert.equal(sel.place, '环境影响因子库管理 › 新增 GWP 值')
+  assert.equal(sel.viewTitle, '新增 GWP 值')
+})
+
+test('卡片拉框用指针事件：取消 pointerdown 会让浏览器吞掉后面的 mousedown/mouseup，拉框就永远开始不了', () => {
+  assert.match(CARD_SCRIPT, /addEventListener\('pointerdown'/)
+  assert.match(CARD_SCRIPT, /addEventListener\('pointerup'/)
+  assert.doesNotMatch(CARD_SCRIPT, /addEventListener\('mouseup'/)
+})
