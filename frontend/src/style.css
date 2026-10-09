@@ -425,3 +425,19 @@ input[type=color]::-webkit-color-swatch { border: none; border-radius: 2px; }
 @media (max-width: 1360px) { .header-tools kbd { display: none; } .header-tools .view-tabs > button, .mode-tools > button { padding: 4px 9px; } }
 @media (max-width: 1200px) { .header-tools > div > button > span { display: none; } .header-actions button > span { display: none; } }
 @media (max-width: 960px) { .header-tools { gap: 4px; } .header-tools + .header-actions { margin-left: 6px; } }
+
+/* 窗口不够宽时，低频的项目操作收进「更多」，不再跟中间的查看方式挤在一起 */
+.narrow-only { display: none !important; }
+@media (max-width: 1439px) { .wide-only { display: none !important; } .narrow-only { display: block !important; } }
+.more-menu { position: relative; }
+.more-menu > summary { list-style: none; display: inline-flex; align-items: center; gap: 7px; padding: 7px 10px; border-radius: var(--radius); cursor: pointer; font-size: 14px; }
+.more-menu > summary::-webkit-details-marker { display: none; }
+.more-menu > summary:hover, .more-menu[open] > summary { background: var(--quiet); }
+.more-list { position: absolute; right: 0; top: calc(100% + 6px); z-index: 40; min-width: 168px; display: grid; gap: 2px; padding: 6px; background: #fff; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 30px #39251b1f; }
+.more-list button { justify-content: flex-start; gap: 9px; width: 100%; padding: 8px 10px; font-size: 13px; border-radius: 8px; color: var(--ink); }
+.more-list button:hover:not(:disabled) { background: var(--quiet); }
+/* 画布工具栏左边：操作方式 */
+.canvas-toolbar .view-tools { display: flex; align-items: center; gap: 8px; }
+.canvas-toolbar .mode-tools > button { min-height: 28px; padding: 3px 11px; font-size: 12px; }
+.canvas-toolbar .mode-tools kbd { font-family: inherit; font-size: 10.5px; color: var(--subtle); margin-left: 1px; }
+@media (max-width: 1200px) { .canvas-toolbar .mode-tools kbd { display: none; } }

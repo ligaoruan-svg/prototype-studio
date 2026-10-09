@@ -26,7 +26,8 @@ const mk=(c,bg)=>{const d=document.createElement('div');Object.assign(d.style,{p
 const hover=mk('#b8532f99'),band=mk('#b8532f','#b8532f12');
 const own=t=>t instanceof Element&&root.contains(t)&&t!==root?t:null;
 function rel(el){const parts=[];for(let n=el;n&&n!==root;n=n.parentElement){const p=n.parentElement,same=p?[...p.children].filter(c=>c.tagName===n.tagName):[];parts.unshift(n.tagName.toLowerCase()+(same.length>1?':nth-of-type('+(same.indexOf(n)+1)+')':''))}return parts.join(' > ')}
-function info(el){return {rel:rel(el),tag:el.tagName.toLowerCase(),text:(el.innerText||el.value||el.getAttribute('placeholder')||'').trim().slice(0,500),outer_html:el.outerHTML.slice(0,5000)}}
+const KEYS=['color','background-color','font-size','border-radius','padding-top','padding-bottom','padding-left','padding-right','display'];
+function info(el){const cs=getComputedStyle(el);return {rel:rel(el),tag:el.tagName.toLowerCase(),text:(el.innerText||el.value||el.getAttribute('placeholder')||'').trim().slice(0,500),outer_html:el.outerHTML.slice(0,5000),styles:Object.fromEntries(KEYS.map(k=>[k,cs.getPropertyValue(k)]))}}
 function place(b,el){if(!el){b.style.display='none';return}const r=el.getBoundingClientRect();Object.assign(b.style,{display:'block',left:r.left+'px',top:r.top+'px',width:r.width+'px',height:r.height+'px'})}
 function paint(){while(boxes.length<picked.length)boxes.push(mk('#b8532f','#b8532f14'));boxes.forEach((b,i)=>place(b,picked[i]))}
 function report(add){paint();parent.postMessage({source:'pa-card',type:'CARD_PICK',items:picked.map(info),additive:add},'*')}
@@ -53,19 +54,21 @@ export function pickToSelection(node, items = [], pageTitle = '') {
   const prefix = pageLike ? 'body' : node.layerSel
   const modal = pageLike ? '' : node.title
   const place = node.isPage ? pageTitle : `${pageTitle} › ${node.title}`
+  // 样式是卡片里实际算出来的（同一套 CSS），属性面板据此显示真实字号、边距；读不到的留空，不当成 0
   const one = item => ({
     selector: prefix ? `${prefix} > ${item.rel}` : item.rel,
-    pid: '', tag: item.tag, text: item.text, outer_html: item.outer_html, styles: {}, modal,
+    pid: '', tag: item.tag, text: item.text, outer_html: item.outer_html, styles: item.styles || {}, modal,
   })
   const card = { nodeId: node.id, rels: items.map(i => i.rel) }
-  if (items.length === 1) return { ...one(items[0]), card, place, viewTitle: node.title, pageTitle }
+  const viewKind = node.isPage ? 'page' : node.kind === 'subpage' ? 'subpage' : 'modal'
+  if (items.length === 1) return { ...one(items[0]), card, place, viewTitle: node.title, viewKind, pageTitle }
   const targets = items.map(one)
   return { selector: prefix || targets[0]?.selector || '', pid: '', tag: 'div', kind: 'region', modal,
-    text: targets.map(t => t.text || t.tag).join(' · ').slice(0, 500), outer_html: targets[0]?.outer_html || '', styles: {}, targets, card, place, viewTitle: node.title, pageTitle }
+    text: targets.map(t => t.text || t.tag).join(' · ').slice(0, 500), outer_html: targets[0]?.outer_html || '', styles: {}, targets, card, place, viewTitle: node.title, viewKind, pageTitle }
 }
 
 // 卡片按「从哪儿打开的」分组：页面上的按钮、表格某一行的操作、弹窗里点下一步打开的
-export const ORIGIN_LABEL = { page: '页面本身', button: '页面按钮', row: '列表行操作', step: '弹窗里的下一步', subpage: '子页面' }
+export const ORIGIN_LABEL = { page: '页面本身', button: '页面按钮', row: '列表操作', step: '弹窗里的下一步', subpage: '子页面' }
 export function originOf(node) {
   if (node.isPage) return 'page'
   if (node.parent != null) return 'step'
@@ -112,4 +115,12 @@ export function trailOf(nodes = [], node) {
 export function shortLabel(label = '', max = 14) {
   const text = String(label).replace(/^表格行 · /, '')
   return text.length > max ? text.slice(0, max) + '…' : text
+}
+
+// 从顶层到这个节点经过哪些节点：折叠的分支要先把这一路展开，才能定位过去
+export function ancestorsOf(nodes = [], id) {
+  const byId = new Map(nodes.map(n => [n.id, n]))
+  const out = []
+  for (let at = byId.get(id), guard = 0; at && at.parent != null && guard < 10; at = byId.get(at.parent), guard++) out.unshift(at.parent)
+  return out
 }

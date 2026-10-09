@@ -36,6 +36,12 @@ class 记下的意见带上弹窗(unittest.TestCase):
         stored = storage.active_annotations(storage.load_meta(self.pid), self.page)
         self.assertEqual(stored[0]["in_modal"], "新增 GWP 值")
 
+    def test_子页面和业务页面路由也记下(self):
+        ann = storage.add_annotation(self.pid, self.page, {"selector": "body > div > button", "note": "改名",
+                                                           "in_subpage": "TMP-BUILD-2026-V2", "view_route": "#template",
+                                                           "modal_trail": "表格行 · TMP-BUILD-2026-V2"})
+        self.assertEqual((ann["in_subpage"], ann["view_route"]), ("TMP-BUILD-2026-V2", "#template"))
+
     def test_页面上的意见不带弹窗字段也照常保存(self):
         ann = storage.add_annotation(self.pid, self.page, {"selector": "h1", "note": "标题加粗"})
         self.assertEqual(ann["in_modal"], "")

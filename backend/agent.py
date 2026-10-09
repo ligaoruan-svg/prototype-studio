@@ -281,7 +281,10 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
         storage.append_chat(project_id, "user", user_message, {"page_id":page_id,"annotation_count":len(saved_annotations),"intent":intent})
     history = history_context(meta.get('chat',[]), page_id)
     annotation_text = "\n".join(f"意见 {i+1} id={a['id']} name={element_name(a)} note={a.get('note','')!r}"
-                               + (f" in_modal={a['in_modal']!r} modal_trail={a.get('modal_trail','')!r}" if a.get('in_modal') else "")
+                               + (f" in_modal={a['in_modal']!r}" if a.get('in_modal') else "")
+                               + (f" in_subpage={a['in_subpage']!r}" if a.get('in_subpage') else "")
+                               + (f" modal_trail={a['modal_trail']!r}" if a.get('modal_trail') else "")
+                               + (f" view_route={a['view_route']!r}" if a.get('view_route') else "")
                                for i,a in enumerate(saved_annotations)) or "（没有保存的修改意见）"
     target_text = "\n".join(f"name={a['name']} selector={a['selector']} note={a.get('note','')!r}" for a in anns)
     # 背景资料和用户这轮说的话必须分开：以前一股脑灌进去，用户问「你能做什么」

@@ -91,7 +91,7 @@ test('卡片按从哪儿打开分组：页面按钮 / 列表行 / 弹窗里的�
   assert.equal(originOf(nodes[0]), 'button')
   assert.equal(originOf({ id: 9, parent: null, label: '表格行 · 编辑' }), 'row')
   assert.equal(originOf(nodes[2]), 'step')
-  assert.equal(ORIGIN_LABEL.row, '列表行操作')
+  assert.equal(ORIGIN_LABEL.row, '列表操作')
 })
 
 test('来源一行写清楚是怎么点开的', () => {

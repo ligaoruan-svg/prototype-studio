@@ -1,18 +1,18 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
-import { ArrowLeft, Hand, Layers, LoaderCircle, RotateCw, Search, AlertCircle, ChevronDown } from 'lucide-vue-next'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { ArrowLeft, ExternalLink, Layers, LoaderCircle, LocateFixed, PencilLine, Play, RotateCw, Search, AlertCircle, ChevronDown } from 'lucide-vue-next'
 import { expand, expandAll, isFresh, requestRoute, touch } from './expandStore.js'
-import { ORIGIN_LABEL, crumbOf, originOf, pickToSelection, shortLabel, trailOf } from './probeTree.js'
+import { ORIGIN_LABEL, ancestorsOf, buildTree, crumbOf, originOf, pickToSelection, shortLabel, trailOf } from './probeTree.js'
 import SceneCard from './SceneCard.vue'
 import BoardBranch from './BoardBranch.vue'
 import LiveScene from './LiveScene.vue'
-import { buildTree } from './probeTree.js'
 
 const props = defineProps({ route: { type: String, default: '' }, pageName: String, selection: Object, mode: String, focus: [Number, null], notes: { type: Array, default: () => [] } })
-const emit = defineEmits(['open', 'leave', 'select', 'update:focus', 'update:route'])
+const emit = defineEmits(['open', 'select', 'clear', 'mode', 'update:focus', 'update:route'])
 
 const empty = { title: '', styles: null, page: '', width: 1150, height: 800, nodes: [] }
-const filter = ref('all'), query = ref(''), live = ref(null)
+const filter = ref('all'), query = ref(''), live = ref(null), scroller = ref(null)
+const openIds = ref(new Set())   // 展开了「后续」的节点
 const entry = computed(() => expand.entries[props.route] || null)
 const job = computed(() => expand.jobs[props.route] || null)
 const state = computed(() => entry.value?.result || empty)
@@ -23,7 +23,7 @@ const status = computed(() => job.value ? (job.value.kind === 'sync' ? 'syncing'
 const busy = computed(() => status.value !== 'done' && status.value !== 'idle')
 const staleCount = computed(() => state.value.nodes.filter(n => n.stale).length)
 
-// 全部页面：导航里的每个路由一项
+// 业务页面：原型里导航的每个路由一项（和左侧「原型文件」不是一回事）
 const routeTitle = route => expand.routes.find(r => r.hash === route)?.title
 const pages = computed(() => expand.routes.map(r => ({ ...r, count: expand.entries[r.hash]?.result?.nodes?.length,
   state: expand.jobs[r.hash] ? '展开中' : isFresh(r.hash) ? '' : expand.entries[r.hash] ? '待同步' : expand.queued.includes(r.hash) ? '排队中' : '未展开' })))
@@ -33,32 +33,52 @@ const allRunning = computed(() => expand.discovering || (expand.routes.length > 
 
 // 导航里的菜单名最准（「碳排核算模板配置」）；原型页面里取到的常常是整站标题
 const title = computed(() => routeTitle(props.route) || state.value.title || props.pageName || '当前页面')
-// 页面本身也是一张卡：静态元素在这里点选，能直接微调
 const pageNode = computed(() => state.value.styles && state.value.page ? { id: 0, isPage: true, title: title.value, html: state.value.page, box: null } : null)
-const scenes = computed(() => [...(pageNode.value ? [pageNode.value] : []), ...state.value.nodes].map(node => ({ node, origin: originOf(node), crumb: crumbOf(state.value.nodes, node) })))
-// 一棵树：页面在左边，从它的按钮出发一条条链，链上是依次打开的弹窗
+const scenes = computed(() => [...(pageNode.value ? [pageNode.value] : []), ...state.value.nodes].map(node => ({ node, crumb: node.isPage ? '当前页面' : crumbOf(state.value.nodes, node) })))
+// 一棵树：页面在左边，从它的按钮出发一条条链
 const tree = computed(() => buildTree(state.value.nodes.map(n => ({ ...n, crumb: crumbOf(state.value.nodes, n), notes: notesOf(n) }))))
-const matches = node => !query.value.trim() || `${node.title} ${node.label}`.includes(query.value.trim()) || node.children.some(matches)
+const q = computed(() => query.value.trim())
+const hit = node => !!q.value && `${node.title} ${node.label}`.includes(q.value)
+const matches = node => !q.value || hit(node) || node.children.some(matches)
 const roots = computed(() => tree.value.filter(n => (filter.value === 'all' || originOf(n) === filter.value) && matches(n)))
+// 口径统一：总数是视图数，分组是「组」（每组一条按钮链）
 const groups = computed(() => {
   const counts = {}
   for (const n of tree.value) counts[originOf(n)] = (counts[originOf(n)] || 0) + 1
-  return [{ key: 'all', label: '全部视图', count: scenes.value.length }, ...['button', 'row'].filter(k => counts[k]).map(k => ({ key: k, label: ORIGIN_LABEL[k], count: counts[k] }))]
+  return [{ key: 'all', label: `全部 ${scenes.value.length} 个视图` }, ...['button', 'row'].filter(k => counts[k]).map(k => ({ key: k, label: `${ORIGIN_LABEL[k]} ${counts[k]} 组` }))]
 })
 const frame = computed(() => ({ w: state.value.width || 1150, h: state.value.height || 800 }))
 const picked = computed(() => props.selection?.card?.route === props.route ? props.selection.card : null)
 const focused = computed(() => props.focus == null ? null : scenes.value.find(s => s.node.id === props.focus) || null)
+const hint = computed(() => props.mode === 'interact' ? '点卡片试玩；要改哪里，点卡片右上角「编辑」' : props.mode === 'box' ? '在卡片里拖动框选一组元素；太小时点「编辑」放大' : '点击元素选择修改，按住 Shift 多选；太小时点「编辑」放大')
 
-function notesOf(node) { return props.notes.filter(a => (a.in_modal || '') === (node.isPage ? '' : node.title)).length }
-function open(node) { if (node.isPage) emit('leave'); else emit('open', { ...node, route: props.route, trail: trailOf(state.value.nodes, node) }) }
+function notesOf(node) { return props.notes.filter(a => node.isPage ? !a.in_modal && !a.in_subpage : (a.in_modal || a.in_subpage) === node.title).length }
+function edit(node) { if (props.mode === 'interact') emit('mode', 'select'); emit('update:focus', node.id) }
+function play(node) { if (props.mode !== 'interact') emit('mode', 'interact'); emit('update:focus', node.id) }
+function openInPreview(node) { emit('open', { ...node, route: props.route, trail: node.isPage ? '' : trailOf(state.value.nodes, node) }) }
+function refind() { requestRoute(props.route, { force: true }) }
 function pick({ node, items }) {
-  if (!items.length) return
+  if (!items.length) { emit('clear'); return }
   touch(props.route, node.id)
   const sel = pickToSelection(node, items, title.value)
   emit('select', { ...sel, card: { ...sel.card, route: props.route }, trail: node.isPage ? '' : trailOf(state.value.nodes, node) })
 }
+function toggle(id) { const next = new Set(openIds.value); next.has(id) ? next.delete(id) : next.add(id); openIds.value = next }
+// 把这一路的「后续」都展开，再滚过去
+async function reveal(id) {
+  if (id == null) return
+  const next = new Set(openIds.value)
+  for (const a of ancestorsOf(state.value.nodes, id)) next.add(a)
+  openIds.value = next
+  await nextTick()
+  scroller.value?.querySelector(`[data-node-id="${id}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })
+}
+// 搜索：命中的那张卡所在的路径自动展开并滚过去
+watch(q, value => { if (!value) return; const first = state.value.nodes.find(n => `${n.title} ${n.label}`.includes(value)); if (first) reveal(first.id) })
+// 选中的、正在编辑的卡，它那一路默认展开
+watch(() => picked.value?.nodeId, id => { if (id) reveal(id) })
 // 记过意见的卡：改完同步时先拍
-watch(() => props.notes, notes => { for (const n of state.value.nodes) if (notes.some(a => a.in_modal && a.in_modal === n.title)) touch(props.route, n.id) }, { immediate: true })
+watch(() => props.notes, notes => { for (const n of state.value.nodes) if (notes.some(a => (a.in_modal || a.in_subpage) === n.title)) touch(props.route, n.id) }, { immediate: true })
 watch(() => [props.route, expand.hash, expand.scope], () => requestRoute(props.route))
 onMounted(() => requestRoute(props.route))
 </script>
@@ -70,14 +90,17 @@ onMounted(() => requestRoute(props.route))
         <span class="divider"></span>
         <strong>{{ focused.node.title }}</strong>
         <span class="focus-crumb">{{ focused.crumb }}</span>
-        <span v-if="mode === 'interact'" class="live-tag">试玩中 · 改动不会保存</span>
-        <button v-if="mode === 'interact'" type="button" class="outline focus-live" @click="live?.restart()"><RotateCw :size="14" />重新开始</button>
-        <button type="button" class="outline focus-live" @click="open(focused.node)"><Hand :size="14" />交互预览</button>
+        <span class="state-tag" :class="{ live: mode === 'interact' }">{{ mode === 'interact' ? '试玩中 · 演示数据不保存' : mode === 'box' ? '编辑中 · 拖动框选' : '编辑中 · 点击元素选择修改' }}</span>
+        <template v-if="mode === 'interact'">
+          <button type="button" class="outline focus-btn" @click="live?.restart()"><RotateCw :size="14" />重新开始</button>
+          <button type="button" class="outline focus-btn" @click="edit(focused.node)"><PencilLine :size="14" />改为编辑</button>
+        </template>
+        <button v-else type="button" class="outline focus-btn" @click="play(focused.node)"><Play :size="14" />试玩</button>
+        <button type="button" class="outline focus-btn" title="回到预览，在完整页面里打开这个视图" @click="openInPreview(focused.node)"><ExternalLink :size="14" />在预览中打开</button>
       </div>
       <div class="focus-content">
         <LiveScene v-if="mode === 'interact'" ref="live" :key="'live-' + focused.node.id" :node="focused.node" :route="route" :frame="frame" />
         <SceneCard v-else :key="'focus-' + focused.node.id" :node="focused.node" :styles="state.styles" :frame="frame" :picked="picked" :mode="mode" :crumb="focused.crumb" large @pick="pick" />
-        <p class="focus-tip">{{ mode === 'interact' ? '这里是真的在跑的原型，可以随便点；切回点选或拉框就能选中要改的地方' : '放大后仍可点选或拉框；修改后保持当前视图与目标' }}</p>
       </div>
     </template>
     <template v-else>
@@ -85,39 +108,39 @@ onMounted(() => requestRoute(props.route))
         <div class="board-heading-wrap">
           <div class="board-heading">
             <Layers :size="16" />
-            <label v-if="pages.length" class="page-switch" title="切换要展开的页面"><select :value="route" aria-label="切换页面" @change="$emit('update:route', $event.target.value); $emit('update:focus', null)"><option v-if="!pages.some(p => p.hash === route)" :value="route">{{ title }}</option><option v-for="p in pages" :key="p.hash" :value="p.hash">{{ p.title }}{{ p.count != null ? ' · ' + p.count : '' }}{{ p.state ? '（' + p.state + '）' : '' }}</option></select><strong>{{ title }}</strong><ChevronDown :size="14" /></label>
+            <label v-if="pages.length" class="page-switch" title="切换业务页面"><select :value="route" aria-label="切换业务页面" @change="$emit('update:route', $event.target.value); $emit('update:focus', null)"><option v-if="!pages.some(p => p.hash === route)" :value="route">{{ title }}</option><option v-for="p in pages" :key="p.hash" :value="p.hash">{{ p.title }}{{ p.count != null ? ' · ' + p.count : '' }}{{ p.state ? '（' + p.state + '）' : '' }}</option></select><strong>{{ title }}</strong><ChevronDown :size="14" /></label>
             <strong v-else>{{ title }}</strong>
-            <span class="board-count">{{ scenes.length }} 个视图</span>
           </div>
           <p v-if="status === 'running'" class="board-sub live" aria-live="polite"><LoaderCircle :size="12" class="spin" />正在试「{{ shortLabel(progress.current) || '准备中' }}」· 已试 {{ progress.tried || 0 }} / {{ progress.total || '…' }} · 找到 {{ progress.nodes?.length || 0 }} 个</p>
           <p v-else-if="status === 'refreshing'" class="board-sub live" aria-live="polite"><LoaderCircle :size="12" class="spin" />正在重新查找 · 已试 {{ progress.tried || 0 }} / {{ progress.total || '…' }}</p>
           <p v-else-if="status === 'syncing'" class="board-sub live" aria-live="polite"><LoaderCircle :size="12" class="spin" />正在同步改动 · {{ progress.done || 0 }} / {{ progress.total || state.nodes.length }}</p>
           <p v-else-if="status === 'queued'" class="board-sub live" aria-live="polite"><LoaderCircle :size="12" class="spin" />排队中，马上轮到这一页</p>
-          <p v-else-if="staleCount" class="board-sub warn">有 {{ staleCount }} 张卡点不开了，可能按钮改了名——点右上角重新查找</p>
-          <p v-else class="board-sub">点选要改的地方；太小时可放大编辑。多处一起改：每处「先记下」，最后一次修改</p>
+          <p v-else-if="staleCount" class="board-sub warn">有 {{ staleCount }} 张卡路径失效（标了黄色），可能按钮改了名——<button type="button" class="link-btn" @click="refind">重新查找这一页</button></p>
+          <p v-else class="board-sub">{{ hint }}</p>
         </div>
         <div class="board-control">
-          <button v-if="!allDone" type="button" class="expand-all" :disabled="allRunning" :title="allRunning ? '后台正在展开，预览和展开视图照常能用' : '把原型里的每个页面都展开一遍，之后改动会自动同步'" @click="expandAll(route)"><LoaderCircle v-if="allRunning" :size="13" class="spin" /><Layers v-else :size="13" />{{ allRunning ? (expand.discovering ? '正在找页面…' : `全部页面 ${allProgress.done} / ${allProgress.total}`) : '一键展开全部页面' }}</button>
-          <span v-else class="all-done" title="所有页面都已展开，改动会自动同步">全部 {{ allProgress.total }} 页已展开</span>
+          <button v-if="picked" type="button" class="icon-button tool" title="定位当前选中的视图" aria-label="定位当前选中的视图" @click="reveal(picked.nodeId)"><LocateFixed :size="15" /></button>
+          <button v-if="!allDone" type="button" class="expand-all" :disabled="allRunning" :title="allRunning ? '后台正在展开，预览和展开视图照常能用' : '把原型里的每个业务页面都展开一遍，之后改动会自动同步'" @click="expandAll(route)"><LoaderCircle v-if="allRunning" :size="13" class="spin" /><Layers v-else :size="13" />{{ allRunning ? (expand.discovering ? '正在找页面…' : `业务页面 ${allProgress.done} / ${allProgress.total}`) : '一键展开全部业务页面' }}</button>
+          <span v-else class="all-done" title="所有业务页面都已展开，改动会自动同步">{{ allProgress.total }} 个业务页面已展开</span>
           <label class="search"><Search :size="14" /><input v-model="query" type="search" placeholder="查找弹窗" aria-label="查找弹窗"></label>
-          <button type="button" class="icon-button refresh" :disabled="busy" title="重新查找这一页的所有弹窗（新加了按钮时用）" aria-label="重新查找这一页的所有弹窗" @click="requestRoute(route, { force: true })"><RotateCw :size="15" :class="{ spin: busy }" /></button>
+          <button type="button" class="icon-button tool" :disabled="busy" title="重新查找这一页的所有弹窗（新加了按钮时用）" aria-label="重新查找这一页的所有弹窗" @click="refind"><RotateCw :size="15" :class="{ spin: busy }" /></button>
         </div>
       </div>
       <div class="board-filter" role="tablist" aria-label="按来源筛选">
-        <button v-for="g in groups" :key="g.key" type="button" role="tab" :aria-selected="filter === g.key" :class="{ active: filter === g.key }" @click="filter = g.key">{{ g.label }}<span>{{ g.count }}</span></button>
+        <button v-for="g in groups" :key="g.key" type="button" role="tab" :aria-selected="filter === g.key" :class="{ active: filter === g.key }" @click="filter = g.key">{{ g.label }}</button>
       </div>
       <div v-if="expand.error" class="board-error"><AlertCircle :size="15" /><span>{{ expand.error }}，可以点右上角的刷新再试一次。</span></div>
-      <div class="board-scroll">
+      <div ref="scroller" class="board-scroll">
         <div class="board-tree">
           <div class="tree-root">
-            <SceneCard v-if="pageNode" :node="pageNode" :styles="state.styles" :frame="frame" :picked="picked" :mode="mode" crumb="当前页面" :notes="notesOf(pageNode)" compact @pick="pick" @open="open" @focus="$emit('update:focus', $event.id)" @play="$emit('update:focus', $event.id)" />
+            <SceneCard v-if="pageNode" :node="pageNode" :styles="state.styles" :frame="frame" :picked="picked" :mode="mode" crumb="当前页面" :notes="notesOf(pageNode)" :width="216" compact @pick="pick" @edit="edit" @play="play" />
             <div v-else class="scene-ghost" aria-hidden="true"><span></span><span></span><span></span></div>
           </div>
           <div class="tree-branches">
-            <BoardBranch v-for="node in roots" :key="node.id" :node="node" :styles="state.styles" :frame="frame" :picked="picked" :mode="mode" @pick="pick" @open="open" @focus="$emit('update:focus', $event.id)" @play="$emit('update:focus', $event.id)" />
+            <BoardBranch v-for="node in roots" :key="node.id" :node="node" :styles="state.styles" :frame="frame" :picked="picked" :mode="mode" :open="openIds" @pick="pick" @edit="edit" @play="play" @refind="refind" @toggle="toggle" />
             <div v-if="status === 'running' || status === 'queued'" class="branch-ghost" aria-hidden="true"><span></span><div class="scene-ghost"><span></span><span></span><span></span></div></div>
             <div v-if="!busy && !roots.length" class="empty-board">
-              <template v-if="query || filter !== 'all'"><Search :size="22" /><h3>没有找到对应视图</h3><p>试试其他名称，或者清空当前筛选。</p><button type="button" class="outline" @click="query = ''; filter = 'all'">清空筛选</button></template>
+              <template v-if="q || filter !== 'all'"><Search :size="22" /><h3>没有找到对应视图</h3><p>试试其他名称，或者清空当前筛选。</p><button type="button" class="outline" @click="query = ''; filter = 'all'">清空筛选</button></template>
               <template v-else><h3>这一页没有点出弹窗</h3><p>如果弹窗要先切到某个页签、选中某一行才出现，先在预览里切过去，再点右上角的刷新。</p></template>
             </div>
           </div>
@@ -177,10 +200,14 @@ onMounted(() => requestRoute(props.route))
 .expand-all:disabled{opacity:1;background:#fff;color:var(--primary);border:1px solid #e1cabd}
 .all-done{font-size:12px;color:var(--success);white-space:nowrap}
 .board-tree{display:flex;align-items:flex-start;gap:22px;min-width:max-content}
-.tree-root{position:sticky;left:0;top:0;z-index:3;width:340px;flex-shrink:0}
+.tree-root{width:240px;flex-shrink:0}
 .tree-branches{display:flex;flex-direction:column;gap:18px;padding-left:16px;border-left:1.5px solid var(--line);min-width:420px}
 .branch-ghost{display:flex;gap:10px;align-items:flex-start}
 .branch-ghost>span{display:block;width:90px;height:26px;margin-top:14px;border-radius:12px;background:#efece4}
 .branch-ghost .scene-ghost{width:360px}
-.live-tag{font-size:11.5px;color:var(--primary);background:var(--primary-soft);border-radius:20px;padding:2px 9px;white-space:nowrap}
+.state-tag{font-size:11.5px;color:var(--muted);background:var(--quiet);border-radius:20px;padding:2px 9px;white-space:nowrap}
+.state-tag.live{color:var(--primary);background:var(--primary-soft)}
+.focus-btn{gap:6px;font-size:12px;padding:6px 11px;border:1px solid var(--line);border-radius:9px;background:#fff;white-space:nowrap}
+.link-btn{padding:0;font-size:inherit;color:var(--primary);text-decoration:underline;text-underline-offset:2px}
+.board-control .tool{width:32px;height:32px;background:#fff;border:1px solid var(--line);border-radius:8px}
 </style>

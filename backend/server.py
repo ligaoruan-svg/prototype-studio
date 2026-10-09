@@ -41,6 +41,8 @@ class AnnotationIn(BaseModel):
     bounds: dict | None = None
     in_modal: str = ""
     modal_trail: str = ""
+    in_subpage: str = ""
+    view_route: str = ""
 
 
 class AgentIn(BaseModel):
