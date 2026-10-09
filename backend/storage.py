@@ -10,6 +10,22 @@ from typing import Any
 
 from .atomicio import write_atomic
 
+import functools
+import threading
+
+# project.json 是「读出来 → 改 → 整份写回」。两个请求同时这么干（比如提交修改的同时记一条意见），
+# 后写的会把先写的整个盖掉：意见丢了，或者撤销记录 / 版本号丢了。所有改它的地方都排这一把锁。
+# 可重入：提交流程里本来就握着它再调这里的函数。
+META_LOCK = threading.RLock()
+
+
+def _locked(fn):
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        with META_LOCK:
+            return fn(*args, **kwargs)
+    return wrapper
+
 ROOT = Path(__file__).resolve().parents[1]
 DATA_ROOT = ROOT / "data" / "projects"
 DATA_ROOT.mkdir(parents=True, exist_ok=True)
@@ -49,6 +65,7 @@ def save_meta(meta: dict[str, Any]) -> None:
     write_atomic(meta_path(meta["id"]), json.dumps(meta, ensure_ascii=False, indent=2))
 
 
+@_locked
 def create_project(name: str) -> dict[str, Any]:
     pid = safe_id("p")
     pdir = project_dir(pid)
@@ -89,6 +106,7 @@ def list_projects() -> list[dict[str, Any]]:
     return sorted(items, key=lambda x: x.get("updated_at", ""), reverse=True)
 
 
+@_locked
 def add_page(project_id: str, rel_path: str, title: str | None = None) -> dict[str, Any]:
     meta = load_meta(project_id)
     page_id = safe_id("page")
@@ -121,6 +139,7 @@ def page_file(project_id: str, page_id: str) -> Path:
     return project_dir(project_id) / "source" / page["path"]
 
 
+@_locked
 def rename_item(project_id: str, name: str, page_id: str = "") -> None:
     name = name.strip()
     if not name or len(name) > 80:
@@ -132,6 +151,7 @@ def rename_item(project_id: str, name: str, page_id: str = "") -> None:
     save_meta(meta)
 
 
+@_locked
 def trash_item(project_id: str, page_id: str = "") -> None:
     meta = load_meta(project_id)
     target = get_page(meta, page_id) if page_id else meta
@@ -139,6 +159,7 @@ def trash_item(project_id: str, page_id: str = "") -> None:
     save_meta(meta)
 
 
+@_locked
 def restore_item(project_id: str, page_id: str = "") -> None:
     meta = load_meta(project_id, include_deleted=True)
     if page_id:
@@ -181,6 +202,7 @@ def read_page(project_id: str, page_id: str) -> str:
         return source.read()
 
 
+@_locked
 def write_page(project_id: str, page_id: str, content: str, reason: str) -> dict[str, Any]:
     meta = load_meta(project_id)
     page = get_page(meta, page_id)
@@ -194,6 +216,7 @@ def write_page(project_id: str, page_id: str, content: str, reason: str) -> dict
     return snapshot_version(project_id, page_id, reason=reason)
 
 
+@_locked
 def snapshot_version(project_id: str, page_id: str, reason: str) -> dict[str, Any]:
     meta = load_meta(project_id)
     page = get_page(meta, page_id)
@@ -223,6 +246,7 @@ def active_annotations(meta: dict[str, Any], page_id: str) -> list[dict[str, Any
     return [a for a in meta.get("annotations", []) if a.get("page_id") == page_id and a.get("status", "active") == "active"]
 
 
+@_locked
 def add_annotation(project_id: str, page_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     meta = load_meta(project_id)
     get_page(meta, page_id)
@@ -252,6 +276,7 @@ def add_annotation(project_id: str, page_id: str, payload: dict[str, Any]) -> di
     return ann
 
 
+@_locked
 def delete_annotation(project_id: str, ann_id: str) -> None:
     meta = load_meta(project_id)
     meta["annotations"] = [a for a in meta.get("annotations", []) if a.get("id") != ann_id]
@@ -259,6 +284,7 @@ def delete_annotation(project_id: str, ann_id: str) -> None:
 
 
 
+@_locked
 def append_chat(project_id: str, role: str, content: str, extra: dict[str, Any] | None = None) -> None:
     meta = load_meta(project_id)
     entry = {"id": safe_id("msg"), "role": role, "content": content, "created_at": now_iso()}

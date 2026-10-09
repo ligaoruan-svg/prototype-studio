@@ -17,9 +17,10 @@ const projects = ref([]), project = ref(null), pageId = ref('')
 const sourceInfo = ref({ source: '', hash: '', tokens: {}, defaults: {}, regions: [] })
 const model = ref({ model: '', base_url: '', has_key: false })
 const mode = ref('interact'), view = ref('preview'), device = ref('desktop'), sideTab = ref('chat')
-const keepInspector = ref(localStorage.getItem('pf-inspector-pinned') === 'true')
+const stored = key => { try { return localStorage.getItem(key) } catch { return null } }
+const keepInspector = ref(stored('pf-inspector-pinned') === 'true')
 const leftOpen = ref(window.innerWidth > 960), rightOpen = ref(keepInspector.value)
-const showGuide = ref(localStorage.getItem('pf-hide-guide') !== 'true')
+const showGuide = ref(stored('pf-hide-guide') !== 'true')
 const selected = ref(null), inspection = ref(null), textValue = ref(''), note = ref(''), input = ref('')
 const regionKey = ref(0)   // 自增一次就重挂 RegionCapture，把上一次画的框擦掉
 const busy = ref(false), saving = ref(false), loading = ref(false), status = ref('本地工作区')
@@ -192,7 +193,7 @@ async function refresh(reload = true) {
 }
 async function chooseProject(id) {
   if (locked.value || !id) return
-  loading.value = true; error.value = ''; closeSelection(); previewRoute.value = ''; boardRoute.value = ''; boardFocus.value = null; previewScroll.value = null; runs.value = []
+  loading.value = true; error.value = ''; closeSelection(); previewRoute.value = ''; boardRoute.value = ''; boardFocus.value = null; pendingReplay.value = null; openedModal.value = null; previewScroll.value = null; runs.value = []
   try {
     project.value = await api(`/api/projects/${id}`); pageId.value = project.value.pages[0]?.id || ''
     if (!pageId.value) { previewDoc.value = ''; sourceInfo.value = { source: '', hash: '', tokens: {}, defaults: {}, regions: [] }; runtimeErrors.value = [] }
@@ -202,7 +203,7 @@ async function chooseProject(id) {
 }
 async function choosePage(id) {
   if (locked.value || id === pageId.value) return
-  pageId.value = id; previewRoute.value = ''; boardRoute.value = ''; boardFocus.value = null; previewScroll.value = null; runs.value = []; closeSelection(); loading.value = true
+  pageId.value = id; previewRoute.value = ''; boardRoute.value = ''; boardFocus.value = null; pendingReplay.value = null; openedModal.value = null; previewScroll.value = null; runs.value = []; closeSelection(); loading.value = true
   try { await refresh(); status.value = '已就绪' } catch (e) { error.value = e.message } finally { loading.value = false }
 }
 async function loadProjects(preferred = '') {
@@ -324,20 +325,30 @@ async function edit(prop, value) {
   saving.value = true; error.value = ''; status.value = '修改中'
   send({ type: 'PA_PREVIEW', selector, prop, value: String(value) })
   const card = selected.value?.card
+  let committed = false
   if (card || prop.startsWith('--')) cardPatch.value = { seq: ++patchSeq, prop, value: String(value), route: prop.startsWith('--') ? null : card.route, nodeId: prop.startsWith('--') ? null : card.nodeId, rels: card?.rels || [] }
   try {
     const result = await post(endpoint('/edit'), { selector, prop, value: String(value), expected_hash: sourceInfo.value.hash })
-    await checkAndCommit(result)
+    await checkAndCommit(result); committed = !!result.changed
     if (!result.changed) status.value = '没有新的改动'
     await refresh(false)
-  } catch (e) { error.value = e.message; status.value = '修改未保存 · 已保留原页面'; await refresh().catch(() => {}) }
+  } catch (e) {
+    if (committed) status.value = '已保存 · 预览刷新失败'
+    else { error.value = e.message; status.value = '修改未保存 · 已保留原页面' }
+    await refresh().catch(() => {})
+  }
   finally {
     saving.value = false
-    if (selected.value) send({ type: 'PA_SELECT', selector: selected.value.selector })
+    reselect()
   }
 }
+// 改完以后在预览里重新选中同一个元素，好让属性面板读到新值。
+// 多选、拉框、在展开卡片里选的不能这样做：预览只会退回成一个元素，甚至因为找不到而把选择清掉
+function reselect() { const s = selected.value; if (s && s.kind !== 'region' && !s.card && !(s.targets?.length > 1)) send({ type: 'PA_SELECT', selector: s.selector }) }
 function changeNumber(key, event) {
-  const n = Number(event.target.value)
+  const raw = String(event.target.value ?? '').trim()
+  if (!raw) return   // 清空了不是想改成 0
+  const n = Number(raw)
   if (!Number.isFinite(n) || n < 0 || n > 160) { toast('请输入 0–160 之间的数值'); return }
   edit(key, `${n}px`)
 }
@@ -347,8 +358,8 @@ async function undo(changeId = '') {
   try {
     await checkAndCommit(await post(endpoint('/undo'), { change_id: typeof changeId === 'string' ? changeId : '' }))
     await refresh(false); toast('已撤销上一步')
-  } catch (e) { error.value = e.message }
-  finally { saving.value = false; if (selected.value) send({ type: 'PA_SELECT', selector: selected.value.selector }) }
+  } catch (e) { error.value = e.message; status.value = '撤销失败 · 页面没变' }
+  finally { saving.value = false; reselect() }
 }
 
 
@@ -373,6 +384,8 @@ async function saveNote() {
 async function removeAnnotation(id) {
   try { await api(`/api/projects/${project.value.id}/annotations/${id}`, { method: 'DELETE' }); await refresh(false) } catch (e) { error.value = e.message }
 }
+function openLeft() { leftOpen.value = true; if (window.innerWidth <= 960) rightOpen.value = false }
+function toggleRight() { rightOpen.value = !rightOpen.value; if (rightOpen.value && window.innerWidth <= 960) leftOpen.value = false }
 async function toAI() { leftOpen.value = true; sideTab.value = 'chat'; if (window.innerWidth <= 960) rightOpen.value = false; await nextTick(); composer.value?.focus() }
 async function runAgent(text = '', runtimeFeedback = '', options = {}) {
   const message = (typeof text === 'string' && text ? text : input.value).trim() || (annotations.value.length ? '请逐条处理已记下的修改意见，保留其他区域。' : '')
@@ -414,12 +427,17 @@ async function runAgent(text = '', runtimeFeedback = '', options = {}) {
       }
     })
     current.result = result
-    if (result.changed) { current.status = 'checking'; Object.assign(result, await checkAndCommit(result)) }
+    if (result.changed) { current.status = 'checking'; Object.assign(result, await checkAndCommit(result)); current.committed = true }
     else status.value = result.clarification ? '等待你确认' : result.discussion ? '讨论完成 · 未修改文件' : '没有改动页面'
     lastResult.value = result
     await refresh(false); projects.value = await api('/api/projects')
     current.status = 'complete'
   } catch (e) {
+    if (current.committed) {   // 已经存进去了，只是刷新预览没成功：不能报「未保存」，否则重试会再改一遍
+      current.status = 'complete'; lastResult.value = current.result
+      status.value = '已保存 · 预览刷新失败'; toast('修改已保存，但预览刷新失败，可以刷新页面')
+      await refresh(false).catch(() => {}); return
+    }
     current.status = 'failed'
     current.steps.filter(s => s.state === 'running').forEach(s => { s.state = 'error'; s.error = '本次处理已停止' })
     current.error = { code: e.code || 'network', message: e.message, detail: e.detail || e.message }
@@ -552,6 +570,7 @@ async function uploadImage(event) {
   } catch (e) { error.value = e.message }
 }
 async function useReference(createNew = false) {
+  if (locked.value) { dialogError.value = 'AI 正在修改，等它完成再用截图'; return }
   if (createNew || !project.value) {
     dialogBusy.value = true
     try { const result = await post('/api/projects/new', { name: reference.value.name.replace(/\.[^.]+$/, '') }); await loadProjects(result.id) } catch (e) { dialogError.value = e.message; return } finally { dialogBusy.value = false }
@@ -578,8 +597,9 @@ async function createProject() {
   } catch (e) { dialogError.value = e.message; } finally { dialogBusy.value = false }
 }
 async function restore(version) {
+  if (locked.value) { dialogError.value = 'AI 正在修改，等它完成再退回'; return }
   dialogBusy.value = true; error.value = ''; dialogError.value = ''
-  try { const result = await post(endpoint(`/restore/${version}`)); await checkAndCommit(result); closeSelection(); await refresh(false); dialog.value.close(); toast(`已退回到 v${version}`) } catch (e) { dialogError.value = e.message } finally { dialogBusy.value = false }
+  try { const result = await post(endpoint(`/restore/${version}`)); await checkAndCommit(result); closeSelection(); await refresh(false); dialog.value.close(); toast(`已退回到 v${version}`) } catch (e) { dialogError.value = e.message; status.value = '退回失败 · 页面没变' } finally { dialogBusy.value = false }
 }
 async function copySource() { try { await navigator.clipboard.writeText(codeText.value); codeCopied.value = true; setTimeout(() => codeCopied.value = false, 1800) } catch { toast('请选中源码后复制') } }
 function download(zip = false) { if (project.value) window.location.assign(zip ? `/api/projects/${project.value.id}/export` : endpoint('/download')) }
@@ -608,9 +628,9 @@ onUnmounted(() => { window.removeEventListener('message', onMessage); window.rem
 <template>
   <div class="studio">
     <header class="app-header">
-      <div class="header-left"><a class="brand" href="/" aria-label="原型工坊首页"><span class="brand-symbol"><PanelsTopLeft :size="21" /></span><strong>原型工坊</strong><span class="local-badge">本地</span></a><div class="project-picker"><span class="divider"></span><select aria-label="切换项目" :value="project?.id || ''" :disabled="locked || !projects.length" @change="chooseProject($event.target.value)"><option v-if="!projects.length" value="">我的工作区</option><option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }}</option></select><ChevronDown :size="14" /><span v-if="page && page.title !== project?.name" class="page-crumb">/ {{ page.title }}</span></div><button v-if="!leftOpen" class="icon-button" title="打开对话" aria-label="打开对话" @click="leftOpen = true; rightOpen = window.innerWidth > 960 && rightOpen"><MessageSquare :size="17" /></button></div>
+      <div class="header-left"><a class="brand" href="/" aria-label="原型工坊首页"><span class="brand-symbol"><PanelsTopLeft :size="21" /></span><strong>原型工坊</strong><span class="local-badge">本地</span></a><div class="project-picker"><span class="divider"></span><select aria-label="切换项目" :value="project?.id || ''" :disabled="locked || !projects.length" @change="chooseProject($event.target.value)"><option v-if="!projects.length" value="">我的工作区</option><option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }}</option></select><ChevronDown :size="14" /><span v-if="page && page.title !== project?.name" class="page-crumb">/ {{ page.title }}</span></div><button v-if="!leftOpen" class="icon-button" title="打开对话" aria-label="打开对话" @click="openLeft"><MessageSquare :size="17" /></button></div>
       <div class="header-center"><div class="view-tabs" role="tablist" aria-label="查看方式"><button :class="{ active: view === 'preview' && !boardOpen }" @click="showPreview"><Monitor :size="14" /><span>预览</span></button><button :class="{ active: view === 'preview' && boardOpen }" :disabled="!page || !previewDoc" title="展开这一页的所有弹窗 · E" @click="showBoard"><Layers :size="14" /><span>展开</span><kbd>E</kbd></button><button :class="{ active: view === 'code' }" :disabled="!page" title="切换预览 / 代码 · ⌘/Ctrl + /" @click="view = 'code'"><Code2 :size="14" /><span>代码</span></button></div><div v-if="page && view !== 'code'" class="mode-tools" role="group" aria-label="操作方式"><button :class="{ active: mode === 'interact' }" :disabled="loading" title="交互 · H：像真用户一样点；在展开里点卡片可以试玩" @click="setMode('interact')"><Hand :size="15" /><span>交互</span><kbd>H</kbd></button><button :class="{ active: mode === 'select' }" :disabled="loading" title="点选 · V（按住 Shift / ⌘ 多选同一视图内的元素）" @click="setMode('select')"><MousePointer2 :size="15" /><span>点选</span><kbd>V</kbd></button><button :class="{ active: mode === 'box' }" :disabled="loading" title="拉框 · B" @click="setMode('box')"><Scan :size="15" /><span>拉框</span><kbd>B</kbd></button></div></div>
-      <nav class="header-right" aria-label="画布和项目操作"><div class="device-tools" v-if="view === 'preview' && !boardOpen"><button v-for="d in [{ id: 'desktop', label: '桌面', icon: Monitor }, { id: 'tablet', label: '平板', icon: Tablet }, { id: 'mobile', label: '手机', icon: Smartphone }]" :key="d.id" class="icon-button" :class="{ active: device === d.id }" :aria-label="d.label + '预览'" :title="d.label" @click="device = d.id"><component :is="d.icon" :size="16" /></button><span class="actual-width">{{ canvasWidth }} px</span></div><div class="history-tools"><button class="icon-button" aria-label="撤销上一步" :title="undoCount ? '撤销上一步 · ⌘/Ctrl + Z' : '暂无可撤销的修改'" :disabled="!undoCount || locked" @click="undo()"><Undo2 :size="16" /></button><button class="history-button" :disabled="!page || loading" title="历史版本" @click="openDialog('history')"><History :size="15" /><span>{{ page ? 'v' + page.version : '历史' }}</span></button></div><button class="export-button" :disabled="!page || locked" title="导出 HTML" @click="download()"><Download :size="15" /><span>导出</span></button><details ref="moreMenu" class="more-menu"><summary class="icon-button" aria-label="更多" title="新建、导入、文件管理、配色、设计规范、模型设置"><MoreHorizontal :size="18" /></summary><div class="more-list" @click="moreMenu?.removeAttribute('open')"><button :disabled="locked" @click="openDialog('new')"><Plus :size="15" />新建</button><button :disabled="locked" @click="fileInput.click()"><Upload :size="15" />导入</button><button :disabled="locked" @click="openDialog('files')"><FolderOpen :size="15" />文件管理</button><hr><button :disabled="!page || loading" @click="openDialog('palette')"><Palette :size="15" />项目配色</button><button @click="openDialog('spec')"><Ruler :size="15" />设计规范</button><button @click="openDialog('settings')"><Settings2 :size="15" />模型设置</button></div></details><span class="divider"></span><button class="icon-button" :class="{ active: rightOpen }" aria-label="切换属性面板" @click="rightOpen = !rightOpen; leftOpen = window.innerWidth > 960 && leftOpen"><SlidersHorizontal :size="17" /></button></nav>
+      <nav class="header-right" aria-label="画布和项目操作"><div class="device-tools" v-if="view === 'preview' && !boardOpen"><button v-for="d in [{ id: 'desktop', label: '桌面', icon: Monitor }, { id: 'tablet', label: '平板', icon: Tablet }, { id: 'mobile', label: '手机', icon: Smartphone }]" :key="d.id" class="icon-button" :class="{ active: device === d.id }" :aria-label="d.label + '预览'" :title="d.label" @click="device = d.id"><component :is="d.icon" :size="16" /></button><span class="actual-width">{{ canvasWidth }} px</span></div><div class="history-tools"><button class="icon-button" aria-label="撤销上一步" :title="undoCount ? '撤销上一步 · ⌘/Ctrl + Z' : '暂无可撤销的修改'" :disabled="!undoCount || locked" @click="undo()"><Undo2 :size="16" /></button><button class="history-button" :disabled="!page || loading" title="历史版本" @click="openDialog('history')"><History :size="15" /><span>{{ page ? 'v' + page.version : '历史' }}</span></button></div><button class="export-button" :disabled="!page || locked" title="导出 HTML" @click="download()"><Download :size="15" /><span>导出</span></button><details ref="moreMenu" class="more-menu"><summary class="icon-button" aria-label="更多" title="新建、导入、文件管理、配色、设计规范、模型设置"><MoreHorizontal :size="18" /></summary><div class="more-list" @click="moreMenu?.removeAttribute('open')"><button :disabled="locked" @click="openDialog('new')"><Plus :size="15" />新建</button><button :disabled="locked" @click="fileInput.click()"><Upload :size="15" />导入</button><button :disabled="locked" @click="openDialog('files')"><FolderOpen :size="15" />文件管理</button><hr><button :disabled="!page || loading" @click="openDialog('palette')"><Palette :size="15" />项目配色</button><button @click="openDialog('spec')"><Ruler :size="15" />设计规范</button><button @click="openDialog('settings')"><Settings2 :size="15" />模型设置</button></div></details><span class="divider"></span><button class="icon-button" :class="{ active: rightOpen }" aria-label="切换属性面板" @click="toggleRight"><SlidersHorizontal :size="17" /></button></nav>
       <input ref="fileInput" type="file" class="sr-only" accept=".html,.htm,.zip" @change="upload" />
       <input ref="imageInput" type="file" class="sr-only" accept="image/png,image/jpeg,image/webp" @change="uploadImage" />
     </header>

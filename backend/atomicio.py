@@ -11,6 +11,9 @@ os.replace 在 POSIX 上是原子的：任何时刻读到的要么是完整的�
 from __future__ import annotations
 
 import os
+import secrets
+import threading
+import time
 from pathlib import Path
 
 TMP_PREFIX = ".ptw-tmp."
@@ -21,7 +24,8 @@ def write_atomic(path, data: str | bytes, mode: int | None = None) -> None:
     raw = data.encode("utf-8") if isinstance(data, str) else data
     path.parent.mkdir(parents=True, exist_ok=True)
     # 临时文件必须和目标同目录：os.replace 跨文件系统会失败，而 /tmp 常是另一个盘。
-    tmp = path.parent / f"{TMP_PREFIX}{path.name}.{os.getpid()}.tmp"
+    # 文件名里带上进程号 + 线程号 + 随机串：同一进程的两个线程同时写同一个文件时，不会共用一个临时文件
+    tmp = path.parent / f"{TMP_PREFIX}{path.name}.{os.getpid()}.{threading.get_ident()}-{secrets.token_hex(4)}.tmp"
     _sweep(path)
     try:
         if mode is None:
@@ -71,10 +75,22 @@ def _sweep(path: Path) -> None:
     stem = f"{TMP_PREFIX}{path.name}."
     try:
         for leftover in path.parent.iterdir():
-            if leftover.name.startswith(stem) and leftover.name.endswith(".tmp"):
+            if leftover.name.startswith(stem) and leftover.name.endswith(".tmp") and _abandoned(leftover, stem):
                 try:
                     leftover.unlink()
                 except OSError:
                     pass
     except OSError:
         pass
+
+
+def _abandoned(leftover: Path, stem: str) -> bool:
+    """别的进程留下的（进程早没了），或者放了十分钟以上的，才算没人要的。
+    本进程别的线程正在写的临时文件不能删，否则它换上去的时候会找不到文件。"""
+    pid = leftover.name[len(stem):].split(".", 1)[0]
+    if pid != str(os.getpid()):
+        return True
+    try:
+        return time.time() - leftover.stat().st_mtime > 600
+    except OSError:
+        return False

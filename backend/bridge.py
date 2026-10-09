@@ -180,7 +180,7 @@ _TEMPLATE = r'''
   window.addEventListener('submit',e=>{e.preventDefault();if(mode==='select')e.stopImmediatePropagation();},true);
   window.addEventListener('scroll',e=>{paint();if(restoringScroll)return;if(e.target instanceof Element&&!e.target.closest('[data-pa-overlay]'))scrollContainers.add(e.target);clearTimeout(scrollTimer);scrollTimer=setTimeout(()=>send('SCROLL_STATE',{state:scrollState()}),80);},true);
   window.addEventListener('resize',()=>{paint();send('WIDTH',{width:innerWidth});});
-  window.addEventListener('keydown',e=>{if(e.target?.closest?.('input,textarea,select,[contenteditable=true]'))return;const key=e.key.toLowerCase(),command=e.metaKey||e.ctrlKey;if((!command&&!e.altKey&&['h','v','b','e','escape'].includes(key))||(command&&['z','/','enter'].includes(key))){e.preventDefault();send('SHORTCUT',{key:e.key,metaKey:e.metaKey,ctrlKey:e.ctrlKey,altKey:e.altKey,shiftKey:e.shiftKey});}},true);
+  window.addEventListener('keydown',e=>{if(!e.isTrusted||e.target?.isContentEditable||e.target?.closest?.('input,textarea,select'))return;const key=e.key.toLowerCase(),command=e.metaKey||e.ctrlKey;if((!command&&!e.altKey&&['h','v','b','e','escape'].includes(key))||(command&&['z','/','enter'].includes(key))){e.preventDefault();send('SHORTCUT',{key:e.key,metaKey:e.metaKey,ctrlKey:e.ctrlKey,altKey:e.altKey,shiftKey:e.shiftKey});}},true);
   // ===== 展开：找出这一页能打开的所有弹窗 =====
   // 原型里的弹窗大多是 JS 现拼的，源码里搜不到、预览里要点好几层才看得见。
   // 这里在一个后台副本里把按钮挨个点一遍：点完多出来一层遮罩，就是它打开的弹窗；

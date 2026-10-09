@@ -30,6 +30,21 @@ FRONTEND_DIST = ROOT / "frontend" / "dist"
 app = FastAPI(title="原型工坊", version=config.VERSION)
 
 
+# 本机工具也会被别的网站"顺手"调用：浏览器里任何网页都能往 127.0.0.1 发表单。
+# 改东西的请求必须来自原型工坊自己的页面（Origin 和 Host 一致）；原型预览跑在沙箱里，Origin 是 null，也拦掉。
+from urllib.parse import urlsplit as _urlsplit
+from fastapi.responses import JSONResponse as _JSONResponse
+
+
+@app.middleware("http")
+async def same_origin_only(request, call_next):
+    if request.method not in ("GET", "HEAD", "OPTIONS"):
+        origin = request.headers.get("origin")
+        if origin is not None and _urlsplit(origin).netloc != request.headers.get("host", ""):
+            return _JSONResponse({"detail": "只接受原型工坊自己页面发来的修改请求"}, status_code=403)
+    return await call_next(request)
+
+
 class AnnotationIn(BaseModel):
     selector: str
     tag: str = ""

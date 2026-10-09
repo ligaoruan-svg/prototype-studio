@@ -7,7 +7,7 @@ const surface = ref(null), draft = ref(null), start = ref(null), active = ref(-1
 function point(event) { const r = surface.value.getBoundingClientRect(); return { x: Math.max(0, Math.min(1, (event.clientX - r.left) / r.width)), y: Math.max(0, Math.min(1, (event.clientY - r.top) / r.height)) } }
 function down(event) { if (event.button !== 0 || start.value || props.reference.regions.length >= 16) return; event.preventDefault(); start.value = point(event); if (Number.isInteger(event.pointerId)) surface.value.setPointerCapture(event.pointerId); draft.value = null }
 function move(event) { if (!start.value) return; const p = point(event); draft.value = { x: Math.min(p.x, start.value.x), y: Math.min(p.y, start.value.y), w: Math.abs(p.x - start.value.x), h: Math.abs(p.y - start.value.y), note: '' } }
-function up() { if (draft.value?.w > .01 && draft.value?.h > .01) { emit('update', [...props.reference.regions, draft.value]); active.value = props.reference.regions.length } start.value = null; draft.value = null }
+function up() { if (draft.value?.w > .01 && draft.value?.h > .01) { const at = props.reference.regions.length; emit('update', [...props.reference.regions, draft.value]); active.value = at } start.value = null; draft.value = null }
 function style(box) { return { left: `${box.x * 100}%`, top: `${box.y * 100}%`, width: `${box.w * 100}%`, height: `${box.h * 100}%` } }
 function updateNote(i, note) { emit('update', props.reference.regions.map((box, j) => j === i ? { ...box, note } : box)) }
 onMounted(() => { surface.value.addEventListener('mousedown', down); window.addEventListener('mousemove', move); window.addEventListener('mouseup', up) })

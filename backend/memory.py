@@ -23,6 +23,7 @@ def listing(meta: dict) -> list[dict]:
     return list(meta.get("memory", []))[:MAX_ITEMS]
 
 
+@storage._locked
 def add(project_id: str, note: str) -> dict:
     text = " ".join(str(note or "").split())[:MAX_CHARS]
     if len(text) < 4:
@@ -42,6 +43,7 @@ def add(project_id: str, note: str) -> dict:
     return entry
 
 
+@storage._locked
 def remove(project_id: str, note_id: str) -> bool:
     meta = storage.load_meta(project_id)
     items = meta.get("memory", [])

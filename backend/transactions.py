@@ -5,10 +5,11 @@ import time
 import uuid
 
 from . import storage
+from .atomicio import write_atomic
 from .patcher import PatchError, verify_source
 from .experience import diff_source
 
-LOCK = threading.RLock()
+LOCK = storage.META_LOCK   # 和改 project.json 的其他操作共用一把，免得互相覆盖
 PENDING = {}
 
 
@@ -84,11 +85,11 @@ def commit(token, runtime_errors, runtime_checked):
         edit_id = uuid.uuid4().hex
         path = storage.project_dir(pid)/"changes"/page_id/f"{edit_id}-before.html"
         path.parent.mkdir(parents=True,exist_ok=True)
-        path.write_bytes(current.encode('utf-8'))
+        write_atomic(path, current)
         record = {'id':edit_id,'kind':item['kind'],'before_file':str(path.relative_to(storage.project_dir(pid))),
                   'reason':item['reason'],'created_at':storage.now_iso()}
         if item['kind']=='manual':
-            storage.page_file(pid,page_id).write_bytes(item['after'].encode('utf-8'))
+            write_atomic(storage.page_file(pid,page_id), item['after'])   # 原地覆写半路断电会留下半截页面
             page.setdefault('manual_edits',[]).append({**record,'file':record['before_file']})
             page['manual_edits'] = page['manual_edits'][-60:]
             page['updated_at'] = meta['updated_at'] = storage.now_iso()

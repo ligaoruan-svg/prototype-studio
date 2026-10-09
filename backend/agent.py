@@ -319,7 +319,10 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
     # 模型可以一直撞同一堵墙直到轮次烧光。
     rejects: dict[tuple[str, str], int] = {}
     for round_no in range(max_rounds):
+        size_before = sum(len(str(m.get("content") or "")) for m in messages)
         compact_messages(messages, context_budget)
+        if sum(len(str(m.get("content") or "")) for m in messages) < size_before:
+            read_seen.clear()   # 旧的读取结果被折叠掉了，摘要会让它重读，不能再拦
         emit({"type":"model_wait","round":round_no+1,"label":"思考你的问题" if read_only else "理解需求中" if round_no==0 else "继续处理修改"})
         # 本轮的结论文字在工具参数里，边收边推给界面；只在有事件通道时才走流式。
         # note = 模型在动手之前说的话（它为什么要查这个）；result = 最终结论。
@@ -490,6 +493,7 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
                     if not check['ok']: raise PatchError('修改检查失败：'+'；'.join(check['issues']))
                     if new_source==working_source: raise PatchError("这次操作没有产生实际改动")
                     working_source = new_source; changed = working_source != source
+                    read_seen.clear()   # 源码变了，之前读过的段落已经不是现在的样子，允许重新读
                     all_operations.extend(ops); failures = 0
                     output = {"ok":True,"logs":logs}
                 elif fn=="verify_page":
