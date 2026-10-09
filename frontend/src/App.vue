@@ -3,7 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { PanelsTopLeft, Plus, Upload, History, Download, Settings2, ChevronDown, ChevronRight, X, MessageSquare, Files, MousePointer2, Hand, Code2, Monitor, Tablet, Smartphone, Undo2, ArrowUp, Check, CheckCheck, LoaderCircle, SlidersHorizontal, SquareMousePointer, Palette, AlertCircle, ShieldCheck, Braces, FileCode2, CircleHelp, PanelLeftClose, PanelRightClose, Copy, Pencil, Ruler, Sparkles } from 'lucide-vue-next'
 import { Scan, ImagePlus, Image as ImageIcon, FolderOpen, Layers, Maximize2, MoreHorizontal } from 'lucide-vue-next'
 import ExpandBoard from './ExpandBoard.vue'
-import { bindExpand } from './expandStore.js'
+import { adoptPresync, bindExpand, dropPresync, presync, setFocusRoute } from './expandStore.js'
 import ImageReference from './ImageReference.vue'
 import RegionCapture from './RegionCapture.vue'
 import FileManager from './FileManager.vue'
@@ -37,6 +37,8 @@ const runs = ref([]), canvasWidth = ref(0), previewScroll = ref(null), pendingHi
 const validationDetails = ref(''), composerIntent = ref('auto'), previewHash = ref('')
 // 展开视图：把这一页的弹窗铺开看；点卡片后在预览里复现打开路径
 const moreMenu = ref(null)
+const cardPatch = ref(null)
+let patchSeq = 0
 const boardOpen = ref(false), boardFocus = ref(null), boardRoute = ref(''), pendingReplay = ref(null), openedModal = ref(null)
 let reloadNonce = 0
 const currentRuns = computed(() => runs.value.filter(r => r.pageId === pageId.value && r.projectId === project.value?.id && !['complete', 'dismissed'].includes(r.status)))
@@ -105,6 +107,7 @@ function makeProbeDoc(route) {
   try { stored = JSON.parse(localStorage.getItem(runtimeKey()) || '{}') } catch {}
   return preparePreviewDocument(previewDoc.value.replace(/\n<!-- pa-open \d+ -->$/, ''), { stored, route, scroll: null, probe: true })
 }
+watch([boardOpen, boardRoute, previewRoute], () => setFocusRoute(boardOpen.value ? boardRoute.value : previewRoute.value), { immediate: true })
 // 换页、提交新版本时告诉展开总管：已展开过的页面会在后台自动同步
 watch([() => project.value?.id, pageId, previewHash], ([pid, id, hash]) => {
   if (pid && id && hash && previewDoc.value) bindExpand({ pid, pageId: id, hash, makeDoc: makeProbeDoc, width: canvasWidth.value || 1150 })
@@ -271,6 +274,8 @@ async function checkAndCommit(candidate) {
   const html = preparePreview(await response.text())
   pendingHighlights.value = candidate.targets || []
   previewDoc.value = html
+  // 运行检查要一两秒：这段时间展开副本已经用候选版本去拍正在看的那页了
+  presync(candidate.pending_id, boardOpen.value ? boardRoute.value : previewRoute.value)
   try {
     const errors = await new Promise((resolve, reject) => {
       const frame = document.createElement('iframe')
@@ -289,6 +294,7 @@ async function checkAndCommit(candidate) {
       window.addEventListener('message', listener); frame.srcdoc = html; document.body.appendChild(frame)
     })
     const committed = await post('/api/candidates/' + candidate.pending_id + '/commit', { runtime_checked: true, errors })
+    adoptPresync(candidate.pending_id, committed.hash)   // 必须在 previewHash 变之前：别让刚拍好的那页又排队同步一遍
     previewHash.value = committed.hash
     savedAt.value = new Date().toLocaleTimeString('zh-CN')
     validationDetails.value = candidate.validation?.syntax_checked ? '页面结构、脚本语法及页面启动检查通过；不代表所有交互均已验证' : '页面结构及页面启动检查通过；本机没有执行脚本语法检查'
@@ -296,6 +302,7 @@ async function checkAndCommit(candidate) {
     return committed
   } catch (e) {
     pendingHighlights.value = []; previewDoc.value = previousDoc; runtimeErrors.value = baseline
+    dropPresync(candidate.pending_id)
     throw e
   }
 }
@@ -306,6 +313,8 @@ async function edit(prop, value) {
   const selector = selected.value?.selector || ''
   saving.value = true; error.value = ''; status.value = '修改中'
   send({ type: 'PA_PREVIEW', selector, prop, value: String(value) })
+  const card = selected.value?.card
+  if (card || prop.startsWith('--')) cardPatch.value = { seq: ++patchSeq, prop, value: String(value), route: prop.startsWith('--') ? null : card.route, nodeId: prop.startsWith('--') ? null : card.nodeId, rels: card?.rels || [] }
   try {
     const result = await post(endpoint('/edit'), { selector, prop, value: String(value), expected_hash: sourceInfo.value.hash })
     await checkAndCommit(result)
@@ -636,7 +645,7 @@ onUnmounted(() => { window.removeEventListener('message', onMessage); window.rem
         <div class="canvas-toolbar"><div class="view-tools"><button v-if="!leftOpen" class="icon-button" aria-label="打开对话" @click="leftOpen = true; rightOpen = window.innerWidth > 960 && rightOpen"><MessageSquare :size="17" /></button><div v-if="page" class="mode-tools" role="group" aria-label="操作方式"><button :class="{ active: mode === 'interact' }" :disabled="loading" title="交互 · H：像真用户一样点；在展开里点卡片可以试玩" @click="setMode('interact')"><Hand :size="15" /><span>交互</span><kbd>H</kbd></button><button :class="{ active: mode === 'select' }" :disabled="loading" title="点选 · V（按住 Shift / ⌘ 多选同一视图内的元素）" @click="setMode('select')"><MousePointer2 :size="15" /><span>点选</span><kbd>V</kbd></button><button :class="{ active: mode === 'box' }" :disabled="loading" title="拉框 · B" @click="setMode('box')"><Scan :size="15" /><span>拉框</span><kbd>B</kbd></button></div></div><div class="device-tools" v-if="view === 'preview' && !boardOpen"><button v-for="d in [{ id: 'desktop', label: '桌面', icon: Monitor }, { id: 'tablet', label: '平板', icon: Tablet }, { id: 'mobile', label: '手机', icon: Smartphone }]" :key="d.id" class="icon-button" :class="{ active: device === d.id }" :aria-label="d.label + '预览'" :title="d.label" @click="device = d.id"><component :is="d.icon" :size="16" /></button><span class="actual-width">{{ canvasWidth }} px</span></div><div class="canvas-actions"><button v-if="page" class="version-tag" @click="openDialog('history')" title="查看版本历史">v{{ page.version }}</button><button class="icon-button" aria-label="撤销上一步" :title="undoCount ? '撤销上一步 · ⌘/Ctrl + Z' : '暂无可撤销的修改'" :disabled="!undoCount || locked" @click="undo()"><Undo2 :size="16" /></button><button class="icon-button" :class="{ active: rightOpen }" aria-label="切换属性面板" @click="rightOpen = !rightOpen; leftOpen = window.innerWidth > 960 && leftOpen"><SlidersHorizontal :size="17" /></button></div></div>
         <div v-if="view === 'preview'" class="canvas" :class="device">
 
-          <ExpandBoard v-if="boardOpen" v-model:focus="boardFocus" v-model:route="boardRoute" :notes="annotations" :page-name="page?.title" :selection="selected" :mode="mode" @open="openFromBoard" @select="pickFromBoard" @clear="closeSelection" @mode="setMode" />
+          <ExpandBoard v-if="boardOpen" v-model:focus="boardFocus" v-model:route="boardRoute" :notes="annotations" :patch="cardPatch" :page-name="page?.title" :selection="selected" :mode="mode" @open="openFromBoard" @select="pickFromBoard" @clear="closeSelection" @mode="setMode" />
           <div v-if="!boardOpen" class="preview-shell" :class="{ 'is-selecting': mode !== 'interact' }"><iframe v-if="previewDoc" ref="previewFrame" title="原型预览" :srcdoc="previewDoc" :sandbox="PREVIEW_SANDBOX"></iframe><div v-else class="empty-canvas"><div class="empty-emblem"><PanelsTopLeft :size="30" :stroke-width="1.4" /></div><h1>给想法一个可操作的样子</h1><p>从已有的 HTML 开始修改，<br>或描述需求，让 AI 帮你搭建第一版。</p><div><button class="primary" @click="openDialog('new')"><Plus :size="16" />新建原型</button><button class="outline" @click="fileInput.click()"><Upload :size="16" />导入原型</button></div><span>支持 HTML、包含多页面的 ZIP</span></div><RegionCapture v-if="previewDoc && mode === 'box' && !loading" :key="regionKey" @select="send({ type: 'PA_BOX_RECT', bounds: $event })" @scroll="send({ type: 'PA_SCROLL', ...$event })" /><div v-if="loading" class="loading-veil"><LoaderCircle class="spin" :size="25" /><span>正在加载原型…</span></div></div>
           
         </div>

@@ -17,7 +17,9 @@ export const expand = reactive({
   queued: [],         // 排队中的路由
   discovering: false,
   error: '',
+  focusRoute: null,   // 展开视图正在看的那一页：改完同步时永远排第一
 })
+const adopted = new Map()   // 预同步的令牌 → 提交后的正式版本哈希
 let ctx = null        // { pid, pageId, makeDoc(route), width }
 const queue = []
 let active = 0
@@ -76,25 +78,53 @@ export async function expandAll(currentRoute = '') {
 }
 
 // 版本变了：所有展开过的页面都按原路径同步（后台慢慢来）
+// 正在看的那一页先同步（插队，不等别的页跑完），其余后台慢慢来
 function syncStale() {
-  for (const [route, e] of Object.entries(expand.entries)) if (e.hash !== expand.hash && !e.partial) schedule(route, 'sync')
+  const stale = Object.entries(expand.entries).filter(([, e]) => e.hash !== expand.hash && !e.partial && !String(e.hash).startsWith('pending:')).map(([route]) => route)
+  const first = stale.filter(r => r === expand.focusRoute)
+  for (const route of first) schedule(route, 'sync', true)
+  for (const route of stale) if (!first.includes(route)) schedule(route, 'sync')
+}
+export function setFocusRoute(route) { expand.focusRoute = route }
+
+// ===== 预同步：AI 改完、还在做运行检查的时候，就用候选版本先把正在看的那页拍出来 =====
+// 检查 + 提交要一两秒，这段时间副本已经在跑了；提交成功直接认领成正式结果，失败就退回旧快照。
+export function presync(token, route) {
+  const e = expand.entries[route]
+  if (!ctx || route == null || !e?.result?.nodes?.length || e.partial) return
+  schedule(route, 'sync', true, true, token)
+}
+export function adoptPresync(token, rawHash) {
+  const hash = `${SCHEMA}:${rawHash}`
+  adopted.set(token, hash)
+  for (const [route, e] of Object.entries(expand.entries)) if (e.hash === `pending:${token}`) { expand.entries[route] = { hash, result: e.result }; persist(route, hash, e.result) }
+}
+export function dropPresync(token) {
+  adopted.set(token, null)
+  for (const [route, e] of Object.entries(expand.entries)) if (e.hash === `pending:${token}`) expand.entries[route] = e.prev || { ...e, hash: '' }
+}
+function persist(route, hash, result) {
+  api(`${base()}/entry`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ route, hash, result }) }).catch(() => {})
 }
 
 // 排队：同一页只排一份；正在跑的页面不重复排（跑完会自己检查版本），除非是「重新查找」
-function schedule(route, kind, priority = false, force = false) {
+function schedule(route, kind, priority = false, force = false, token = null) {
   if (expand.jobs[route] && !force) return
   const at = queue.findIndex(j => j.route === route)
   if (at >= 0) {
     const [job] = queue.splice(at, 1)
     if (kind === 'probe') job.kind = 'probe'
+    if (token) job.token = token
+    job.priority = job.priority || priority
     priority ? queue.unshift(job) : queue.splice(at, 0, job)
-  } else if (priority) queue.unshift({ route, kind })
-  else queue.push({ route, kind })
+  } else if (priority) queue.unshift({ route, kind, priority, token })
+  else queue.push({ route, kind, priority, token })
   pump()
 }
 function pump() {
   const later = []
-  while (active < CONCURRENCY && queue.length) {
+  // 插队的任务（正在看的页、预同步）可以多占一个副本，不用等后台那两页跑完
+  while (queue.length && (active < CONCURRENCY || (queue[0].priority && active < CONCURRENCY + 1))) {
     const job = queue.shift()
     if (expand.jobs[job.route]) { later.push(job); continue }   // 同一页不同时跑两份，等它跑完
     active++
@@ -104,8 +134,10 @@ function pump() {
   expand.queued = queue.map(j => j.route)
 }
 
-async function run({ route, kind }) {
-  const scope = expand.scope, hash = expand.hash
+async function run({ route, kind, token }) {
+  const scope = expand.scope
+  // 预同步拍的是候选版本：先挂在「pending:令牌」名下，提交成功再认领
+  let hash = token ? `pending:${token}` : expand.hash
   const alive = () => expand.scope === scope
   const entry = expand.entries[route]
   expand.jobs[route] = { kind, progress: null }
@@ -113,16 +145,24 @@ async function run({ route, kind }) {
     const doc = ctx.makeDoc(route)
     let result
     if (kind === 'sync' && entry?.result?.nodes?.length) {
-      result = await syncNodes({ doc, nodes: entry.result.nodes, first: [...(touched[route] || [])], width: ctx.width, height: 800, cancelled: () => !alive(),
-        onUpdate: update => { if (!alive()) return; expand.jobs[route].progress = update; expand.entries[route] = { ...expand.entries[route], result: update } } })
+      result = await syncNodes({ doc, nodes: entry.result.nodes, first: [...(touched[route] || [])], width: ctx.width, height: 800, cancelled: () => !alive() || adopted.get(token) === null,
+        onUpdate: update => { if (!alive() || adopted.get(token) === null) return; expand.jobs[route].progress = update; expand.entries[route] = { ...expand.entries[route], result: update, ...(token ? { hash, prev: entry } : {}) } } })
     } else {
       result = await probePage({ doc, width: ctx.width, height: 800, cancelled: () => !alive(),
         onUpdate: update => { if (!alive()) return; expand.jobs[route].progress = update; if (!entry || entry.partial) expand.entries[route] = { hash, result: update, partial: true } } })
     }
     if (!alive()) return
+    if (token) {
+      if (adopted.get(token) === null) { expand.entries[route] = entry; return }   // 检查没通过，候选作废
+      if (adopted.has(token)) hash = adopted.get(token)                           // 已经提交：直接是正式版本
+      expand.entries[route] = hash.startsWith('pending:') ? { hash, result, prev: entry } : { hash, result }
+      if (!hash.startsWith('pending:')) persist(route, hash, result)
+      delete touched[route]
+      return
+    }
     expand.entries[route] = { hash, result }
     delete touched[route]
-    api(`${base()}/entry`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ route, hash, result }) }).catch(() => {})
+    persist(route, hash, result)
     if (expand.hash !== hash) schedule(route, 'sync')   // 跑的过程中又提交了一版
   } catch (e) {
     if (alive()) expand.error = `${route || '当前页面'}：${e.message || '展开失败'}`

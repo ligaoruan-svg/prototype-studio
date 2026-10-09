@@ -7,7 +7,7 @@ import SceneCard from './SceneCard.vue'
 import BoardBranch from './BoardBranch.vue'
 import LiveScene from './LiveScene.vue'
 
-const props = defineProps({ route: { type: String, default: '' }, pageName: String, selection: Object, mode: String, focus: [Number, null], notes: { type: Array, default: () => [] } })
+const props = defineProps({ route: { type: String, default: '' }, pageName: String, selection: Object, mode: String, focus: [Number, null], notes: { type: Array, default: () => [] }, patch: Object })
 const emit = defineEmits(['open', 'select', 'clear', 'mode', 'update:focus', 'update:route'])
 
 const empty = { title: '', styles: null, page: '', width: 1150, height: 800, nodes: [] }
@@ -48,6 +48,7 @@ const groups = computed(() => {
   return [{ key: 'all', label: `全部 ${scenes.value.length} 个视图` }, ...['button', 'row'].filter(k => counts[k]).map(k => ({ key: k, label: `${ORIGIN_LABEL[k]} ${counts[k]} 组` }))]
 })
 const frame = computed(() => ({ w: state.value.width || 1150, h: state.value.height || 800 }))
+const routePatch = computed(() => props.patch && (props.patch.route == null || props.patch.route === props.route) ? props.patch : null)
 const picked = computed(() => props.selection?.card?.route === props.route ? props.selection.card : null)
 const focused = computed(() => props.focus == null ? null : scenes.value.find(s => s.node.id === props.focus) || null)
 const hint = computed(() => props.mode === 'interact' ? '点卡片试玩；要改哪里，点卡片右上角「编辑」' : props.mode === 'box' ? '在卡片里拖动框选一组元素；太小时点「编辑」放大' : '点击元素选择修改，按住 Shift 多选；太小时点「编辑」放大')
@@ -65,16 +66,17 @@ function pick({ node, items }) {
 }
 function toggle(id) { const next = new Set(openIds.value); next.has(id) ? next.delete(id) : next.add(id); openIds.value = next }
 // 把这一路的「后续」都展开，再滚过去
-async function reveal(id) {
+async function reveal(id, also = []) {
   if (id == null) return
   const next = new Set(openIds.value)
-  for (const a of ancestorsOf(state.value.nodes, id)) next.add(a)
+  for (const target of [id, ...also]) for (const a of ancestorsOf(state.value.nodes, target)) next.add(a)
   openIds.value = next
   await nextTick()
   scroller.value?.querySelector(`[data-node-id="${id}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })
 }
 // 搜索：命中的那张卡所在的路径自动展开并滚过去
-watch(q, value => { if (!value) return; const first = state.value.nodes.find(n => `${n.title} ${n.label}`.includes(value)); if (first) reveal(first.id) })
+// 每个命中的都要露出来（不只第一个：「GWP 值」既有顶层的编辑弹窗，也有藏在「新增因子 → 下一步」后面的）
+watch(q, value => { if (!value) return; const all = state.value.nodes.filter(n => `${n.title} ${n.label}`.includes(value)); if (all.length) reveal(all[0].id, all.slice(1).map(n => n.id)) })
 // 选中的、正在编辑的卡，它那一路默认展开
 watch(() => picked.value?.nodeId, id => { if (id) reveal(id) })
 // 记过意见的卡：改完同步时先拍
@@ -100,7 +102,7 @@ onMounted(() => requestRoute(props.route))
       </div>
       <div class="focus-content">
         <LiveScene v-if="mode === 'interact'" ref="live" :key="'live-' + focused.node.id" :node="focused.node" :route="route" :frame="frame" />
-        <SceneCard v-else :key="'focus-' + focused.node.id" :node="focused.node" :styles="state.styles" :frame="frame" :picked="picked" :mode="mode" :crumb="focused.crumb" large @pick="pick" />
+        <SceneCard v-else :key="'focus-' + focused.node.id" :node="focused.node" :styles="state.styles" :frame="frame" :picked="picked" :mode="mode" :crumb="focused.crumb" :patch="routePatch" large @pick="pick" />
       </div>
     </template>
     <template v-else>
@@ -133,11 +135,11 @@ onMounted(() => requestRoute(props.route))
       <div ref="scroller" class="board-scroll">
         <div class="board-tree">
           <div class="tree-root">
-            <SceneCard v-if="pageNode" :node="pageNode" :styles="state.styles" :frame="frame" :picked="picked" :mode="mode" crumb="当前页面" :notes="notesOf(pageNode)" :width="216" compact @pick="pick" @edit="edit" @play="play" />
+            <SceneCard v-if="pageNode" :node="pageNode" :styles="state.styles" :frame="frame" :picked="picked" :mode="mode" crumb="当前页面" :notes="notesOf(pageNode)" :width="216" :patch="routePatch" compact @pick="pick" @edit="edit" @play="play" />
             <div v-else class="scene-ghost" aria-hidden="true"><span></span><span></span><span></span></div>
           </div>
           <div class="tree-branches">
-            <BoardBranch v-for="node in roots" :key="node.id" :node="node" :styles="state.styles" :frame="frame" :picked="picked" :mode="mode" :open="openIds" @pick="pick" @edit="edit" @play="play" @refind="refind" @toggle="toggle" />
+            <BoardBranch v-for="node in roots" :key="node.id" :node="node" :styles="state.styles" :frame="frame" :picked="picked" :mode="mode" :open="openIds" :patch="routePatch" @pick="pick" @edit="edit" @play="play" @refind="refind" @toggle="toggle" />
             <div v-if="status === 'running' || status === 'queued'" class="branch-ghost" aria-hidden="true"><span></span><div class="scene-ghost"><span></span><span></span><span></span></div></div>
             <div v-if="!busy && !roots.length" class="empty-board">
               <template v-if="q || filter !== 'all'"><Search :size="22" /><h3>没有找到对应视图</h3><p>试试其他名称，或者清空当前筛选。</p><button type="button" class="outline" @click="query = ''; filter = 'all'">清空筛选</button></template>

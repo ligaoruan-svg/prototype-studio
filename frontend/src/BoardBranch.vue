@@ -4,20 +4,20 @@ import SceneCard from './SceneCard.vue'
 import BoardBranch from './BoardBranch.vue'
 // 一条按钮链：「新增因子 →」弹窗卡片，后面接着它里面再点开的弹窗。
 // 后续默认收起，只展开当前路径（选中的、搜到的、正在编辑的），不然越往右越宽
-defineProps({ node: Object, styles: Object, frame: Object, picked: Object, mode: String, open: Object })
+defineProps({ node: Object, styles: Object, frame: Object, picked: Object, mode: String, open: Object, patch: Object })
 defineEmits(['pick', 'edit', 'play', 'refind', 'toggle'])
 </script>
 <template>
   <div class="branch">
     <span class="edge" :title="node.label">{{ node.label }}<ArrowRight :size="12" /></span>
     <div class="branch-card">
-      <SceneCard :node="node" :styles="styles" :frame="frame" :picked="picked" :mode="mode" :crumb="node.crumb" :notes="node.notes" :width="336" compact @pick="$emit('pick', $event)" @edit="$emit('edit', $event)" @play="$emit('play', $event)" @refind="$emit('refind')" />
+      <SceneCard :node="node" :styles="styles" :frame="frame" :picked="picked" :mode="mode" :crumb="node.crumb" :notes="node.notes" :width="336" :patch="patch" compact @pick="$emit('pick', $event)" @edit="$emit('edit', $event)" @play="$emit('play', $event)" @refind="$emit('refind')" />
     </div>
     <template v-if="node.children.length">
       <button v-if="!open.has(node.id)" type="button" class="more" :title="`展开「${node.title}」里还能打开的 ${node.children.length} 个视图`" @click="$emit('toggle', node.id)">后续 {{ node.children.length }} 个<ChevronRight :size="13" /></button>
       <div v-else class="branch-children">
         <button type="button" class="fold" title="收起后续" @click="$emit('toggle', node.id)"><ChevronDown :size="13" />收起</button>
-        <BoardBranch v-for="child in node.children" :key="child.id" :node="child" :styles="styles" :frame="frame" :picked="picked" :mode="mode" :open="open" @pick="$emit('pick', $event)" @edit="$emit('edit', $event)" @play="$emit('play', $event)" @refind="$emit('refind')" @toggle="$emit('toggle', $event)" />
+        <BoardBranch v-for="child in node.children" :key="child.id" :node="child" :styles="styles" :frame="frame" :picked="picked" :mode="mode" :open="open" :patch="patch" @pick="$emit('pick', $event)" @edit="$emit('edit', $event)" @play="$emit('play', $event)" @refind="$emit('refind')" @toggle="$emit('toggle', $event)" />
       </div>
     </template>
   </div>

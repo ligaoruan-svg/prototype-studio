@@ -110,7 +110,8 @@ export async function probePage({ doc, width = 1150, height = 800, onUpdate = ()
 // 不再把整页按钮从头试一遍。刚改的那张排第一个，通常一两秒就换上新样子。
 export async function syncNodes({ doc, nodes = [], first = [], width = 1150, height = 800, onUpdate = () => {}, cancelled = () => false }) {
   const probe = probeFrame(doc, width, height)
-  const result = { title: '', styles: null, page: '', width, height, nodes: plain(nodes), done: 0, total: nodes.length, stale: 0 }
+  // 每张卡先标「更新中」，拍到新样子再去掉：哪张已经是新的、哪张还在等，一眼能看出来
+  const result = { title: '', styles: null, page: '', width, height, nodes: plain(nodes).map(n => ({ ...n, pending: true })), done: 0, total: nodes.length, stale: 0 }
   const report = () => onUpdate(plain(result))
   try {
     const { base } = await begin(probe, width, height)
@@ -124,12 +125,13 @@ export async function syncNodes({ doc, nodes = [], first = [], width = 1150, hei
       const opened = reply.ok && (node.kind === 'subpage' ? reply.subpage : reply.opened)
       // 点不开了（按钮被改名、被删了）就保留旧快照并标出来，刷新时会重新找
       result.nodes[at] = opened
-        ? { ...result.nodes[at], title: opened.title, html: opened.html, box: node.kind === 'subpage' ? null : opened.box, layerSel: opened.layerSel || result.nodes[at].layerSel, stale: false }
-        : { ...result.nodes[at], stale: true }
+        ? { ...result.nodes[at], title: opened.title, html: opened.html, box: node.kind === 'subpage' ? null : opened.box, layerSel: opened.layerSel || result.nodes[at].layerSel, stale: false, pending: false }
+        : { ...result.nodes[at], stale: true, pending: false }
       if (!opened) result.stale++
       result.done++
       report()
     }
+    result.nodes = result.nodes.map(n => ({ ...n, pending: false }))   // 中途取消的也别一直挂着「更新中」
     return plain(result)
   } finally { probe.dispose() }
 }

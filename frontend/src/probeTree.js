@@ -43,6 +43,7 @@ if(add){const i=picked.indexOf(el);i>=0?picked.splice(i,1):picked.length<16&&pic
 for(const t of ['mousedown','submit','dblclick','dragstart'])addEventListener(t,e=>e.preventDefault(),true);
 addEventListener('message',e=>{const m=e.data||{};
 if(m.type==='CARD_MODE'){mode=m.mode==='box'?'box':'select';document.documentElement.style.cursor=mode==='box'?'crosshair':'';place(hover,null)}
+if(m.type==='CARD_PATCH'){if(String(m.prop).startsWith('--'))document.documentElement.style.setProperty(m.prop,m.value);else (m.rels||[]).map(r=>{try{return root.querySelector(':scope > '+r)}catch{return null}}).filter(Boolean).forEach(el=>{if(m.prop==='text')el.textContent=m.value;else el.style.setProperty(m.prop,m.value,'important')});paint()}
 if(m.type==='CARD_SHOW'){picked=(m.rels||[]).map(r=>{try{return root.querySelector(':scope > '+r)}catch{return null}}).filter(Boolean);paint();if(m.reveal&&picked[0])picked[0].scrollIntoView({block:'nearest'})}});
 })();`
 
