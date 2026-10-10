@@ -13,7 +13,9 @@ const exportable = computed(() => Object.values(expand.entries).some(e => e?.res
 
 const empty = { title: '', styles: null, page: '', width: 1150, height: 800, nodes: [] }
 const filter = ref('all'), query = ref(''), live = ref(null), scroller = ref(null)
-const openIds = ref(new Set())   // 展开了「后续」的节点
+// 展开了「后续」的节点，每个业务页面各记一份：卡片编号只在一页里唯一，共用一份会在 A 页展开、B 页同号的卡也跟着开
+const openByRoute = ref({})
+const openIds = computed({ get: () => openByRoute.value[props.route] || new Set(), set: v => { openByRoute.value = { ...openByRoute.value, [props.route]: v } } })
 const entry = computed(() => expand.entries[props.route] || null)
 const job = computed(() => expand.jobs[props.route] || null)
 const state = computed(() => entry.value?.result || empty)
@@ -65,6 +67,11 @@ function pick({ node, items }) {
   const sel = pickToSelection(node, items, title.value)
   emit('select', { ...sel, card: { ...sel.card, route: props.route }, trail: node.isPage ? '' : trailOf(state.value.nodes, node) })
 }
+// 有后续的卡：「全部展开」就是把它们都打开，「第一层」就是全部收起；手动点过某几个就两个都不亮
+const parentIds = computed(() => state.value.nodes.filter(n => state.value.nodes.some(c => c.parent === n.id)).map(n => n.id))
+const level = computed(() => !parentIds.value.length ? 'none' : parentIds.value.every(id => openIds.value.has(id)) ? 'all' : parentIds.value.some(id => openIds.value.has(id)) ? 'custom' : 'first')
+function setLevel(v) { openIds.value = v === 'all' ? new Set(parentIds.value) : new Set() }
+const shownCount = computed(() => { let n = 0; const walk = list => list.forEach(x => { n++; if (openIds.value.has(x.id)) walk(x.children) }); walk(roots.value); return n + (pageNode.value ? 1 : 0) })
 function toggle(id) { const next = new Set(openIds.value); next.has(id) ? next.delete(id) : next.add(id); openIds.value = next }
 // 把这一路的「后续」都展开，再滚过去
 async function reveal(id, also = []) {
@@ -77,7 +84,16 @@ async function reveal(id, also = []) {
 }
 // 搜索：命中的那张卡所在的路径自动展开并滚过去
 // 每个命中的都要露出来（不只第一个：「GWP 值」既有顶层的编辑弹窗，也有藏在「新增因子 → 下一步」后面的）
-watch(q, value => { if (!value) return; const all = state.value.nodes.filter(n => `${n.title} ${n.label}`.includes(value)); if (all.length) reveal(all[0].id, all.slice(1).map(n => n.id)) })
+// 搜索展开是临时的：开始搜之前的收放记下来，清空搜索就恢复
+let beforeSearch = null
+watch(q, value => {
+  if (!value) { if (beforeSearch) { openIds.value = beforeSearch; beforeSearch = null } return }
+  if (!beforeSearch) beforeSearch = new Set(openIds.value)
+  const all = state.value.nodes.filter(n => `${n.title} ${n.label}`.includes(value))
+  if (all.length) reveal(all[0].id, all.slice(1).map(n => n.id))
+})
+// 换业务页面：筛选回到「全部」，搜索清空（收放各页自己记着）
+watch(() => props.route, () => { filter.value = 'all'; query.value = ''; beforeSearch = null })
 // 选中的、正在编辑的卡，它那一路默认展开
 watch(() => picked.value?.nodeId, id => { if (id) reveal(id) })
 // 记过意见的卡：改完同步时先拍
@@ -130,8 +146,20 @@ onMounted(() => requestRoute(props.route))
           <button type="button" class="icon-button tool" :disabled="busy" title="重新查找这一页的所有弹窗（新加了按钮时用）" aria-label="重新查找这一页的所有弹窗" @click="refind"><RotateCw :size="15" :class="{ spin: busy }" /></button>
         </div>
       </div>
-      <div class="board-filter" role="tablist" aria-label="按来源筛选">
-        <button v-for="g in groups" :key="g.key" type="button" role="tab" :aria-selected="filter === g.key" :class="{ active: filter === g.key }" @click="filter = g.key">{{ g.label }}</button>
+      <div class="board-bar">
+        <div class="board-filter" role="tablist" aria-label="按来源筛选">
+          <span class="bar-label">看</span>
+          <button v-for="g in groups" :key="g.key" type="button" role="tab" :aria-selected="filter === g.key" :class="{ active: filter === g.key }" @click="filter = g.key">{{ g.label }}</button>
+          <button v-if="filter !== 'all'" type="button" class="clear-filter" @click="filter = 'all'">只显示了一部分 · 看全部</button>
+        </div>
+        <div class="board-levels" role="group" aria-label="展开层级">
+          <span class="bar-label">层级</span>
+          <div class="seg" :class="{ disabled: level === 'none' }" :title="level === 'none' ? '这一页的弹窗都是页面直接打开的，只有一层' : '第一层：只看页面直接打开的；全部展开：弹窗里再点开的也都摊开'">
+            <button type="button" :class="{ active: level === 'first' || level === 'none' }" :disabled="level === 'none'" @click="setLevel('first')">第一层</button>
+            <button type="button" :class="{ active: level === 'all' }" :disabled="level === 'none'" @click="setLevel('all')">全部展开</button>
+          </div>
+          <span class="bar-count">{{ q ? '搜索中 · ' : level === 'custom' ? '部分展开 · ' : '' }}显示 {{ shownCount }} / {{ scenes.length }}</span>
+        </div>
       </div>
       <div v-if="expand.error" class="board-error"><AlertCircle :size="15" /><span>{{ expand.error }}，可以点右上角的刷新再试一次。</span></div>
       <div ref="scroller" class="board-scroll">
@@ -168,7 +196,16 @@ onMounted(() => requestRoute(props.route))
 .search{display:flex;align-items:center;gap:6px;height:32px;padding:0 9px;background:#fff;border:1px solid var(--line);border-radius:8px;color:var(--muted)}
 .search input{width:130px;border:0;padding:0;background:none;font-size:12px;outline-offset:4px}
 .board-control .refresh{width:32px;height:32px;background:#fff;border:1px solid var(--line);border-radius:8px}
-.board-filter{display:flex;gap:6px;padding:0 18px 12px;flex-shrink:0;overflow-x:auto;scrollbar-width:none}
+.board-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 18px 12px;flex-shrink:0;flex-wrap:wrap}
+.board-filter{display:flex;align-items:center;gap:6px;min-width:0;overflow-x:auto;scrollbar-width:none}
+.bar-label{font-size:12px;color:var(--subtle);flex-shrink:0}
+.clear-filter{font-size:12px;padding:4px 10px;border-radius:20px;color:var(--primary)!important;background:var(--primary-soft)!important}
+.board-levels{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.seg{display:flex;gap:2px;padding:2px;border-radius:9px;background:#e9e6dd}
+.seg button{height:26px;padding:0 10px;border-radius:7px;font-size:12px;color:#7d776a}
+.seg button.active{background:#fff;color:var(--ink);box-shadow:0 1px 2px #3b2a2118}
+.seg.disabled{opacity:.55}
+.bar-count{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
 .board-filter button{gap:6px;font-size:12px;padding:4px 11px;border:1px solid transparent;border-radius:20px;color:var(--muted)}
 .board-filter button span{font-variant-numeric:tabular-nums;opacity:.8}
 .board-filter button:hover{background:#fff}

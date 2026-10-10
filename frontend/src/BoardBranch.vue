@@ -13,10 +13,13 @@ defineEmits(['pick', 'edit', 'play', 'refind', 'toggle'])
     <div class="branch-card">
       <SceneCard :node="node" :styles="styles" :frame="frame" :picked="picked" :mode="mode" :crumb="node.crumb" :notes="node.notes" :width="336" :patch="patch" compact @pick="$emit('pick', $event)" @edit="$emit('edit', $event)" @play="$emit('play', $event)" @refind="$emit('refind')" />
     </div>
+    <!-- 收放只有一个开关，永远在卡片右边同一个位置：收着显示「后续 N ▸」，开着显示「▾ 收起」 -->
     <template v-if="node.children.length">
-      <button v-if="!open.has(node.id)" type="button" class="more" :title="`展开「${node.title}」里还能打开的 ${node.children.length} 个视图`" @click="$emit('toggle', node.id)">后续 {{ node.children.length }} 个<ChevronRight :size="13" /></button>
-      <div v-else class="branch-children">
-        <button type="button" class="fold" title="收起后续" @click="$emit('toggle', node.id)"><ChevronDown :size="13" />收起</button>
+      <button type="button" class="more" :class="{ opened: open.has(node.id) }" :aria-expanded="open.has(node.id)" :title="open.has(node.id) ? '收起后面的视图' : `展开「${node.title}」里还能打开的 ${node.children.length} 个视图`" @click="$emit('toggle', node.id)">
+        <template v-if="open.has(node.id)"><ChevronDown :size="13" />收起</template>
+        <template v-else>后续 {{ node.children.length }} 个<ChevronRight :size="13" /></template>
+      </button>
+      <div v-if="open.has(node.id)" class="branch-children">
         <BoardBranch v-for="child in node.children" :key="child.id" :node="child" :styles="styles" :frame="frame" :picked="picked" :mode="mode" :open="open" :patch="patch" @pick="$emit('pick', $event)" @edit="$emit('edit', $event)" @play="$emit('play', $event)" @refind="$emit('refind')" @toggle="$emit('toggle', $event)" />
       </div>
     </template>
@@ -30,6 +33,6 @@ defineEmits(['pick', 'edit', 'play', 'refind', 'toggle'])
 .more{gap:3px;margin-top:12px;padding:5px 10px;border-radius:12px;font-size:11.5px;color:var(--primary);background:var(--primary-soft);flex-shrink:0}
 .more:hover{background:#f1dccf}
 .branch-children{display:flex;flex-direction:column;gap:14px;padding-left:12px;border-left:1.5px solid var(--line)}
-.fold{align-self:flex-start;gap:3px;padding:2px 7px;margin-bottom:-6px;border-radius:8px;font-size:11px;color:var(--muted)}
-.fold:hover{background:#fff;color:var(--ink)}
+.more.opened{color:var(--muted);background:#fff;border:1px solid var(--line)}
+.more.opened:hover{color:var(--ink)}
 </style>
