@@ -5,6 +5,7 @@ import { expand, expandAll, isFresh, requestRoute, touch } from './expandStore.j
 import { ORIGIN_LABEL, ancestorsOf, buildTree, crumbOf, originOf, pickToSelection, shortLabel, trailOf } from './probeTree.js'
 import SceneCard from './SceneCard.vue'
 import InlineFocus from './InlineFocus.vue'
+import CardExtras from './CardExtras.vue'
 import BoardBranch from './BoardBranch.vue'
 
 const props = defineProps({ route: { type: String, default: '' }, pageName: String, selection: Object, mode: String, focus: [Number, null], notes: { type: Array, default: () => [] }, patch: Object })
@@ -39,16 +40,24 @@ const title = computed(() => routeTitle(props.route) || state.value.title || pro
 const pageNode = computed(() => state.value.styles && state.value.page ? { id: 0, isPage: true, title: title.value, html: state.value.page, box: null } : null)
 const scenes = computed(() => [...(pageNode.value ? [pageNode.value] : []), ...state.value.nodes].map(node => ({ node, crumb: node.isPage ? '当前页面' : crumbOf(state.value.nodes, node) })))
 // 一棵树：页面在左边，从它的按钮出发一条条链
-const tree = computed(() => buildTree(state.value.nodes.map(n => ({ ...n, crumb: crumbOf(state.value.nodes, n), notes: notesOf(n) }))))
+// 卡片底下的关联（切到同页别的页签）和待补（展示按钮点了没反应），按按钮所在的卡分好；页面本身那张卡的编号是 0
+const extrasOf = id => ({
+  dead: (state.value.dead || []).filter(d => (d.parent ?? 0) === id),
+  links: (state.value.links || []).filter(l => (l.parent ?? 0) === id).map(l => ({ ...l, target: state.value.nodes.find(n => n.tab && n.title === l.tab)?.id ?? null })),
+})
+const deadTotal = computed(() => (state.value.dead || []).length)
+const tree = computed(() => buildTree(state.value.nodes.map(n => ({ ...n, crumb: crumbOf(state.value.nodes, n), notes: notesOf(n), ...extrasOf(n.id) }))))
+const pageExtras = computed(() => extrasOf(0))
 const q = computed(() => query.value.trim())
 const hit = node => !!q.value && `${node.title} ${node.label}`.includes(q.value)
-const matches = node => !q.value || hit(node) || node.children.some(matches)
-const roots = computed(() => tree.value.filter(n => (filter.value === 'all' || originOf(n) === filter.value) && matches(n)))
+const hasDead = node => node.dead.length > 0 || node.children.some(hasDead)
+const matches = node => (filter.value !== 'todo' || hasDead(node)) && (!q.value || hit(node) || node.children.some(matches))
+const roots = computed(() => tree.value.filter(n => (filter.value === 'all' || filter.value === 'todo' || originOf(n) === filter.value) && matches(n)))
 // 口径统一：总数是视图数，分组是「组」（每组一条按钮链）
 const groups = computed(() => {
   const counts = {}
   for (const n of tree.value) counts[originOf(n)] = (counts[originOf(n)] || 0) + 1
-  return [{ key: 'all', label: `全部 ${scenes.value.length} 个视图` }, ...['tab', 'button', 'row'].filter(k => counts[k]).map(k => ({ key: k, label: `${ORIGIN_LABEL[k]} ${counts[k]} 组` }))]
+  return [{ key: 'all', label: `全部 ${scenes.value.length} 个视图` }, ...['tab', 'button', 'row'].filter(k => counts[k]).map(k => ({ key: k, label: `${ORIGIN_LABEL[k]} ${counts[k]} 组` })), ...(deadTotal.value ? [{ key: 'todo', label: `待补交互 ${deadTotal.value}` }] : [])]
 })
 const frame = computed(() => ({ w: state.value.width || 1150, h: state.value.height || 800 }))
 const routePatch = computed(() => props.patch && (props.patch.route == null || props.patch.route === props.route) ? props.patch : null)
@@ -77,6 +86,12 @@ function pick({ node, items }) {
 // 有后续的卡：「全部展开」就是把它们都打开，「第一层」就是全部收起；手动点过某几个就两个都不亮
 const parentIds = computed(() => state.value.nodes.filter(n => state.value.nodes.some(c => c.parent === n.id)).map(n => n.id))
 const level = computed(() => !parentIds.value.length ? 'none' : parentIds.value.every(id => openIds.value.has(id)) ? 'all' : parentIds.value.some(id => openIds.value.has(id)) ? 'custom' : 'first')
+const openView = computed(() => {
+  if (filter.value !== 'todo') return openIds.value
+  const next = new Set(openIds.value)
+  for (const d of state.value.dead || []) if (d.parent != null) { next.add(d.parent); for (const a of ancestorsOf(state.value.nodes, d.parent)) next.add(a) }
+  return next
+})
 function setLevel(v) { openIds.value = v === 'all' ? new Set(parentIds.value) : new Set() }
 const shownCount = computed(() => { let n = 0; const walk = list => list.forEach(x => { n++; if (openIds.value.has(x.id)) walk(x.children) }); walk(roots.value); return n + (pageNode.value ? 1 : 0) })
 function toggle(id) { const next = new Set(openIds.value); next.has(id) ? next.delete(id) : next.add(id); openIds.value = next }
@@ -168,6 +183,7 @@ onMounted(() => requestRoute(props.route))
             <InlineFocus v-if="pageNode && focus === 0" :node="pageNode" :route="route" :styles="state.styles" :frame="frame" :picked="picked" :mode="mode" :patch="routePatch" crumb="当前页面" :width="focusWidth" @pick="pick" @edit="edit" @play="play" @close="$emit('update:focus', null)" @open="openInPreview" />
             <SceneCard v-else-if="pageNode" :node="pageNode" :styles="state.styles" :frame="frame" :picked="picked" :mode="mode" crumb="当前页面" :notes="notesOf(pageNode)" :width="216" :patch="routePatch" compact @pick="pick" @edit="edit" @play="play" />
             <div v-else class="scene-ghost" aria-hidden="true"><span></span><span></span><span></span></div>
+            <CardExtras v-if="pageNode && focus !== 0" :links="pageExtras.links" :dead="pageExtras.dead" @goto="reveal" />
             <div v-if="jumps.length && focus !== 0" class="jumps">
               <p>从这页能跳到 <span>{{ jumps.length }}</span></p>
               <button v-for="(j, i) in jumps" :key="i" type="button" :disabled="j.route == null" :title="j.route == null ? '这个页面不在业务页面清单里' : `切到「${j.name}」的展开图（不离开展开视图）`" @click="goJump(j)">
@@ -176,7 +192,7 @@ onMounted(() => requestRoute(props.route))
             </div>
           </div>
           <div class="tree-branches">
-            <BoardBranch v-for="node in roots" :key="node.id" :node="node" :styles="state.styles" :frame="frame" :picked="picked" :mode="mode" :open="openIds" :patch="routePatch" :focus="focus" :route="route" :focus-width="focusWidth" @pick="pick" @edit="edit" @play="play" @refind="refind" @toggle="toggle" @close="$emit('update:focus', null)" @open="openInPreview" />
+            <BoardBranch v-for="node in roots" :key="node.id" :node="node" :styles="state.styles" :frame="frame" :picked="picked" :mode="mode" :open="openView" :patch="routePatch" :focus="focus" :route="route" :focus-width="focusWidth" @pick="pick" @edit="edit" @play="play" @refind="refind" @toggle="toggle" @close="$emit('update:focus', null)" @open="openInPreview" @goto="reveal" />
             <div v-if="status === 'running' || status === 'queued' || status === 'discovering'" class="branch-ghost" aria-hidden="true"><span></span><div class="scene-ghost"><span></span><span></span><span></span></div></div>
             <div v-if="!busy && !roots.length" class="empty-board">
               <template v-if="q || filter !== 'all'"><Search :size="22" /><h3>没有找到对应视图</h3><p>试试其他名称，或者清空当前筛选。</p><button type="button" class="outline" @click="query = ''; filter = 'all'">清空筛选</button></template>

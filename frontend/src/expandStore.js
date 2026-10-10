@@ -7,7 +7,7 @@ import { discoverRoutes, probePage, syncNodes } from './probe.js'
 
 const CONCURRENCY = 2
 // 展开结果的格式版本：找法变了（比如开始找子页面）就升一下，旧结果作废重找，免得一直用缺了第二层的老快照
-const SCHEMA = 's4'  // s4：跳到别的业务页面不再算子页面（菜单高亮换了 / 去的是清单里的页），旧结果要重拍
+const SCHEMA = 's5'  // s5：跳到别的业务页面不算子页面；页签、展示类按钮的关联和待补也记下来，旧结果要重拍
 export const expand = reactive({
   scope: '',          // 项目:页面
   hash: '',           // 当前版本的源码哈希
@@ -187,7 +187,7 @@ async function run({ route, kind, token }) {
     const doc = ((token && candidates.get(token)) || c.makeDoc)(route)
     let result
     if (kind === 'sync' && entry?.result?.nodes?.length) {
-      result = await syncNodes({ doc, nodes: entry.result.nodes, jumps: entry.result.jumps || [], routes: expand.routes.map(r => r.hash), first: [...(touched[route] || [])], width: c.width, height: 800, cancelled: () => !alive() || adopted.get(token) === null,
+      result = await syncNodes({ doc, nodes: entry.result.nodes, jumps: entry.result.jumps || [], links: entry.result.links || [], dead: entry.result.dead || [], routes: expand.routes.map(r => r.hash), first: [...(touched[route] || [])], width: c.width, height: 800, cancelled: () => !alive() || adopted.get(token) === null,
         onUpdate: update => { if (!alive() || adopted.get(token) === null) return; progress(update); expand.entries[route] = { ...expand.entries[route], result: update, ...(token ? { hash, prev: entry } : {}) } } })
     } else {
       result = await probePage({ doc, width: c.width, routes: expand.routes.map(r => r.hash), height: 800, cancelled: () => !alive(),

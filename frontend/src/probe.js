@@ -59,7 +59,8 @@ export async function probePage({ doc, width = 1150, height = 800, routes = [], 
   const probe = probeFrame(doc, width, height, routes)
   const started = Date.now()
   // jumps：这一页上点了会跳到别的业务页面的按钮。它们不进树（那一页有自己的树），只在页面卡下面列出来
-  const result = { title: '', styles: null, page: '', width, height, nodes: [], jumps: [], tried: 0, total: 0, cancelled: false }
+  // links：点了切到同一页另一个页签的（整改跟踪 → 异常跟踪）；dead：展示类按钮点了没任何反应，待补
+  const result = { title: '', styles: null, page: '', width, height, nodes: [], jumps: [], links: [], dead: [], tried: 0, total: 0, cancelled: false }
   const report = current => onUpdate(plain({ ...result, current }))
   try {
     const { init, base } = await begin(probe, width, height)
@@ -76,6 +77,14 @@ export async function probePage({ doc, width = 1150, height = 800, routes = [], 
       result.tried++
       report(job.label)
       const reply = await probe.attempt(job.path, job.step)
+      if (reply.ok && reply.tablink) {
+        if (!result.links.some(x => x.parent === job.parent && x.label === job.label)) result.links.push({ parent: job.parent, label: job.label, tab: reply.tablink.tab })
+        report(job.label); continue
+      }
+      if (reply.ok && reply.dead) {
+        if (!result.dead.some(x => x.parent === job.parent && x.label === job.label)) result.dead.push({ parent: job.parent, label: job.label })
+        report(job.label); continue
+      }
       if (reply.ok && reply.jump) {
         const j = reply.jump
         if (!result.jumps.some(x => x.parent === job.parent && (x.hash || x.title) === (j.hash || j.title)))
@@ -86,8 +95,10 @@ export async function probePage({ doc, width = 1150, height = 800, routes = [], 
       // 第二层：点了进到详情这类子页面。记成一张页面卡，它上面的按钮接着往下找
       const sub = reply.ok && !reply.opened && reply.subpage
       if (sub) {
-        if (seen.has(sub.sig) || job.depth >= MAX_DEPTH) continue
-        seen.add(sub.sig)
+        // 页签各是各的视图：不能因为两个页签上的按钮一样（都只有「导出」）就当成同一个
+        const subKey = sub.tab ? 'tab|' + sub.title : sub.sig
+        if (seen.has(subKey) || job.depth >= MAX_DEPTH) continue
+        seen.add(subKey)
         // 原型的详情页常常没有自己的大标题，取到的还是整站标题；那就用点进来的那个按钮的字
         const subTitle = sub.tab ? sub.title : sub.title && sub.title !== result.title ? sub.title : String(job.label || '').replace(/^表格行 · /, '')
         // 子页面里点左边的树、切个筛选，标题没变只是内容换了：还是同一页，不再当一层
@@ -122,10 +133,10 @@ export async function probePage({ doc, width = 1150, height = 800, routes = [], 
 
 // 改完之后同步：已经知道每张卡怎么点开，直接按路径重新点一遍拍新快照，
 // 不再把整页按钮从头试一遍。刚改的那张排第一个，通常一两秒就换上新样子。
-export async function syncNodes({ doc, nodes = [], jumps = [], first = [], width = 1150, height = 800, routes = [], onUpdate = () => {}, cancelled = () => false }) {
+export async function syncNodes({ doc, nodes = [], jumps = [], links = [], dead = [], first = [], width = 1150, height = 800, routes = [], onUpdate = () => {}, cancelled = () => false }) {
   const probe = probeFrame(doc, width, height, routes)
   // 每张卡先标「更新中」，拍到新样子再去掉：哪张已经是新的、哪张还在等，一眼能看出来
-  const result = { title: '', styles: null, page: '', width, height, nodes: plain(nodes).map(n => ({ ...n, pending: true })), jumps: plain(jumps), done: 0, total: nodes.length, stale: 0 }
+  const result = { title: '', styles: null, page: '', width, height, nodes: plain(nodes).map(n => ({ ...n, pending: true })), jumps: plain(jumps), links: plain(links), dead: plain(dead), done: 0, total: nodes.length, stale: 0 }
   // 重拍时取不到标题（子页面常常只有整站标题）就留着原来的，免得卡片标题变空
   const keepTitle = (node, title, pageTitle) => (!title || (node.kind === 'subpage' && title === pageTitle) ? node.title : title)
   const report = () => onUpdate(plain(result))

@@ -260,7 +260,8 @@ _TEMPLATE = r'''
   }
   // 应用外壳（固定的顶栏、侧栏）里的按钮是全局的：全屏、折叠菜单、账号下拉，不属于这一页
   function inChrome(el){
-    for(let n=el.parentElement;n&&n!==document.body;n=n.parentElement){const p=getComputedStyle(n).position;if(p==='fixed'||p==='sticky')return true;}
+    // 表格里固定在右边的「操作」列也是 sticky，但它属于这一页的内容，不是外壳
+    for(let n=el.parentElement;n&&n!==document.body;n=n.parentElement){if(n.closest('table'))continue;const p=getComputedStyle(n).position;if(p==='fixed'||p==='sticky')return true;}
     return false;
   }
   const bare=el=>(el.innerText||el.value||'').replace(/\s+/g,' ').trim().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu,'');
@@ -462,6 +463,17 @@ _TEMPLATE = r'''
     }
     return out;
   }
+  // 当前亮着的页签（每个页签条一个）：展示类操作常常是「切到另一个页签并定位到这条」，比如整改跟踪 → 异常跟踪
+  function activeTabs(){
+    const box=navBox();
+    return [...document.querySelectorAll('[role=tablist],[class*=tab],[class*=Tab]')].filter(el=>vis(el)&&(el.matches('[role=tablist]')||TAB_BAR.test(String(el.className)))&&!(box&&box.contains(el))&&!inChrome(el)&&!layers().some(l=>l.contains(el)))
+      .map(bar=>{const items=navItems(bar);const a=items.find(el=>el.matches('[aria-selected=true]')||ACTIVE.test(String(el.className))||ACTIVE.test(String(el.parentElement?.className||'')));return a?ownText(a):''}).filter(Boolean);
+  }
+  // 展示类操作：看这一行关联的信息。点了没有任何可见变化，就是「还没接上」，列进待补
+  const DISPLAY_TEXT=/查看|明细|详情|跟踪|记录|日志|历史|路线|轨迹|预览|档案|履历|追溯|溯源/;
+  const ACTION_HEAD=/^(确认|确定|取消|提交|保存|删除|新增|添加|导入|导出|批量|生成|发起|关联|解除)/;   // 「确认关联」「取消关联」这类是动作不是查看
+  // 有提示也算有反应（toast、消息条），不算没接上
+  function feedback(){return [...document.querySelectorAll('[class*=toast],[class*=Toast],[class*=message],[class*=notice],[class*=notify],[class*=snackbar],[role=alert],[role=status]')].filter(vis).map(el=>ownText(el).slice(0,40)).join('|')}
   let knownRoutes=[];   // 宿主告诉副本：这个原型有哪些业务页面（跳到这些页面不算这一页的下一层）
   // 原型里有哪些页面：导航里指向 #路由 的链接。折叠起来的分组里的链接也算（不要求看得见）
   function routesOf(){
@@ -488,7 +500,8 @@ _TEMPLATE = r'''
       if(s.nav){const was=pageSig();if(!await press(s,probeBase))return {ok:false,reason:'replay'};if(!await waitChange(was,1500))return {ok:false,reason:'replay'};continue;}
       const before=snapshot();if(!await press(s,probeBase))return {ok:false,reason:'replay'};if(!await waitOpen(before,1200))return {ok:false,reason:'replay'};
     }
-    const before=snapshot(),sigBefore=pageSig(),hashBefore=location.hash,navBefore=activeNav(),headsBefore=mainHeads();
+    const before=snapshot(),sigBefore=pageSig(),hashBefore=location.hash,navBefore=activeNav(),headsBefore=mainHeads(),tabsBefore=activeTabs().join('|'),fbBefore=feedback();
+    const pressed=findTarget(step.target,step.inLayer?topOpen(probeBase):document),raw=pressed?bare(pressed):'';
     if(!await press(step,probeBase))return {ok:false,reason:'missing'};
     const L=await waitOpen(before,step.select?900:520);
     let out={ok:true,opened:null};
@@ -504,6 +517,13 @@ _TEMPLATE = r'''
       else if(step.tab){out.subpage={...subpageOf(),title:step.target.text,tab:true};}
       // 真换了一页（地址变了，或内容区的标题换了一套）才算子页面；只是筛选、切个开关、表格换了几行，不算一层
       else if(location.hash!==hashBefore||headsMoved(headsBefore,mainHeads()))out.subpage=subpageOf();
+      // 切到了同一页的另一个页签：连到那张页签卡，不再单独建卡
+      else{const now=activeTabs(),was=tabsBefore.split('|');const moved=now.find(t=>!was.includes(t));if(moved)out.tablink={tab:moved};}
+    }
+    // 什么都没发生：展示类的按钮记成「待补」（删除、查询这类本来就不试）
+    if(!L&&!out.jump&&!out.subpage&&!out.tablink&&raw.length>=2&&DISPLAY_TEXT.test(raw)&&!ACTION_HEAD.test(raw)&&!CLOSE_TEXT.test(raw)){
+      await sleep(150);
+      if(pageSig()===sigBefore&&feedback()===fbBefore&&!topOpen(before))out.dead=true;
     }
     if(L){
       const wizard=wizardOf(L);

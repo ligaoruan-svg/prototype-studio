@@ -42,11 +42,15 @@ const kind = node => node.isPage ? '页面' : node.tab ? '页签' : node.kind ==
   function block(route, result, node) {
     const own = notesFor(notes, route.hash, node)
     const head = `<header class="card-head"><span class="tag ${node.isPage ? 'page' : node.kind === 'subpage' ? 'sub' : 'modal'}">${kind(node)}</span><h3 title="${esc(node.title)}">${esc(node.title)}</h3>${own.length ? `<span class="badge">意见 ${own.length}</span>` : ''}</header>`
+    const mine = list => (list || []).filter(x => (x.parent ?? 0) === node.id)
+    const lk = mine(result.links), dd = mine(result.dead)
+    const extra = (lk.length ? `<p class="xlinks">${lk.map(l => `↪ 点「${esc(clean(l.label))}」→ 页签「${esc(l.tab)}」`).join('<br>')}</p>` : '') +
+      (dd.length ? `<p class="xdead"><b>待补 ${dd.length}</b> ${dd.map(d => esc(clean(d.label))).join('、')}<small>点了没反应</small></p>` : '')
     const warn = node.stale ? '<p class="stale">按原路径已打不开，显示的是旧样子</p>' : ''
     const list = own.length ? `<ol class="notes">${own.map(a => `<li>${esc(a.note || '')}${a.text ? `<small>「${esc(String(a.text).slice(0, 30))}」</small>` : ''}</li>`).join('')}</ol>` : ''
     const edge = node.isPage ? '' : `<span class="edge" title="${esc(clean(node.label))}">${node.parent == null && /^表格行 · /.test(node.label || '') ? '<i>列表行</i>' : ''}${esc(clean(node.label))}</span>`
     const kids = (node.children || []).map(c => `<div class="kid">${block(route, result, c)}</div>`).join('')
-    return `<div class="branch">${edge}<article class="card${node.isPage ? ' root' : ''}">${head}${card(result, node, node.title)}${warn}${list}</article>${kids ? `<div class="kids">${kids}</div>` : ''}</div>`
+    return `<div class="branch">${edge}<article class="card${node.isPage ? ' root' : ''}">${head}${card(result, node, node.title)}${warn}${extra}${list}</article>${kids ? `<div class="kids">${kids}</div>` : ''}</div>`
   }
 
   const sections = [], toc = [], side = []
@@ -112,6 +116,8 @@ td a{color:var(--ink)}td.ok{color:#4c7a52}td.warn,.warn{color:var(--warn)}td.mut
 .thumb{position:relative;display:block;margin:10px;padding:0;overflow:hidden;border:0;border-radius:6px;background:#f5f7fa;box-shadow:0 1px 4px #2b33200f;cursor:zoom-in}
 .thumb.cut::after{content:'点击看全部';position:absolute;left:0;right:0;bottom:0;padding:18px 0 6px;text-align:center;font-size:11px;color:var(--muted);background:linear-gradient(#fff0,#fffffff0)}
 .thumb iframe{position:absolute;left:0;top:0;border:0;transform-origin:0 0;background:#fff;pointer-events:none}
+.xlinks{max-width:340px;margin:0 12px 8px;font-size:12px;color:#4c6a8a}
+.xdead{max-width:340px;margin:0 12px 10px;padding:6px 9px;border:1px dashed #e7d3ad;border-radius:8px;background:#fffaf1;font-size:12px;color:#5c4a2a}.xdead b{color:#8a5a0b;margin-right:4px}.xdead small{margin-left:6px;color:var(--muted)}
 .stale{margin:0 12px 8px;font-size:11.5px;color:var(--warn)}
 .notes{max-width:340px;margin:0;padding:8px 12px 10px 30px;border-top:1px dashed var(--line);font-size:12px;background:#fffaf6}.notes li{margin:2px 0}.notes small{margin-left:4px;color:var(--muted)}
 .empty{color:var(--muted)}
