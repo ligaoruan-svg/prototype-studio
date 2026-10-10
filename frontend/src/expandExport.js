@@ -29,7 +29,7 @@ export function buildExpandExport({ projectName = '', fileName = '', version = '
   function card(result, node, title) {
     const frame = { w: result.width || 1150, h: result.height || 800 }
     const pageLike = node.isPage || node.kind === 'subpage'
-    const box = pageLike ? { x: 0, y: 0, w: frame.w, h: frame.h } : (node.box || { x: 0, y: 0, ...frame })
+    const box = node.isPage ? { x: 0, y: 0, w: frame.w, h: frame.h } : (node.box || { x: 0, y: 0, ...frame })   // 子页面只截内容区，去掉每张都一样的菜单
     const t = thumbFrame(box, pageLike ? PAGE_W : MODAL_W, MAX_H, 0.6)
     const i = cards.length
     bodies.push(node.html || '')
@@ -37,7 +37,7 @@ export function buildExpandExport({ projectName = '', fileName = '', version = '
     const cut = Math.round(box.h * t.scale) > t.height
     return `<button type="button" class="thumb${cut ? ' cut' : ''}" style="width:${t.width}px;height:${t.height}px" data-card="${i}" title="点击放大查看"></button>`
   }
-const kind = node => node.isPage ? '页面' : node.kind === 'subpage' ? '子页面' : '弹窗'
+const kind = node => node.isPage ? '页面' : node.tab ? '页签' : node.kind === 'subpage' ? '子页面' : '弹窗'
   // 横向树：页面在最左，从它的按钮出发一条条往右长；同一层的视图上下排，连线画在 CSS 里
   function block(route, result, node) {
     const own = notesFor(notes, route.hash, node)
@@ -60,9 +60,11 @@ const kind = node => node.isPage ? '页面' : node.kind === 'subpage' ? '子页�
     const views = nodes.length + 1
     total += views
     const pageNode = { id: 0, isPage: true, title: route.title, html: result.page, children: buildTree(nodes) }
+    const jumpList = (result.jumps || []).map(j => { const t = (j.hash && list.find(r => r.hash === j.hash)) || list.find(r => r.title === j.title); return t === route ? null : { name: t?.title || j.title || '另一个页面', at: t ? list.indexOf(t) : -1, label: clean(j.label) } }).filter(Boolean)
+    const jumpHtml = jumpList.length ? `<div class="jumps"><p>从这页能跳到</p>${jumpList.map(j => `<a ${j.at >= 0 ? `href="#p${j.at}"` : ''}>→ ${esc(j.name)}<small>点「${esc(j.label)}」</small></a>`).join('')}</div>` : ''
     side.push(`<a href="#p${i}" data-sec="p${i}"${state ? ` title="${state}"` : ''}><span>${esc(route.title)}</span>${state ? '<i class="dot"></i>' : ''}<b>${views}</b></a>`)
     toc.push(`<tr><td><a href="#p${i}">${esc(route.title)}</a></td><td>${views}</td><td class="${state ? 'warn' : 'ok'}">${state || '已展开'}</td></tr>`)
-    sections.push(`<section id="p${i}" class="route"><h2><button type="button" class="fold" aria-expanded="true" title="收起 / 展开这棵树">▾</button><span class="rt">${esc(route.title)}</span><small>${views} 个视图${route.hash ? ' · ' + esc(route.hash) : ''}${state ? ` · <b class="warn">${state}</b>` : ''}</small></h2><div class="tree">${block(route, result, pageNode)}</div></section>`)
+    sections.push(`<section id="p${i}" class="route"><h2><button type="button" class="fold" aria-expanded="true" title="收起 / 展开这棵树">▾</button><span class="rt">${esc(route.title)}</span><small>${views} 个视图${route.hash ? ' · ' + esc(route.hash) : ''}${state ? ` · <b class="warn">${state}</b>` : ''}</small></h2><div class="tree">${block(route, result, pageNode)}</div>${jumpHtml}</section>`)
   })
 
   const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
@@ -131,6 +133,7 @@ body.searching .card{opacity:.32;transition:opacity .15s}body.searching .card.hi
 /* 右侧目录：可收起，跟着滚动高亮当前页面；屏幕上代替顶部的目录表（目录表只在打印时出现） */
 .toc{display:none}
 .route{scroll-margin-top:96px}
+.route .jumps{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px;margin:0 18px 16px;padding:10px 14px;border:1px dashed #d8d2c4;border-radius:10px;font-size:12.5px}.route .jumps p{margin:0;color:var(--muted)}.route .jumps a{color:var(--primary);text-decoration:none}.route .jumps a small{margin-left:4px;color:var(--muted)}.route.folded .jumps{display:none}
 .fold{width:24px;height:24px;margin-right:-4px;border:0;border-radius:6px;background:transparent;color:var(--muted);font-size:14px;line-height:1;cursor:pointer;transition:transform .15s}
 .fold:hover{background:var(--canvas);color:var(--ink)}
 .route.folded .fold{transform:rotate(-90deg)}.route.folded .tree{display:none}.route.folded h2{padding-bottom:14px}

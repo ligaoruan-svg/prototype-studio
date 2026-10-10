@@ -17,7 +17,7 @@ const view = computed(() => {
     transform: `translate(${-box.value.x * scale}px, ${-box.value.y * scale}px) scale(${scale})` }
 })
 const rels = computed(() => props.picked?.nodeId === props.node.id ? props.picked.rels : [])
-const kindLabel = computed(() => props.node.isPage ? '静态页面' : props.node.kind === 'subpage' ? '子页面 · 页内跳转' : '动态弹窗')
+const kindLabel = computed(() => props.node.isPage ? '静态页面' : props.node.tab ? '页签 · 同一页的另一个视图' : props.node.kind === 'subpage' ? '子页面 · 页内跳转' : '动态弹窗')
 const post = message => iframe.value?.contentWindow?.postMessage(message, '*')
 function sync() {
   post({ type: 'CARD_MODE', mode: props.mode })

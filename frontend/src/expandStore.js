@@ -7,7 +7,7 @@ import { discoverRoutes, probePage, syncNodes } from './probe.js'
 
 const CONCURRENCY = 2
 // 展开结果的格式版本：找法变了（比如开始找子页面）就升一下，旧结果作废重找，免得一直用缺了第二层的老快照
-const SCHEMA = 's3'  // s3：换路由的子页面（配置单元/设备）也展开，旧结果要重拍
+const SCHEMA = 's4'  // s4：跳到别的业务页面不再算子页面（菜单高亮换了 / 去的是清单里的页），旧结果要重拍
 export const expand = reactive({
   scope: '',          // 项目:页面
   hash: '',           // 当前版本的源码哈希
@@ -46,6 +46,7 @@ export async function bindExpand({ pid, pageId, hash, makeDoc, width }) {
   hash = `${SCHEMA}:${hash}`
   if (scope !== expand.scope) {
     const g = ++gen
+    routesJob = null; expand.discovering = false
     expand.scope = scope; expand.hash = hash; expand.routes = []; expand.entries = {}; expand.jobs = {}; expand.queued = []; expand.error = ''
     queue.length = 0
     ready = (async () => {
@@ -70,28 +71,41 @@ export async function requestRoute(route, { force = false } = {}) {
   const g = gen
   await ready
   if (g !== gen) return
+  await ensureRoutes(route)   // 第一次看某个原型：先认清业务页面，免得把别的页面当成这页的子页面
+  if (g !== gen) return
   if (force) return schedule(route, 'probe', true, true)
   if (isFresh(route) || expand.jobs[route]) return
   schedule(route, expand.entries[route]?.result?.nodes?.length && !expand.entries[route].partial ? 'sync' : 'probe', true)
 }
 
+// 先弄清这个原型有哪些业务页面：跳到这些页面算「跳走」，不挂进当前页的树。只找一次，找的时候别人等着
+let routesJob = null
+async function ensureRoutes(currentRoute = '') {
+  if (expand.routes.length >= 2 || !ctx) return
+  if (routesJob) return routesJob
+  const g = gen, c = ctx
+  expand.discovering = true
+  routesJob = (async () => {
+    try {
+      const found = await discoverRoutes({ doc: c.makeDoc(currentRoute), width: c.width })
+      if (g !== gen) return
+      expand.routes = found.routes.length ? found.routes : [{ hash: currentRoute, title: expand.entries[currentRoute]?.result?.title || '当前页面' }]
+      api(`${base(c)}/routes`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ routes: expand.routes }) }).catch(() => {})
+    } catch (e) { if (g === gen) expand.error = e.message || '没找到页面列表' }
+    finally { if (g === gen) expand.discovering = false; routesJob = null }
+  })()
+  return routesJob
+}
+
 // 一键展开全部页面
 export async function expandAll(currentRoute = '') {
-  if (!ctx || expand.discovering) return
-  expand.discovering = true; expand.error = ''
+  if (!ctx) return
   await ready
   const g = gen
-  try {
-    if (!expand.routes.length) {
-      const found = await discoverRoutes({ doc: ctx.makeDoc(currentRoute), width: ctx.width })
-      if (g !== gen) return   // 找页面的时候已经切到别的项目了
-      expand.routes = found.routes.length ? found.routes : [{ hash: currentRoute, title: '当前页面' }]
-      api(`${base()}/routes`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ routes: expand.routes }) }).catch(() => {})
-    }
-    const order = [...expand.routes].sort((a, b) => (b.hash === currentRoute) - (a.hash === currentRoute))
-    for (const r of order) if (!isFresh(r.hash)) schedule(r.hash, expand.entries[r.hash]?.result?.nodes?.length && !expand.entries[r.hash].partial ? 'sync' : 'probe')   // 半截的结果要重找，不能当完整的同步
-  } catch (e) { expand.error = e.message || '没找到页面列表' }
-  finally { expand.discovering = false }
+  await ensureRoutes(currentRoute)
+  if (g !== gen) return
+  const order = [...expand.routes].sort((a, b) => (b.hash === currentRoute) - (a.hash === currentRoute))
+  for (const r of order) if (!isFresh(r.hash)) schedule(r.hash, expand.entries[r.hash]?.result?.nodes?.length && !expand.entries[r.hash].partial ? 'sync' : 'probe')   // 半截的结果要重找，不能当完整的同步
 }
 
 // 版本变了：所有展开过的页面都按原路径同步（后台慢慢来）
@@ -173,10 +187,10 @@ async function run({ route, kind, token }) {
     const doc = ((token && candidates.get(token)) || c.makeDoc)(route)
     let result
     if (kind === 'sync' && entry?.result?.nodes?.length) {
-      result = await syncNodes({ doc, nodes: entry.result.nodes, first: [...(touched[route] || [])], width: c.width, height: 800, cancelled: () => !alive() || adopted.get(token) === null,
+      result = await syncNodes({ doc, nodes: entry.result.nodes, jumps: entry.result.jumps || [], routes: expand.routes.map(r => r.hash), first: [...(touched[route] || [])], width: c.width, height: 800, cancelled: () => !alive() || adopted.get(token) === null,
         onUpdate: update => { if (!alive() || adopted.get(token) === null) return; progress(update); expand.entries[route] = { ...expand.entries[route], result: update, ...(token ? { hash, prev: entry } : {}) } } })
     } else {
-      result = await probePage({ doc, width: c.width, height: 800, cancelled: () => !alive(),
+      result = await probePage({ doc, width: c.width, routes: expand.routes.map(r => r.hash), height: 800, cancelled: () => !alive(),
         onUpdate: update => { if (!alive()) return; progress(update); const now = expand.entries[route]; if (!now || now.partial) expand.entries[route] = { hash, result: update, partial: true } } })
     }
     if (!alive()) return

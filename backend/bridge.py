@@ -25,7 +25,7 @@ _TEMPLATE = r'''
     clear:()=>{Object.keys(data).forEach(k=>delete data[k]);send('STORAGE',{data});},
     key:i=>Object.keys(data)[i]??null, get length(){return Object.keys(data).length;}};
   try { Object.defineProperty(window,'localStorage',{value:store}); Object.defineProperty(window,'sessionStorage',{value:store}); } catch {}
-  if(window.__paRoute) location.hash=window.__paRoute;
+  if(window.__paRoute&&String(window.__paRoute).startsWith('#')) location.hash=window.__paRoute;
   window.addEventListener('hashchange',()=>send('ROUTE',{hash:location.hash}));
   window.addEventListener('error',e=>{if(e.message)send('RUNTIME_ERROR',{message:e.message,lineno:e.lineno});});
   window.addEventListener('unhandledrejection',e=>send('RUNTIME_ERROR',{message:String(e.reason?.message||e.reason||'Promise rejection')}));
@@ -364,7 +364,8 @@ _TEMPLATE = r'''
     // 同一种详情页（不同行点进去长得一样）只算一个：按它上面有哪些按钮认
     // 取不到内容区标题时 pageTitle 会退回整站标题，那对子页面没意义，交给宿主用按钮文字
     const t=pageTitle(),site=(document.title||'').trim().split('\n')[0].slice(0,40);
-    return {title:t===site?'':t,html,triggers,sig:'sub|'+triggers.map(t=>t.text).sort().join(',').slice(0,400)};
+    const nb=navBox(),nr=nb&&nb.getBoundingClientRect();const left=nr&&nr.left<40&&nr.height>innerHeight*0.5?Math.round(nr.right):0;
+    return {title:t===site?'':t,html,triggers,box:left?{x:left,y:0,w:innerWidth-left,h:innerHeight}:null,sig:'sub|'+triggers.map(t=>t.text).sort().join(',').slice(0,400)};
   }
   async function closeAll(base){
     for(let i=0;i<5;i++){
@@ -376,6 +377,92 @@ _TEMPLATE = r'''
     }
     return !topOpen(base);
   }
+  // ===== 业务页面导航：按长相和行为认，不依赖原型怎么写 =====
+  // 导航区：语义标签 / 类名像菜单的，或者贴着左边的一长条、贴着顶部的一横条；里面能点的短文字最多的那个
+  const NAV_SEL='nav,aside,[role=navigation],[class*=sidebar],[class*=side-nav],[class*=sidenav],[class*=menu],[class*=Menu],[class*=nav]';
+  const pointer=el=>{try{return getComputedStyle(el).cursor==='pointer'}catch{return false}};
+  const ownText=el=>(el.innerText||'').replace(/\s+/g,' ').trim();
+  function navItems(box){
+    const pool=[...box.querySelectorAll('a,button,li,[role=menuitem],[role=treeitem],[onclick],[class*=item],[class*=Item],div,span')].filter(el=>vis(el)&&(el.matches('a,button,[role=menuitem],[role=treeitem],[onclick]')||pointer(el)));
+    const ok=pool.filter(el=>{const t=ownText(el);return t.length>=2&&t.length<=24&&!t.includes(' › ')});
+    // 同一个菜单项常常是 li > a > span 三层都能点：留最外层那个文字相同的
+    const outer=ok.filter(el=>!ok.some(o=>o!==el&&o.contains(el)&&ownText(o)===ownText(el)));
+    // 一个里面装着好几个菜单项的（分组容器）不算菜单项
+    const items=outer.filter(el=>!outer.some(o=>o!==el&&el.contains(o)));
+    const seen=new Set();return items.filter(el=>{const t=ownText(el);if(seen.has(t))return false;seen.add(t);return true});
+  }
+  let navCache=null;
+  function navBox(){
+    if(navCache&&navCache.isConnected&&vis(navCache))return navCache;
+    const W=innerWidth,H=innerHeight;
+    const cand=new Set([...document.querySelectorAll(NAV_SEL)].filter(vis));
+    for(const el of document.body.querySelectorAll('*')){if(!vis(el)||el.closest('[data-pa-overlay]'))continue;const r=el.getBoundingClientRect();
+      if((r.left<40&&r.width<W*0.35&&r.height>H*0.55)||(r.top<90&&r.height<130&&r.width>W*0.6))cand.add(el);}
+    let best=null,score=2;
+    for(const el of cand){if(layers().some(l=>l.contains(el)))continue;const r=el.getBoundingClientRect();if(r.width>W*0.6&&r.height>H*0.6)continue;
+      const n=navItems(el).length;if(n>score||(n===score&&best&&best.contains(el))){best=el;score=n;}}
+    navCache=best;return best;
+  }
+  const ACTIVE=/(^|[\s_-])(active|current|selected|is-active|on|checked|router-link-active|router-link-exact-active)($|[\s_-])/i;
+  // 当前高亮的菜单项：先认 class / aria，再认「颜色和其他项都不一样」的那一个
+  function activeNav(){
+    const box=navBox();if(!box)return '';const items=navItems(box);
+    const hit=items.find(el=>el.matches('[aria-current]:not([aria-current=false]),[aria-selected=true]')||ACTIVE.test(String(el.className))||ACTIVE.test(String(el.parentElement?.className||'')));
+    if(hit)return ownText(hit);
+    const look=el=>{const c=getComputedStyle(el);return c.color+'|'+c.backgroundColor+'|'+c.fontWeight};
+    const counts={};items.forEach(el=>{const k=look(el);counts[k]=(counts[k]||0)+1});
+    const odd=items.filter(el=>counts[look(el)]===1);return odd.length===1?ownText(odd[0]):'';
+  }
+  // 一页内容的指纹：不含导航区，免得「菜单高亮换了」被当成内容换了
+  function contentSig(){const box=navBox();const keep=el=>!(box&&box.contains(el));
+    const heads=[...document.querySelectorAll('h1,h2,h3,h4,[class*=title],[class*=head]')].filter(el=>vis(el)&&keep(el)&&!layers().some(l=>l.contains(el))).slice(0,10).map(el=>ownText(el).split(' ')[0].slice(0,24));
+    return location.hash+'|'+heads.join('/');}
+  async function navTo(route){
+    const parts=String(route).replace(/^nav:/,'').split('›').map(s=>s.trim()).filter(Boolean);
+    for(const part of parts){const box=navBox();if(!box)return false;const el=navItems(box).find(x=>ownText(x)===part);if(!el)return false;el.click();await sleep(260);}
+    return true;
+  }
+  // 把导航里的每一项点一遍：内容换了 = 一个业务页面；只多出了几个菜单项 = 展开了一个分组，接着点里面的
+  async function discoverNav(){
+    const box0=navBox();if(!box0)return [];
+    const pages=[],seenText=new Set(),seenPage=new Set(),parentOf={};const started=Date.now();
+    for(let guard=0;guard<90&&Date.now()-started<40000;guard++){
+      const box=navBox();if(!box)break;const items=navItems(box);
+      const el=items.find(x=>!seenText.has(ownText(x)));if(!el)break;
+      const text=ownText(el);seenText.add(text);
+      if(/退出|登出|注销|登录|logout|sign ?out|切换账号|个人中心|消息|通知|帮助|设置$/i.test(text)&&!parentOf[text])continue;   // 账号、消息这类不是业务页面
+      const before=contentSig(),hashBefore=location.hash,names=new Set(items.map(ownText));
+      el.click();
+      let changed=false,grew=false;const end=Date.now()+900;
+      while(Date.now()<end){await sleep(70);if(contentSig()!==before){changed=true;await sleep(200);break;}
+        const now=navItems(navBox()||box).map(ownText);if(now.some(t=>!names.has(t))){grew=true;now.filter(t=>!names.has(t)).forEach(t=>{parentOf[t]=text});await sleep(120);break;}}
+      if(grew&&!changed)continue;
+      if(!changed&&!(location.hash!==hashBefore))continue;
+      const key=location.hash||contentSig();if(seenPage.has(key))continue;seenPage.add(key);
+      pages.push({hash:location.hash,text,parent:parentOf[text]||'',title:text.replace(/^[^\p{L}\p{N}]+/u,'').trim()||text});   // 菜单前面的图标字符（▦ ◈）不进标题
+      await closeAll(snapshot());
+    }
+    // 地址各不相同就用地址当路由；有的页面地址一样（纯脚本切页），这些用「分组›菜单项」
+    const hashes=pages.map(p=>p.hash);
+    return pages.map(p=>({hash:p.hash&&hashes.filter(h=>h===p.hash).length===1?p.hash:'nav:'+(p.parent?p.parent+'›':'')+p.text,title:p.title}));
+  }
+  // 内容区的几个标题（不含导航、弹窗、固定外壳）：用来判断「换了一页」还是「只是筛选 / 切了个状态」
+  function mainHeads(){const box=navBox();return [...document.querySelectorAll('h1,h2,h3,h4,[class*=page-title],[class*=title],[class*=panel-head],[class*=card-head]')].filter(el=>vis(el)&&!(box&&box.contains(el))&&!inChrome(el)&&!layers().some(l=>l.contains(el))).slice(0,10).map(el=>ownText(el).split(' ')[0].slice(0,24)).filter(Boolean)}
+  function headsMoved(a,b){if(!a.length||!b.length)return a.length!==b.length;if(a[0]!==b[0])return true;const s=new Set(a);return b.filter(x=>s.has(x)).length/Math.max(a.length,b.length)<0.5}
+  // 内容区里的页签条（巡检计划 / 路线配置 / 巡检点）：每个页签是同一个业务页面的一个视图，里面的弹窗也要找
+  const TAB_BAR=/(^|[\s_-])(tabs?|tab-?bar|tab-?nav|tab-?list|nav-tabs|tab-?header|tabs-nav)($|[\s_-])/i;
+  function tabsIn(){
+    const box=navBox(),out=[];
+    const bars=[...document.querySelectorAll('[role=tablist],[class*=tab],[class*=Tab]')].filter(el=>vis(el)&&(el.matches('[role=tablist]')||TAB_BAR.test(String(el.className)))&&!(box&&box.contains(el))&&!inChrome(el)&&!layers().some(l=>l.contains(el)));
+    for(const bar of bars.filter(b=>!bars.some(o=>o!==b&&o.contains(b)))){
+      const items=navItems(bar).filter(el=>ownText(el).length<=12);if(items.length<2||items.length>8)continue;
+      const act=items.find(el=>el.matches('[aria-selected=true]')||ACTIVE.test(String(el.className))||ACTIVE.test(String(el.parentElement?.className||'')))||items[0];
+      for(const el of items)if(el!==act)out.push({...targetOf(el),text:ownText(el)});
+      if(out.length>=12)break;
+    }
+    return out;
+  }
+  let knownRoutes=[];   // 宿主告诉副本：这个原型有哪些业务页面（跳到这些页面不算这一页的下一层）
   // 原型里有哪些页面：导航里指向 #路由 的链接。折叠起来的分组里的链接也算（不要求看得见）
   function routesOf(){
     const seen=new Set(),out=[];
@@ -393,7 +480,7 @@ _TEMPLATE = r'''
     if(!full)return {sig:probeSig};
     let page='';try{page=freeze(document.body).replace(/^<body[^>]*>|<\/body>$/g,'');}catch{}
     if(page.length>1500000)page='';
-    return {sig:probeSig,title:pageTitle(),styles:stylesOf(),page,width:innerWidth,height:innerHeight,triggers:triggersIn(document,false)};
+    return {sig:probeSig,title:pageTitle(),styles:stylesOf(),page,width:innerWidth,height:innerHeight,triggers:triggersIn(document,false),tabs:tabsIn()};
   }
   async function probeTry(path,step){
     if(!await closeAll(probeBase)||pageSig()!==probeSig)return {needReload:true};
@@ -401,14 +488,23 @@ _TEMPLATE = r'''
       if(s.nav){const was=pageSig();if(!await press(s,probeBase))return {ok:false,reason:'replay'};if(!await waitChange(was,1500))return {ok:false,reason:'replay'};continue;}
       const before=snapshot();if(!await press(s,probeBase))return {ok:false,reason:'replay'};if(!await waitOpen(before,1200))return {ok:false,reason:'replay'};
     }
-    const before=snapshot(),sigBefore=pageSig(),hashBefore=location.hash;
+    const before=snapshot(),sigBefore=pageSig(),hashBefore=location.hash,navBefore=activeNav(),headsBefore=mainHeads();
     if(!await press(step,probeBase))return {ok:false,reason:'missing'};
     const L=await waitOpen(before,step.select?900:520);
     let out={ok:true,opened:null};
     // 没弹窗、但页面整个换了：记成子页面，它上面的按钮接着往下找。
     // 换了路由也算（「配置单元/设备」跳到 #boundary-device），只要跳去的不是侧栏里另一张业务页面——那张自己会展开
-    const own=h=>h===hashBefore||!routesOf().some(r=>r.hash===h);
-    if(!L&&!step.inLayer&&(pageSig()!==sigBefore||await waitChange(sigBefore,250))&&own(location.hash))out.subpage=subpageOf();
+    const known=[...knownRoutes,...routesOf().map(r=>r.hash)];
+    if(!L&&!step.inLayer&&(pageSig()!==sigBefore||await waitChange(sigBefore,250))){
+      const navNow=activeNav();
+      // 跳去了别的业务页面：地址是清单里的另一页，或者左侧菜单的高亮换了。不挂进这一页的树，只记一条「能跳到哪」
+      const jumped=(location.hash!==hashBefore&&known.includes(location.hash))||(navBefore&&navNow&&navNow!==navBefore);
+      if(jumped)out.jump={hash:location.hash,nav:navNow,title:navNow||pageTitle()};
+      // 页签：点了就是这一页的另一个视图
+      else if(step.tab){out.subpage={...subpageOf(),title:step.target.text,tab:true};}
+      // 真换了一页（地址变了，或内容区的标题换了一套）才算子页面；只是筛选、切个开关、表格换了几行，不算一层
+      else if(location.hash!==hashBefore||headsMoved(headsBefore,mainHeads()))out.subpage=subpageOf();
+    }
     if(L){
       const wizard=wizardOf(L);
       out.opened={layerSel:selectorFor(L),title:titleOf(L),sig:titleOf(L)+'|'+(L.innerText||'').replace(/\s+/g,' ').slice(0,160),html:freeze(L),box:boxOf(L),
@@ -429,9 +525,10 @@ _TEMPLATE = r'''
 
   window.addEventListener('message',e=>{
     if(e.source!==parent)return;const m=e.data||{};
-    if(m.type==='PA_ROUTE'){if(typeof m.hash==='string'&&location.hash!==m.hash)location.hash=m.hash;return;}
+    if(m.type==='PA_ROUTE'){if(typeof m.hash==='string'){if(m.hash.startsWith('nav:'))navTo(m.hash);else if(location.hash!==m.hash)location.hash=m.hash;}return;}
     if(m.type==='PA_PROBE_ROUTES'){send('PROBE_REPLY',{id:m.id,routes:routesOf(),current:location.hash});return;}
-    if(m.type==='PA_PROBE_INIT'){probeInit(!!m.full).then(r=>send('PROBE_REPLY',{id:m.id,...r}),err=>send('PROBE_REPLY',{id:m.id,ok:false,error:String(err)}));return;}
+    if(m.type==='PA_PROBE_NAV'){discoverNav().then(routes=>send('PROBE_REPLY',{id:m.id,routes,current:location.hash}),()=>send('PROBE_REPLY',{id:m.id,routes:[]}));return;}
+    if(m.type==='PA_PROBE_INIT'){if(Array.isArray(m.routes))knownRoutes=m.routes;probeInit(!!m.full).then(r=>send('PROBE_REPLY',{id:m.id,...r}),err=>send('PROBE_REPLY',{id:m.id,ok:false,error:String(err)}));return;}
     if(m.type==='PA_PROBE_TRY'){probeTry(m.path||[],m.step).then(r=>send('PROBE_REPLY',{id:m.id,...r}),err=>send('PROBE_REPLY',{id:m.id,ok:false,error:String(err),needReload:true}));return;}
     if(m.type==='PA_REPLAY'){replay(m.path||[]).then(r=>send('REPLAYED',r),()=>send('REPLAYED',{ok:false,at:0}));return;}
     if(m.type==='PA_SET_MODE'){mode=m.mode;hover=null;dragStart=null;if(m.mode==='interact')picked=[];if(dragBox)dragBox.style.display='none';paint();}
@@ -466,7 +563,10 @@ _TEMPLATE = r'''
     Object.assign(caption.style,{background:'#b8532f',color:'#fff',font:'11px/20px system-ui',padding:'1px 6px',borderRadius:'3px'});
     restoreScroll();send('READY');send('WIDTH',{width:innerWidth});
   });
-  window.addEventListener('load',()=>{restoreScroll();send('LOADED');});
+  window.addEventListener('load',async()=>{
+    // 菜单不改地址的原型（纯脚本切页）：路由记成「nav:分组›菜单项」，载入后照着点过去再报已载入
+    const r=String(window.__paRoute||'');if(r.startsWith('nav:')){await sleep(250);try{await navTo(r);}catch{}}
+    restoreScroll();send('LOADED');});
 })();
 </script>
 '''

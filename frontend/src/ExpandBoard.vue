@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { ArrowLeft, Download, ExternalLink, Layers, LoaderCircle, LocateFixed, PencilLine, Play, RotateCw, Search, AlertCircle, ChevronDown } from 'lucide-vue-next'
+import { ArrowLeft, ArrowRight, Download, ExternalLink, Layers, LoaderCircle, LocateFixed, PencilLine, Play, RotateCw, Search, AlertCircle, ChevronDown } from 'lucide-vue-next'
 import { expand, expandAll, isFresh, requestRoute, touch } from './expandStore.js'
 import { ORIGIN_LABEL, ancestorsOf, buildTree, crumbOf, originOf, pickToSelection, shortLabel, trailOf } from './probeTree.js'
 import SceneCard from './SceneCard.vue'
@@ -22,7 +22,7 @@ const state = computed(() => entry.value?.result || empty)
 const progress = computed(() => job.value?.progress || {})
 // running：第一次展开这一页；refreshing：重新查找；syncing：改过一版在同步；queued：排着队
 const status = computed(() => job.value ? (job.value.kind === 'sync' ? 'syncing' : entry.value && !entry.value.partial ? 'refreshing' : 'running')
-  : expand.queued.includes(props.route) ? 'queued' : entry.value ? 'done' : 'idle')
+  : expand.queued.includes(props.route) ? 'queued' : entry.value ? 'done' : expand.discovering ? 'discovering' : 'idle')
 const busy = computed(() => status.value !== 'done' && status.value !== 'idle')
 const staleCount = computed(() => state.value.nodes.filter(n => n.stale).length)
 
@@ -48,7 +48,7 @@ const roots = computed(() => tree.value.filter(n => (filter.value === 'all' || o
 const groups = computed(() => {
   const counts = {}
   for (const n of tree.value) counts[originOf(n)] = (counts[originOf(n)] || 0) + 1
-  return [{ key: 'all', label: `全部 ${scenes.value.length} 个视图` }, ...['button', 'row'].filter(k => counts[k]).map(k => ({ key: k, label: `${ORIGIN_LABEL[k]} ${counts[k]} 组` }))]
+  return [{ key: 'all', label: `全部 ${scenes.value.length} 个视图` }, ...['tab', 'button', 'row'].filter(k => counts[k]).map(k => ({ key: k, label: `${ORIGIN_LABEL[k]} ${counts[k]} 组` }))]
 })
 const frame = computed(() => ({ w: state.value.width || 1150, h: state.value.height || 800 }))
 const routePatch = computed(() => props.patch && (props.patch.route == null || props.patch.route === props.route) ? props.patch : null)
@@ -56,6 +56,13 @@ const picked = computed(() => props.selection?.card?.route === props.route ? pro
 const focused = computed(() => props.focus == null ? null : scenes.value.find(s => s.node.id === props.focus) || null)
 const hint = computed(() => props.mode === 'interact' ? '点卡片试玩；要改哪里，点卡片右上角「编辑」' : props.mode === 'box' ? '在卡片里拖动框选一组元素；太小时点「编辑」放大' : '点击元素选择修改，按住 Shift 多选；太小时点「编辑」放大')
 
+// 这一页上能跳去别的业务页面的按钮：不挂进树里（那一页有自己的树），列在页面卡下面，点一下切过去看那一页的树
+const jumps = computed(() => (state.value.jumps || []).filter(j => !(j.hash && j.hash === props.route)).map(j => {
+  const target = (j.hash && expand.routes.find(r => r.hash === j.hash)) || expand.routes.find(r => r.title === j.title)
+  const from = j.parent != null ? state.value.nodes.find(n => n.id === j.parent)?.title : ''
+  return target?.hash === props.route ? null : { ...j, route: target?.hash ?? null, name: target?.title || j.title || '另一个页面', from, label: String(j.label || '').replace(/^表格行 · /, '') }
+}).filter(Boolean))
+function goJump(j) { if (j.route == null) return; emit('update:focus', null); emit('update:route', j.route) }
 function notesOf(node) { return props.notes.filter(a => node.isPage ? !a.in_modal && !a.in_subpage : (a.in_modal || a.in_subpage) === node.title).length }
 function edit(node) { if (props.mode === 'interact') emit('mode', 'select'); emit('update:focus', node.id) }
 function play(node) { if (props.mode !== 'interact') emit('mode', 'interact'); emit('update:focus', node.id) }
@@ -125,6 +132,7 @@ onMounted(() => requestRoute(props.route))
           <p v-if="status === 'running'" class="board-sub live" aria-live="polite"><LoaderCircle :size="12" class="spin" />正在试「{{ shortLabel(progress.current) || '准备中' }}」· 已试 {{ progress.tried || 0 }} / {{ progress.total || '…' }} · 找到 {{ progress.nodes?.length || 0 }} 个</p>
           <p v-else-if="status === 'refreshing'" class="board-sub live" aria-live="polite"><LoaderCircle :size="12" class="spin" />正在重新查找 · 已试 {{ progress.tried || 0 }} / {{ progress.total || '…' }}</p>
           <p v-else-if="status === 'syncing'" class="board-sub live" aria-live="polite"><LoaderCircle :size="12" class="spin" />正在同步改动 · {{ progress.done || 0 }} / {{ progress.total || state.nodes.length }}</p>
+          <p v-else-if="status === 'discovering'" class="board-sub live" aria-live="polite"><LoaderCircle :size="12" class="spin" />先认一下这个原型有哪些业务页面（第一次打开时找一次）</p>
           <p v-else-if="status === 'queued'" class="board-sub live" aria-live="polite"><LoaderCircle :size="12" class="spin" />排队中，马上轮到这一页</p>
           <p v-else-if="staleCount" class="board-sub warn">有 {{ staleCount }} 张卡路径失效（标了黄色），可能按钮改了名——<button type="button" class="link-btn" @click="refind">重新查找这一页</button></p>
           <p v-else class="board-sub">{{ hint }}</p>
@@ -160,10 +168,16 @@ onMounted(() => requestRoute(props.route))
             <InlineFocus v-if="pageNode && focus === 0" :node="pageNode" :route="route" :styles="state.styles" :frame="frame" :picked="picked" :mode="mode" :patch="routePatch" crumb="当前页面" :width="focusWidth" @pick="pick" @edit="edit" @play="play" @close="$emit('update:focus', null)" @open="openInPreview" />
             <SceneCard v-else-if="pageNode" :node="pageNode" :styles="state.styles" :frame="frame" :picked="picked" :mode="mode" crumb="当前页面" :notes="notesOf(pageNode)" :width="216" :patch="routePatch" compact @pick="pick" @edit="edit" @play="play" />
             <div v-else class="scene-ghost" aria-hidden="true"><span></span><span></span><span></span></div>
+            <div v-if="jumps.length && focus !== 0" class="jumps">
+              <p>从这页能跳到 <span>{{ jumps.length }}</span></p>
+              <button v-for="(j, i) in jumps" :key="i" type="button" :disabled="j.route == null" :title="j.route == null ? '这个页面不在业务页面清单里' : `切到「${j.name}」的展开图（不离开展开视图）`" @click="goJump(j)">
+                <b><ArrowRight :size="12" />{{ j.name }}</b><small>{{ j.from ? `在「${j.from}」里` : '' }}点「{{ j.label }}」</small>
+              </button>
+            </div>
           </div>
           <div class="tree-branches">
             <BoardBranch v-for="node in roots" :key="node.id" :node="node" :styles="state.styles" :frame="frame" :picked="picked" :mode="mode" :open="openIds" :patch="routePatch" :focus="focus" :route="route" :focus-width="focusWidth" @pick="pick" @edit="edit" @play="play" @refind="refind" @toggle="toggle" @close="$emit('update:focus', null)" @open="openInPreview" />
-            <div v-if="status === 'running' || status === 'queued'" class="branch-ghost" aria-hidden="true"><span></span><div class="scene-ghost"><span></span><span></span><span></span></div></div>
+            <div v-if="status === 'running' || status === 'queued' || status === 'discovering'" class="branch-ghost" aria-hidden="true"><span></span><div class="scene-ghost"><span></span><span></span><span></span></div></div>
             <div v-if="!busy && !roots.length" class="empty-board">
               <template v-if="q || filter !== 'all'"><Search :size="22" /><h3>没有找到对应视图</h3><p>试试其他名称，或者清空当前筛选。</p><button type="button" class="outline" @click="query = ''; filter = 'all'">清空筛选</button></template>
               <template v-else><h3>这一页没有点出弹窗</h3><p>如果弹窗要先切到某个页签、选中某一行才出现，先在预览里切过去，再点右上角的刷新。</p></template>
@@ -234,7 +248,13 @@ onMounted(() => requestRoute(props.route))
 .expand-all:disabled{opacity:1;background:#fff;color:var(--primary);border:1px solid #e1cabd}
 .all-done{font-size:12px;color:var(--success);white-space:nowrap}
 .board-tree{display:flex;align-items:flex-start;gap:22px;min-width:max-content}
-.tree-root{width:240px;flex-shrink:0}.tree-root.big{width:auto}
+.tree-root{width:240px;flex-shrink:0}
+.jumps{margin-top:12px;padding:10px;border:1px dashed #d8d2c4;border-radius:12px;background:#faf8f3}
+.jumps p{margin:0 0 6px;font-size:11.5px;color:var(--muted)}.jumps p span{color:var(--ink);font-weight:600}
+.jumps button{display:block;width:100%;padding:6px 8px;border-radius:8px;text-align:left}
+.jumps button:hover:not(:disabled){background:#fff}.jumps button:disabled{opacity:.55;cursor:default}
+.jumps b{display:flex;align-items:center;gap:4px;font-size:12.5px;font-weight:550;color:var(--primary)}
+.jumps small{display:block;margin-left:16px;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tree-root.big{width:auto}
 .tree-branches{display:flex;flex-direction:column;gap:18px;padding-left:16px;border-left:1.5px solid var(--line);min-width:420px}
 .branch-ghost{display:flex;gap:10px;align-items:flex-start}
 .branch-ghost>span{display:block;width:90px;height:26px;margin-top:14px;border-radius:12px;background:#efece4}

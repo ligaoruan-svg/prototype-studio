@@ -72,10 +72,11 @@ export function pickToSelection(node, items = [], pageTitle = '') {
 }
 
 // 卡片按「从哪儿打开的」分组：页面上的按钮、表格某一行的操作、弹窗里点下一步打开的
-export const ORIGIN_LABEL = { page: '页面本身', button: '页面按钮', row: '列表操作', step: '弹窗里的下一步', subpage: '子页面' }
+export const ORIGIN_LABEL = { page: '页面本身', button: '页面按钮', row: '列表操作', tab: '页签', step: '弹窗里的下一步', subpage: '子页面' }
 export function originOf(node) {
   if (node.isPage) return 'page'
   if (node.parent != null) return 'step'
+  if (node.tab) return 'tab'
   return /^表格行 · /.test(node.label || '') ? 'row' : 'button'
 }
 // 卡片上那一行来源：「列表行 → 设为当前版本」「页面按钮 → 新增因子 → 下一步 · 运输因子」

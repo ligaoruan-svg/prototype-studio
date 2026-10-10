@@ -6,7 +6,7 @@ const MAX_TRIES = 120, MAX_DEPTH = 4, BUDGET_MS = 240_000
 const plain = value => JSON.parse(JSON.stringify(value ?? null))
 
 // 一个后台副本：载入、发指令、出问题时重载
-function probeFrame(doc, width, height) {
+function probeFrame(doc, width, height, routes = []) {
   const frame = document.createElement('iframe')
   // 不给 allow-modals / allow-popups：副本里就算有人调 alert、window.open，也弹不到用户面前
   frame.setAttribute('sandbox', 'allow-scripts allow-forms')
@@ -33,7 +33,8 @@ function probeFrame(doc, width, height) {
     waiters.set(id, data => { clearTimeout(timer); resolve(data) })
     frame.contentWindow?.postMessage(plain({ type, id, ...payload }), '*')
   })
-  const reload = async () => { await load(); await rpc('PA_PROBE_INIT', { full: false }) }
+  // 每次重载都要再告诉副本一遍有哪些业务页面：跳到这些页面算「跳走」，不算这一页的下一层
+  const reload = async () => { await load(); await rpc('PA_PROBE_INIT', { full: false, routes }) }
   // 点一个按钮（或沿路径点到底）；没弹出东西的可能改了页面状态，重载回干净状态
   async function attempt(path, step) {
     let reply = await rpc('PA_PROBE_TRY', { path, step })
@@ -43,26 +44,29 @@ function probeFrame(doc, width, height) {
   }
   window.addEventListener('message', listener)
   document.body.appendChild(frame)
-  return { load, rpc, attempt, dispose() { window.removeEventListener('message', listener); frame.remove() } }
+  return { load, rpc, attempt, routes, dispose() { window.removeEventListener('message', listener); frame.remove() } }
 }
 
 async function begin(probe, width, height) {
   await probe.load()
-  const init = await probe.rpc('PA_PROBE_INIT', { full: true }, 15_000)
+  const init = await probe.rpc('PA_PROBE_INIT', { full: true, routes: probe.routes }, 15_000)
   if (init.timeout) throw new Error('原型没有响应')
   return { init, base: { title: init.title, styles: init.styles, page: init.page, width: init.width || width, height: init.height || height } }
 }
 
 // 第一次展开：从页面上的按钮出发，一层层找出所有弹窗
-export async function probePage({ doc, width = 1150, height = 800, onUpdate = () => {}, cancelled = () => false }) {
-  const probe = probeFrame(doc, width, height)
+export async function probePage({ doc, width = 1150, height = 800, routes = [], onUpdate = () => {}, cancelled = () => false }) {
+  const probe = probeFrame(doc, width, height, routes)
   const started = Date.now()
-  const result = { title: '', styles: null, page: '', width, height, nodes: [], tried: 0, total: 0, cancelled: false }
+  // jumps：这一页上点了会跳到别的业务页面的按钮。它们不进树（那一页有自己的树），只在页面卡下面列出来
+  const result = { title: '', styles: null, page: '', width, height, nodes: [], jumps: [], tried: 0, total: 0, cancelled: false }
   const report = current => onUpdate(plain({ ...result, current }))
   try {
     const { init, base } = await begin(probe, width, height)
     Object.assign(result, base)
     const queue = (init.triggers || []).map(target => ({ path: [], step: { target }, label: target.text, parent: null, depth: 1 }))
+    // 页签（巡检计划 / 路线配置 / 巡检点）：同一业务页面的另一个视图，切过去以后里面的按钮也要试
+    for (const target of init.tabs || []) queue.push({ path: [], step: { target, tab: true }, label: '页签 · ' + target.text, parent: null, depth: 1 })
     result.total = queue.length
     report(queue[0]?.label || '')
     const seen = new Set()
@@ -72,17 +76,24 @@ export async function probePage({ doc, width = 1150, height = 800, onUpdate = ()
       result.tried++
       report(job.label)
       const reply = await probe.attempt(job.path, job.step)
+      if (reply.ok && reply.jump) {
+        const j = reply.jump
+        if (!result.jumps.some(x => x.parent === job.parent && (x.hash || x.title) === (j.hash || j.title)))
+          result.jumps.push({ parent: job.parent, label: job.label, hash: j.hash || '', title: j.title || '' })
+        report(job.label)
+        continue
+      }
       // 第二层：点了进到详情这类子页面。记成一张页面卡，它上面的按钮接着往下找
       const sub = reply.ok && !reply.opened && reply.subpage
       if (sub) {
         if (seen.has(sub.sig) || job.depth >= MAX_DEPTH) continue
         seen.add(sub.sig)
         // 原型的详情页常常没有自己的大标题，取到的还是整站标题；那就用点进来的那个按钮的字
-        const subTitle = sub.title && sub.title !== result.title ? sub.title : String(job.label || '').replace(/^表格行 · /, '')
+        const subTitle = sub.tab ? sub.title : sub.title && sub.title !== result.title ? sub.title : String(job.label || '').replace(/^表格行 · /, '')
         // 子页面里点左边的树、切个筛选，标题没变只是内容换了：还是同一页，不再当一层
         const parentNode = job.parent != null && result.nodes.find(n => n.id === job.parent)
         if (parentNode?.kind === 'subpage' && parentNode.title === subTitle) continue
-        const node = { id: result.nodes.length + 1, parent: job.parent, label: job.label, title: subTitle, html: sub.html, box: null, kind: 'subpage', path: [...job.path, { ...job.step, nav: true }] }
+        const node = { id: result.nodes.length + 1, parent: job.parent, label: job.label, title: subTitle, html: sub.html, box: sub.box || null, kind: 'subpage', ...(sub.tab ? { tab: true } : {}), path: [...job.path, { ...job.step, nav: true }] }
         result.nodes.push(node)
         const children = (sub.triggers || []).slice(0, 24).map(target => ({ step: { target }, label: target.text }))
         for (const child of children) queue.push({ ...child, path: node.path, parent: node.id, depth: job.depth + 1 })
@@ -111,10 +122,10 @@ export async function probePage({ doc, width = 1150, height = 800, onUpdate = ()
 
 // 改完之后同步：已经知道每张卡怎么点开，直接按路径重新点一遍拍新快照，
 // 不再把整页按钮从头试一遍。刚改的那张排第一个，通常一两秒就换上新样子。
-export async function syncNodes({ doc, nodes = [], first = [], width = 1150, height = 800, onUpdate = () => {}, cancelled = () => false }) {
-  const probe = probeFrame(doc, width, height)
+export async function syncNodes({ doc, nodes = [], jumps = [], first = [], width = 1150, height = 800, routes = [], onUpdate = () => {}, cancelled = () => false }) {
+  const probe = probeFrame(doc, width, height, routes)
   // 每张卡先标「更新中」，拍到新样子再去掉：哪张已经是新的、哪张还在等，一眼能看出来
-  const result = { title: '', styles: null, page: '', width, height, nodes: plain(nodes).map(n => ({ ...n, pending: true })), done: 0, total: nodes.length, stale: 0 }
+  const result = { title: '', styles: null, page: '', width, height, nodes: plain(nodes).map(n => ({ ...n, pending: true })), jumps: plain(jumps), done: 0, total: nodes.length, stale: 0 }
   // 重拍时取不到标题（子页面常常只有整站标题）就留着原来的，免得卡片标题变空
   const keepTitle = (node, title, pageTitle) => (!title || (node.kind === 'subpage' && title === pageTitle) ? node.title : title)
   const report = () => onUpdate(plain(result))
@@ -130,7 +141,7 @@ export async function syncNodes({ doc, nodes = [], first = [], width = 1150, hei
       const opened = reply.ok && (node.kind === 'subpage' ? reply.subpage : reply.opened)
       // 点不开了（按钮被改名、被删了）就保留旧快照并标出来，刷新时会重新找
       result.nodes[at] = opened
-        ? { ...result.nodes[at], title: keepTitle(result.nodes[at], opened.title, result.title), html: opened.html, box: node.kind === 'subpage' ? null : opened.box, layerSel: opened.layerSel || result.nodes[at].layerSel, stale: false, pending: false }
+        ? { ...result.nodes[at], title: keepTitle(result.nodes[at], opened.title, result.title), html: opened.html, box: node.kind === 'subpage' ? (opened.box || null) : opened.box, layerSel: opened.layerSel || result.nodes[at].layerSel, stale: false, pending: false }
         : { ...result.nodes[at], stale: true, pending: false }
       if (!opened) result.stale++
       result.done++
@@ -147,6 +158,9 @@ export async function discoverRoutes({ doc, width = 1150, height = 800 }) {
   try {
     await probe.load()
     const reply = await probe.rpc('PA_PROBE_ROUTES', {}, 9_000)
-    return { routes: reply.routes || [], current: reply.current || '' }
+    if ((reply.routes || []).length >= 2) return { routes: reply.routes, current: reply.current || '' }
+    // 菜单不是 #链接（用脚本切页的原型）：把菜单每一项点一遍，看点完到了哪一页
+    const nav = await probe.rpc('PA_PROBE_NAV', {}, 50_000)
+    return { routes: nav.routes || reply.routes || [], current: reply.current || nav.current || '' }
   } finally { probe.dispose() }
 }
