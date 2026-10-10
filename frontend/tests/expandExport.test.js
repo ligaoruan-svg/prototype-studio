@@ -44,3 +44,12 @@ test('旧版本、没展开完要标出来；意见挂在对应卡片', () => {
   assert.match(r.html, /标题改短/)
   assert.doesNotMatch(r.html, /别的页面的/)
 })
+
+test('每棵树能折叠，右侧目录有搜索框', () => {
+  const r = buildExpandExport({ routes: [{ hash: '#a', title: 'A' }], entries: { '#a': { hash: 'h', result: result(nodes) } }, currentHash: 'h' })
+  assert.match(r.html, /<button type="button" class="fold" aria-expanded="true"/)
+  assert.match(r.html, /id="fold-all"/)
+  assert.match(r.html, /<input id="q" type="search"/)
+  const js = r.html.split('<script>')[1].split('</script>')[0]
+  assert.doesNotThrow(() => new Function(js), '导出文件里的脚本要能正常解析')
+})

@@ -3,7 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { PanelsTopLeft, Plus, Upload, History, Download, Settings2, ChevronDown, ChevronRight, X, MessageSquare, Files, MousePointer2, Hand, Code2, Monitor, Tablet, Smartphone, Undo2, ArrowUp, Check, CheckCheck, LoaderCircle, SlidersHorizontal, SquareMousePointer, Palette, AlertCircle, ShieldCheck, Braces, FileCode2, CircleHelp, PanelLeftClose, PanelRightClose, Copy, Pencil, Ruler, Sparkles } from 'lucide-vue-next'
 import { Scan, ImagePlus, Image as ImageIcon, FolderOpen, Layers, Maximize2, MoreHorizontal } from 'lucide-vue-next'
 import ExpandBoard from './ExpandBoard.vue'
-import { adoptPresync, bindExpand, dropPresync, presync, setFocusRoute, expand } from './expandStore.js'
+import { adoptPresync, bindExpand, dropPresync, presync, setFocusRoute, expand, expandAll, isFresh } from './expandStore.js'
 import { buildExpandExport } from './expandExport.js'
 import ImageReference from './ImageReference.vue'
 import RegionCapture from './RegionCapture.vue'
@@ -615,6 +615,27 @@ async function restore(version) {
 }
 async function copySource() { try { await navigator.clipboard.writeText(codeText.value); codeCopied.value = true; setTimeout(() => codeCopied.value = false, 1800) } catch { toast('请选中源码后复制') } }
 // 导出展开图：已展开的业务页面一页一棵树，存成一个独立 HTML，发给别人双击就能看、也能打印成 PDF
+// 导出前先看完不完整：有页面没展开、或者改过以后还没同步，先问要不要展开完再导出（展开完会自动导出）
+const pendingExport = ref(false)
+function requestExport() {
+  if (!project.value || !page.value) return
+  const routes = expand.routes
+  const missing = routes.filter(r => !expand.entries[r.hash]?.result?.styles).length
+  const stale = routes.filter(r => expand.entries[r.hash]?.result?.styles && !isFresh(r.hash)).length
+  if (!routes.length || missing || stale) {
+    const what = !routes.length ? '还没有找过这个原型有哪些业务页面，现在只能导出已经展开的页面。'
+      : [missing && `${missing} 个业务页面还没展开`, stale && `${stale} 个页面不是最新版本`].filter(Boolean).join('，') + '。'
+    if (window.confirm(`${what}\n\n确定：先把所有业务页面展开到最新，完成后自动导出（展开期间可以照常使用）\n取消：直接导出现在已有的`)) {
+      pendingExport.value = true; expandAll(boardRoute.value || previewRoute.value)
+      toast('正在展开全部业务页面，完成后会自动导出'); return
+    }
+  }
+  exportExpand()
+}
+watch(() => pendingExport.value && !expand.discovering && expand.routes.length > 0 && expand.routes.every(r => isFresh(r.hash)), ready => {
+  if (ready) { pendingExport.value = false; exportExpand() }
+})
+watch(() => expand.scope, () => { pendingExport.value = false })   // 切到别的项目 / 页面就不再自动导出
 function exportExpand() {
   if (!project.value || !page.value) return
   const name = project.value.name || '原型', file = page.value.path || page.value.title || ''
@@ -688,7 +709,7 @@ onUnmounted(() => { window.removeEventListener('message', onMessage); window.rem
       <section class="canvas-panel" aria-label="原型画布">
         <div v-if="view === 'preview'" class="canvas" :class="device">
 
-          <ExpandBoard v-if="boardMounted" :class="{ 'view-hidden': !boardOpen }" :aria-hidden="!boardOpen" v-model:focus="boardFocus" v-model:route="boardRoute" :notes="annotations" :patch="cardPatch" :page-name="page?.title" :selection="selected" :mode="mode" @open="openFromBoard" @select="pickFromBoard" @clear="closeSelection" @mode="setMode" @export="exportExpand" />
+          <ExpandBoard v-if="boardMounted" :class="{ 'view-hidden': !boardOpen }" :aria-hidden="!boardOpen" v-model:focus="boardFocus" v-model:route="boardRoute" :notes="annotations" :patch="cardPatch" :page-name="page?.title" :selection="selected" :mode="mode" @open="openFromBoard" @select="pickFromBoard" @clear="closeSelection" @mode="setMode" @export="requestExport" />
           <div class="preview-shell" :class="{ 'is-selecting': mode !== 'interact', 'view-hidden': boardOpen }" :aria-hidden="boardOpen"><iframe v-if="previewDoc" ref="previewFrame" title="原型预览" :srcdoc="previewDoc" :sandbox="PREVIEW_SANDBOX"></iframe><div v-else class="empty-canvas"><div class="empty-emblem"><PanelsTopLeft :size="30" :stroke-width="1.4" /></div><h1>给想法一个可操作的样子</h1><p>从已有的 HTML 开始修改，<br>或描述需求，让 AI 帮你搭建第一版。</p><div><button class="primary" @click="openDialog('new')"><Plus :size="16" />新建原型</button><button class="outline" @click="fileInput.click()"><Upload :size="16" />导入原型</button></div><span>支持 HTML、包含多页面的 ZIP</span></div><RegionCapture v-if="previewDoc && mode === 'box' && !loading" :key="regionKey" @select="send({ type: 'PA_BOX_RECT', bounds: $event })" @scroll="send({ type: 'PA_SCROLL', ...$event })" /><div v-if="loading" class="loading-veil"><LoaderCircle class="spin" :size="25" /><span>正在加载原型…</span></div></div>
           
         </div>
