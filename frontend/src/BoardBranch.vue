@@ -4,6 +4,7 @@ import SceneCard from './SceneCard.vue'
 import InlineFocus from './InlineFocus.vue'
 import CardExtras from './CardExtras.vue'
 import BoardBranch from './BoardBranch.vue'
+import { edgeLabel } from './probeTree.js'
 // 一条按钮链：「新增因子 →」弹窗卡片，后面接着它里面再点开的弹窗。
 // 后续默认收起，只展开当前路径（选中的、搜到的、正在编辑的），不然越往右越宽
 defineProps({ node: Object, styles: Object, frame: Object, picked: Object, mode: String, open: Object, patch: Object, focus: [Number, null], route: String, focusWidth: Number })
@@ -11,7 +12,7 @@ defineEmits(['pick', 'edit', 'play', 'refind', 'toggle', 'close', 'open', 'goto'
 </script>
 <template>
   <div class="branch">
-    <span class="edge" :title="node.label">{{ node.label }}<ArrowRight :size="12" /></span>
+    <span class="edge" :title="edgeLabel(node.label)">{{ edgeLabel(node.label) }}<ArrowRight :size="12" /></span>
     <!-- 正在编辑 / 交互的那张：原地放大，不切屏 -->
     <InlineFocus v-if="focus === node.id" :node="node" :route="route" :styles="styles" :frame="frame" :picked="picked" :mode="mode" :patch="patch" :crumb="node.crumb" :width="focusWidth" @pick="$emit('pick', $event)" @edit="$emit('edit', $event)" @play="$emit('play', $event)" @close="$emit('close')" @open="$emit('open', $event)" @goto="$emit('goto', $event)" />
     <div v-else class="branch-card">

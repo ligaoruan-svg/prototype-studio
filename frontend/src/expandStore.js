@@ -7,6 +7,9 @@ import { discoverRoutes, probePage, syncNodes } from './probe.js'
 
 const CONCURRENCY = 2
 // 展开结果的格式版本：找法变了（比如开始找子页面）就升一下，旧结果作废重找，免得一直用缺了第二层的老快照
+// 业务页面清单的找法版本：v2 起首页（刚打开时那一页）也算一页；旧清单下次用到时重找一遍
+const ROUTES_V = 2
+let routesV = 0
 const SCHEMA = 's5'  // s5：跳到别的业务页面不算子页面；页签、展示类按钮的关联和待补也记下来，旧结果要重拍
 export const expand = reactive({
   scope: '',          // 项目:页面
@@ -17,6 +20,7 @@ export const expand = reactive({
   queued: [],         // 排队中的路由
   discovering: false,
   error: '',
+  batch: false,      // 点了「一键展开」、还没跑完：按钮显示总进度。单看一页时不算
   focusRoute: null,   // 展开视图正在看的那一页：改完同步时永远排第一
   overrides: {},      // 用户纠正过的认法：路由 → { 按钮文字: 'jump' | 'subpage' | 'tab' }
   avg: loadAvg(),     // 这台电脑上展开 / 同步一页平均要多久（毫秒），用来估「还要多久」
@@ -85,13 +89,14 @@ export async function bindExpand({ pid, pageId, hash, makeDoc, width }) {
   if (scope !== expand.scope) {
     const g = ++gen
     routesJob = null; expand.discovering = false
-    expand.scope = scope; expand.hash = hash; expand.routes = []; expand.entries = {}; expand.jobs = {}; expand.queued = []; expand.error = ''; expand.overrides = {}
+    expand.scope = scope; expand.hash = hash; expand.routes = []; expand.entries = {}; expand.jobs = {}; expand.queued = []; expand.batch = false; expand.error = ''; expand.overrides = {}; routesV = 0
     queue.length = 0
     ready = (async () => {
       try {
         const saved = await api(base())
         if (g !== gen) return
         expand.routes = saved.routes || []
+        routesV = saved.routes_v || 0
         expand.overrides = saved.overrides && typeof saved.overrides === 'object' ? saved.overrides : {}
         expand.entries = Object.fromEntries(Object.entries(saved.entries || {}).filter(([, e]) => e?.result && String(e.hash || '').startsWith(SCHEMA + ':')).map(([route, e]) => [route, { hash: e.hash, result: e.result }]))
       } catch { /* 没存过就从空的开始 */ }
@@ -120,16 +125,19 @@ export async function requestRoute(route, { force = false } = {}) {
 // 先弄清这个原型有哪些业务页面：跳到这些页面算「跳走」，不挂进当前页的树。只找一次，找的时候别人等着
 let routesJob = null
 async function ensureRoutes(currentRoute = '') {
-  if (expand.routes.length >= 2 || !ctx) return
+  if ((expand.routes.length >= 2 && routesV >= ROUTES_V) || !ctx) return
   if (routesJob) return routesJob
   const g = gen, c = ctx
   expand.discovering = true
   routesJob = (async () => {
     try {
-      const found = await discoverRoutes({ doc: c.makeDoc(currentRoute), width: c.width })
+      const found = await discoverRoutes({ doc: c.makeDoc(''), width: c.width })   // 从刚打开的样子找，首页才不会漏
       if (g !== gen) return
-      expand.routes = found.routes.length ? found.routes : [{ hash: currentRoute, title: expand.entries[currentRoute]?.result?.title || '当前页面' }]
-      api(`${base(c)}/routes`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ routes: expand.routes }) }).catch(() => {})
+      // 用户纠正时加进来的页面留着
+      const kept = expand.routes.filter(r => r.added && !found.routes.some(f => f.hash === r.hash))
+      expand.routes = found.routes.length ? [...found.routes, ...kept] : expand.routes.length ? expand.routes : [{ hash: currentRoute, title: expand.entries[currentRoute]?.result?.title || '当前页面' }]
+      routesV = ROUTES_V
+      saveRoutes(c)
     } catch (e) { if (g === gen) expand.error = e.message || '没找到页面列表' }
     finally { if (g === gen) expand.discovering = false; routesJob = null }
   })()
@@ -141,10 +149,12 @@ export async function expandAll(currentRoute = '') {
   if (!ctx) return
   await ready
   const g = gen
+  expand.batch = true
   await ensureRoutes(currentRoute)
   if (g !== gen) return
   const order = [...expand.routes].sort((a, b) => (b.hash === currentRoute) - (a.hash === currentRoute))
   for (const r of order) if (!isFresh(r.hash)) schedule(r.hash, expand.entries[r.hash]?.result?.nodes?.length && !expand.entries[r.hash].partial ? 'sync' : 'probe', r.hash === currentRoute)   // 半截的结果要重找，不能当完整的同步
+  pump()   // 全都是新的、没东西要跑：按钮马上回到原样
 }
 
 // 版本变了：所有展开过的页面都按原路径同步（后台慢慢来）
@@ -172,7 +182,7 @@ export async function setOverride(route, label, kind) {
   // 撤销「其实是别的业务页面」：当初因为它加进清单的页面也拿掉，不然按自动规则它还是会被当成跳走
   if (kind !== 'jump' && expand.routes.some(r => r.added === label && r.from === route)) {
     expand.routes = expand.routes.filter(r => !(r.added === label && r.from === route))
-    api(`${base(c)}/routes`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ routes: expand.routes }) }).catch(() => {})
+    saveRoutes(c)
   }
   api(`${base(c)}/overrides`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ overrides: next }) })
     .catch(() => { if (c === ctx) expand.error = '纠正没存上，下次打开可能又按原来的认法' })
@@ -184,7 +194,7 @@ function addRoutes(route, result, c) {
   if (!extra.length) return
   const seen = new Set()
   expand.routes = [...expand.routes, ...extra.filter(j => !seen.has(j.hash) && seen.add(j.hash)).map(j => ({ hash: j.hash, title: (j.title || j.hash).slice(0, 30), added: j.label, from: route }))]
-  api(`${base(c)}/routes`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ routes: expand.routes }) }).catch(() => {})
+  saveRoutes(c)
 }
 
 // ===== 预同步：AI 改完、还在做运行检查的时候，就用候选版本先把正在看的那页拍出来 =====
@@ -208,6 +218,9 @@ export function dropPresync(token) {
   adopted.set(token, null)
   for (const [route, e] of Object.entries(expand.entries)) if (e.hash === `pending:${token}`) expand.entries[route] = e.prev || { ...e, hash: '' }
   forget(token)
+}
+function saveRoutes(c = ctx) {
+  api(`${base(c)}/routes`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ routes: expand.routes, v: routesV }) }).catch(() => {})
 }
 function persist(route, hash, result, c = ctx) {
   api(`${base(c)}/entry`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ route, hash, result }) })
@@ -239,6 +252,7 @@ function pump() {
   }
   queue.unshift(...later)
   expand.queued = queue.map(j => j.route)
+  if (!queue.length && !active && !expand.discovering) expand.batch = false
 }
 
 async function run({ route, kind, token, priority }) {

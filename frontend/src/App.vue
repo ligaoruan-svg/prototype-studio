@@ -410,14 +410,14 @@ async function runAgent(text = '', runtimeFeedback = '', options = {}) {
   const current = runs.value[runs.value.length - 1]
   busy.value = true; error.value = ''; pendingUser.value = message
   if (!text || input.value.trim() === message) input.value = ''
-  lastResult.value = null; status.value = intent === 'edit' ? '正在看代码' : '思考中'; leftOpen.value = true
+  lastResult.value = null; status.value = intent === 'edit' ? '正在读页面' : '思考中'; leftOpen.value = true
   try {
     const response = await fetch('/api/projects/' + project.value.id + '/agent/stream', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ page_id: pageId.value, message, selection: target, runtime_feedback: runtimeFeedback, reference: reference.value, intent, include_annotations: options.includeAnnotations !== false }) })
     const result = await consumeAgentStream(response, event => {
       if (event.type === 'started' && event.run_id) current.runId = event.run_id
       // 模型服务忙：后台自动等几秒重试，这里只记一笔，让人知道不是卡住了
       if (event.type === 'model_retry') current.steps.push({ id: `retry-${event.round}-${event.attempt}`, label: event.label, state: 'done' })
-      if (event.type === 'intent') { current.intent = event.intent; current.options.intent = event.intent; status.value = event.intent === 'discuss' ? '讨论中 · 不会修改文件' : '正在看代码' }
+      if (event.type === 'intent') { current.intent = event.intent; current.options.intent = event.intent; status.value = event.intent === 'discuss' ? '讨论中 · 不会修改文件' : '正在读页面' }
       if (event.type === 'plan') current.plan = event.steps
       if (event.type === 'model_wait') { current.streamText = ''; current.round = event.round }
       if (event.type === 'text_delta') current.streamText += event.text
@@ -586,16 +586,49 @@ function closeDialog() { if (!dialogBusy.value) { dialog.value.close(); configDr
 async function uploadImage(event) {
   const file = event.target.files?.[0]; if (!file) return
   event.target.value = ''
-  if (file.size > 8 * 1024 * 1024) { toast('请上传 8 MB 以内的截图'); return }
+  await attachImage(file)
+}
+// 截图可以直接粘贴（⌘/Ctrl + V）、拖进输入框，也可以点按钮选文件。
+// 附上后在输入框上方显示缩略图；要圈出具体位置再点缩略图。还没打开项目时才弹出对话框（要选新建还是改当前）
+const dragging = ref(false)
+function imageFrom(list) { return [...(list || [])].map(x => (x.kind === 'file' ? x.getAsFile() : x)).find(f => f && /^image\/(png|jpe?g|webp|gif)$/.test(f.type)) }
+async function pasteImage(event) {
+  const file = imageFrom(event.clipboardData?.items)
+  if (!file) return
+  event.preventDefault()
+  await attachImage(file)
+}
+async function dropImage(event) {
+  dragging.value = false
+  const file = imageFrom(event.dataTransfer?.files)
+  if (!file) { if (event.dataTransfer?.files?.length) toast('只能放 PNG、JPG、WebP 图片'); return }
+  await attachImage(file)
+}
+// 焦点不在输入框时截完图直接 ⌘V 也能贴进来
+function globalPaste(event) {
+  const el = event.target
+  if (el instanceof Element && el.closest('input, textarea, [contenteditable=""], [contenteditable="true"], dialog[open]')) return
+  if (imageFrom(event.clipboardData?.items)) pasteImage(event)
+}
+onMounted(() => window.addEventListener('paste', globalPaste))
+onUnmounted(() => window.removeEventListener('paste', globalPaste))
+async function attachImage(file) {
+  if (locked.value) { toast('AI 正在修改，等它完成再加截图'); return }
+  if (file.size > 8 * 1024 * 1024) { toast('请用 8 MB 以内的截图'); return }
+  const pasted = !file.name || /^image\.(png|jpe?g|webp|gif)$/i.test(file.name)
+  const name = pasted ? `粘贴的截图 ${new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}` : file.name
   try {
     const dataUrl = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(new Error('截图读取失败')); reader.readAsDataURL(file) })
     const img = await new Promise((resolve, reject) => { const image = new window.Image(); image.onload = () => resolve(image); image.onerror = () => reject(new Error('无法识别这张图片')); image.src = dataUrl })
     const scale = Math.min(1, 1800 / Math.max(img.width, img.height)), canvas = document.createElement('canvas')
     canvas.width = Math.round(img.width * scale); canvas.height = Math.round(img.height * scale)
     canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
-    reference.value = { name: file.name, data_url: canvas.toDataURL('image/png'), width: canvas.width, height: canvas.height, regions: [] }
-    await openDialog('image')
-  } catch (e) { error.value = e.message }
+    reference.value = { name, data_url: canvas.toDataURL('image/png'), width: canvas.width, height: canvas.height, regions: [] }
+    if (!project.value) { await openDialog('image'); return }
+    leftOpen.value = true
+    toast(model.value.supports_vision ? '截图已附上，发送时一起带上；点缩略图可以圈出要改的地方' : '截图已附上，但当前模型看不了图片，发送前要在设置里换成支持图片的模型')
+    nextTick(() => composer.value?.focus())
+  } catch (e) { toast(e.message) }
 }
 async function useReference(createNew = false) {
   if (locked.value) { dialogError.value = 'AI 正在修改，等它完成再用截图'; return }
@@ -703,7 +736,7 @@ onUnmounted(() => { window.removeEventListener('message', onMessage); window.rem
         <div class="panel-header"><strong class="panel-title"><MessageSquare :size="15" />对话</strong><button class="icon-button" aria-label="收起对话" @click="leftOpen = false"><PanelLeftClose :size="16" /></button></div>
 
           <div ref="chatBox" class="messages" aria-live="polite">
-            <div v-if="!messages.length && !pendingUser && showGuide" class="conversation-empty compact-guide"><h2>先聊清楚，再动手。</h2><p>可以一起评价设计、比较方案；确定方向后，只改需要调整的位置。</p><button v-for="suggestion in ['现在的设计怎么样？', '有哪些地方值得优化？', '调整选中区域的对齐']" :key="suggestion" class="prompt-suggestion" :disabled="!page" @click="input = suggestion; toAI()">{{ suggestion }}<ChevronRight :size="14" /></button><button class="text-button dismiss-guide" @click="hideGuide">不再显示</button></div>
+            <div v-if="!messages.length && !pendingUser && showGuide" class="conversation-empty compact-guide"><h2>先聊清楚，再动手。</h2><p>可以一起评价设计、比较方案；确定方向后，只改需要调整的位置。</p><button v-for="suggestion in ['现在的设计怎么样？', '有哪些地方值得优化？', selected ? '调整选中区域的对齐' : '检查一下交互有没有漏的']" :key="suggestion" class="prompt-suggestion" :disabled="!page" @click="input = suggestion; toAI()">{{ suggestion }}<ChevronRight :size="14" /></button><button class="text-button dismiss-guide" @click="hideGuide">不再显示</button></div>
             <article v-for="message in messages" :key="message.id" class="message" :class="message.role"><div class="message-author"><span>{{ message.role === 'user' ? '你' : '设计助手' }}</span><time>{{ formatTime(message.created_at) }}</time></div><ResultCard v-if="message.role === 'assistant' && (message.report || message.clarification || message.discussion || message.changed)" :result="message" :locked="locked" :can-undo="page?.last_undo_id === message.change_id" @undo="undo" @choose="chooseAnswer" @apply="applySuggestion" @discuss="discussSuggestion" @rephrase="useRephrase" /><p v-else>{{ message.content }}</p><div class="message-tools"><button class="icon-button" aria-label="复制这条内容" title="复制" @click="copyMessage(message.report?.summary || message.discussion?.answer || message.content)"><Copy :size="13" /></button><button v-if="message.role === 'user'" class="icon-button" aria-label="编辑后重新发送" title="编辑后重发" :disabled="locked" @click="editAndResend(message)"><Pencil :size="13" /></button></div></article>
             <article v-if="pendingUser && !messages.some(m => m.role === 'user' && m.content === pendingUser && m === messages[messages.length - 1])" class="message user"><div class="message-author">你</div><p>{{ pendingUser }}</p></article>
                         <ExecutionCard v-for="run in currentRuns" :key="run.id" :run="run" :locked="locked" @retry="runAgent(run.request, '', run.options)" @repair="runAgent(run.request, run.error.detail, run.options)" @settings="openDialog('settings')" @select="setMode('select')" @fill="smallerRequest(run)" @dismiss="run.status = 'dismissed'" @stop="stopAgent" />
@@ -712,9 +745,9 @@ onUnmounted(() => { window.removeEventListener('message', onMessage); window.rem
           <div class="composer-area">
             <div v-if="selected" class="selection-context"><SquareMousePointer :size="14" /><span>{{ elementLabel(selected) }}<small v-if="selectionPlace">{{ selectionPlace }}</small></span><button class="icon-button" aria-label="清除选中目标" @click="closeSelection"><X :size="12" /></button></div>
             <button v-if="annotations.length" class="annotation-count batch-action" :disabled="locked" @click="runAgent('请逐条处理已记下的修改意见，保留其他区域。', '', { intent: 'edit' })"><CheckCheck :size="14" />已记下 {{ annotations.length }} 条，一起修改<ArrowUp :size="14" /></button>
-            <div v-if="reference" class="reference-attachment"><button class="reference-open" @click="openDialog('image')"><img :src="reference.data_url" alt="参考截图缩略图"><span>{{ reference.name }}<small>{{ reference.regions.length ? reference.regions.length + ' 个框选区域' : '参考整张图' }}</small></span></button><button class="icon-button" aria-label="移除参考截图" :disabled="locked" @click="reference = null"><X :size="13" /></button></div>
+            <div v-if="reference" class="reference-attachment"><button class="reference-open" @click="openDialog('image')"><img :src="reference.data_url" alt="参考截图缩略图"><span>{{ reference.name }}<small :class="{ warn: !model.supports_vision }">{{ !model.supports_vision ? '当前模型看不了图片' : reference.regions.length ? reference.regions.length + ' 个框选区域 · 点开修改' : '参考整张图 · 点开可圈选' }}</small></span></button><button class="icon-button" aria-label="移除参考截图" :disabled="locked" @click="reference = null"><X :size="13" /></button></div>
             <div class="composer-mode" role="group" aria-label="对话方式"><div class="mode-switch"><button v-for="option in [{ value: 'auto', label: '自动' }, { value: 'discuss', label: '只讨论' }, { value: 'edit', label: '直接改' }]" :key="option.value" type="button" :class="{ active: composerIntent === option.value }" :aria-pressed="composerIntent === option.value" :disabled="busy" @click="composerIntent = option.value">{{ option.label }}</button></div><span>{{ composerIntent === 'discuss' ? '不改代码' : composerIntent === 'edit' ? '局部修改' : '提问先聊，指令再改' }}</span></div>
-            <div class="composer"><textarea ref="composer" v-model="input" aria-label="对话内容" :placeholder="busy ? '可以先写好下一条消息…' : selected ? '聊聊这个位置，或者告诉我怎么改…' : '这个设计怎么样？或者，告诉我想怎么改…'"></textarea><div class="composer-actions"><button class="icon-button" :title="model.supports_vision ? '上传参考截图' : '当前模型不支持图片，可在设置中更换'" aria-label="上传参考截图" :disabled="locked || !model.supports_vision" @click="imageInput.click()"><ImagePlus :size="18" /></button><span v-if="!selected">⌘ / Ctrl ↵</span><span v-else class="composer-spacer"></span><button v-if="selected" class="quiet" :disabled="locked || !input.trim()" @click="saveNote">先记下</button><button v-if="activeRun" type="button" class="outline stop-run" :disabled="!activeRun.runId || activeRun.stopping" title="停在下一步之前；已经改好的部分会保留并检查，可以撤销" @click="stopAgent"><Square :size="12" />{{ activeRun.stopping ? '正在停止…' : '停止' }}</button><button v-else class="primary direct-modify" :disabled="locked || (!input.trim() && !annotations.length) || !page" :aria-label="composerIntent === 'edit' ? '执行修改' : '发送消息'" @click="runAgent()"><LoaderCircle v-if="busy" :size="15" class="spin" /><ArrowUp v-else :size="15" />{{ composerIntent === 'edit' ? '执行修改' : '发送' }}</button></div></div>
+            <div class="composer" :class="{ dragging }" @dragover.prevent="dragging = true" @dragleave.self="dragging = false" @drop.prevent="dropImage"><textarea ref="composer" v-model="input" @paste="pasteImage" aria-label="对话内容" :placeholder="busy ? '可以先写好下一条消息…' : selected ? '聊聊这个位置，或者告诉我怎么改…' : '这个设计怎么样？或者，告诉我想怎么改…\n截图可以直接粘贴进来'"></textarea><div class="composer-actions"><button class="icon-button" :title="model.supports_vision ? '加截图：也可以直接粘贴（⌘/Ctrl + V）或拖进输入框' : '加截图（当前模型看不了图片，发送前要在设置里换模型）'" aria-label="添加参考截图" :disabled="locked" @click="imageInput.click()"><ImagePlus :size="18" /></button><span v-if="!selected">⌘ / Ctrl ↵</span><span v-else class="composer-spacer"></span><button v-if="selected" class="quiet" :disabled="locked || !input.trim()" @click="saveNote">先记下</button><button v-if="activeRun" type="button" class="outline stop-run" :disabled="!activeRun.runId || activeRun.stopping" title="停在下一步之前；已经改好的部分会保留并检查，可以撤销" @click="stopAgent"><Square :size="12" />{{ activeRun.stopping ? '正在停止…' : '停止' }}</button><button v-else class="primary direct-modify" :disabled="locked || (!input.trim() && !annotations.length) || !page" :aria-label="composerIntent === 'edit' ? '执行修改' : '发送消息'" @click="runAgent()"><LoaderCircle v-if="busy" :size="15" class="spin" /><ArrowUp v-else :size="15" />{{ composerIntent === 'edit' ? '执行修改' : '发送' }}</button></div></div>
             <button class="model-status" @click="openDialog('settings')"><span class="status-dot" :class="{ connected: model.has_key }"></span>{{ model.has_key ? model.model : '连接模型' }}<span v-if="lastResult?.usage?.total_tokens"> · {{ lastResult.usage.total_tokens.toLocaleString() }} tokens</span><ChevronDown :size="12" /></button>
           </div>
       </aside>

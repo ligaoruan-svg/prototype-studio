@@ -36,7 +36,7 @@ test('进度标题按实际在做的事显示，不是一律"修改中"', () => 
   assert.doesNotMatch(card, /busy \? '修改中'/)
   assert.match(card, /const heading = computed/)
   assert.match(card, /props\.run\.steps\.length \? '正在看这个页面' : '思考中'/)
-  assert.match(card, /run\.editing \? '修改中' : '正在看代码'/)
+  assert.match(card, /run\.editing \? '修改中' : '正在读页面'/)
   assert.match(card, /discussing\.value \? '这次回复未完成' : '这次修改未完成'/)
 })
 

@@ -391,6 +391,7 @@ def add_annotation(project_id: str, page_id: str, body: AnnotationIn):
 
 class ExpandRoutesIn(BaseModel):
     routes: list[dict] = []
+    v: int = 0
 
 
 class ExpandOverridesIn(BaseModel):
@@ -414,7 +415,7 @@ def get_expand(project_id: str, page_id: str):
 @app.put("/api/projects/{project_id}/pages/{page_id}/expand/routes")
 def put_expand_routes(project_id: str, page_id: str, body: ExpandRoutesIn):
     try:
-        storage.save_expand_routes(project_id, page_id, body.routes)
+        storage.save_expand_routes(project_id, page_id, body.routes, body.v)
         return {"ok": True}
     except (FileNotFoundError, ValueError) as exc:
         raise HTTPException(400, str(exc))

@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ChevronDown, ChevronRight, Code2, Layers, LoaderCircle, Monitor, PencilLine, RotateCw, Hand } from 'lucide-vue-next'
-import { cardDocument } from './probeTree.js'
+import { cardDocument, edgeLabel } from './probeTree.js'
 const props = defineProps({ node: Object, styles: Object, frame: Object, picked: Object, mode: String, crumb: String, large: Boolean, notes: Number, compact: Boolean, width: Number, patch: Object })
 const emit = defineEmits(['pick', 'edit', 'play', 'refind', 'fix'])
 const iframe = ref(null), stage = ref(null), measured = ref(0), root = ref(null)
@@ -91,7 +91,7 @@ onUnmounted(() => { window.removeEventListener('message', listen); observer?.dis
       <span v-else class="source-type"><component :is="pageLike ? Code2 : Layers" :size="12" />{{ kindLabel }}</span>
       <button type="button" class="play-mini" :title="`交互「${node.title}」：真的跑起来随便点，演示数据不保存`" @click="$emit('play', node)"><Hand :size="12" />交互</button>
       <div v-if="fixOpen" class="fix-menu" role="menu" aria-label="纠正这张卡的类型">
-        <p>认错了？「{{ node.label }}」点出来的其实是</p>
+        <p>认错了？「{{ edgeLabel(node.label) }}」点出来的其实是</p>
         <button v-for="o in fixOptions" :key="o.kind" type="button" role="menuitem" @click="fix(o.kind)"><b>{{ o.label }}</b><small>{{ o.hint }}</small></button>
         <button v-if="node.forced" type="button" role="menuitem" class="reset" @click="fix(null)"><b>恢复自动认</b><small>去掉你的纠正，按默认规则认</small></button>
       </div>

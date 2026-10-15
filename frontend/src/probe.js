@@ -195,14 +195,23 @@ export async function syncNodes({ doc, pause = null, nodes = [], jumps = [], lin
 }
 
 // 这个原型里有哪些页面（导航里的 #路由）
+// 打开原型时默认显示的那一页（门店经营总览这种首页）常常不在菜单链接里、点它内容也不变，会被漏掉：
+// 菜单里没有同名的页面，就把「刚打开时的样子」也算一页
+const bareTitle = t => String(t || '').replace(/^[^\p{L}\p{N}]+/u, '').trim()
+export function withHome(routes, current, title) {
+  const t = bareTitle(title)
+  if (!t || routes.some(r => r.hash === current || bareTitle(r.title) === t)) return routes
+  return [{ hash: current || '', title: t.slice(0, 30) }, ...routes]
+}
 export async function discoverRoutes({ doc, width = 1150, height = 800 }) {
   const probe = probeFrame(doc, width, height)
   try {
     await probe.load()
     const reply = await probe.rpc('PA_PROBE_ROUTES', {}, 9_000)
-    if ((reply.routes || []).length >= 2) return { routes: reply.routes, current: reply.current || '' }
+    if ((reply.routes || []).length >= 2) return { routes: withHome(reply.routes, reply.current || '', reply.currentTitle), current: reply.current || '' }
     // 菜单不是 #链接（用脚本切页的原型）：把菜单每一项点一遍，看点完到了哪一页
     const nav = await probe.rpc('PA_PROBE_NAV', {}, 50_000)
-    return { routes: nav.routes || reply.routes || [], current: reply.current || nav.current || '' }
+    const routes = nav.routes?.length ? withHome(nav.routes, nav.current || '', nav.currentTitle) : reply.routes || []
+    return { routes, current: reply.current || nav.current || '' }
   } finally { probe.dispose() }
 }

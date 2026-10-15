@@ -22,7 +22,7 @@ const heading = computed(() => {
   if (props.run.status === 'checking') return '检查中'
   if (!busy.value) return discussing.value ? '这次回复未完成' : '这次修改未完成'
   if (discussing.value) return props.run.steps.length ? '正在看这个页面' : '思考中'
-  return props.run.editing ? '修改中' : '正在看代码'
+  return props.run.editing ? '修改中' : '正在读页面'
 })
 </script>
 <template>

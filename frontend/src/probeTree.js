@@ -117,6 +117,8 @@ export function trailOf(nodes = [], node) {
 }
 
 // 进度条上那一行字：太长的按钮文字截一下
+// 按钮文字给人看：表格里的按钮统一叫「列表行 · 查看」（内部记的是「表格行 · 」）
+export function edgeLabel(label = '') { return String(label).replace(/^表格行 · /, '列表行 · ') }
 export function shortLabel(label = '', max = 14) {
   const text = String(label).replace(/^表格行 · /, '')
   return text.length > max ? text.slice(0, max) + '…' : text

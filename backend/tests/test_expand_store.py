@@ -30,6 +30,9 @@ class 展开快照(unittest.TestCase):
         self.assertEqual([r["hash"] for r in data["routes"]], ["#factor-list", "#factor-manage"])
         self.assertEqual(data["entries"]["#factor-list"]["result"]["nodes"][0]["title"], "设为当前版本")
         self.assertEqual(data["entries"]["#factor-list"]["hash"], "v12hash")
+        self.assertEqual(data["routes_v"], 0)
+        storage.save_expand_routes(self.pid, self.page, [{"hash": "", "title": "门店经营总览"}], 2)
+        self.assertEqual(storage.load_expand(self.pid, self.page)["routes_v"], 2)
 
     def test_同一路由再存一次是覆盖_不会越堆越多(self):
         for version in ("a", "b", "c"):

@@ -571,8 +571,8 @@ _TEMPLATE = r'''
   window.addEventListener('message',e=>{
     if(e.source!==parent)return;const m=e.data||{};
     if(m.type==='PA_ROUTE'){if(typeof m.hash==='string'){if(m.hash.startsWith('nav:'))navTo(m.hash);else if(location.hash!==m.hash)location.hash=m.hash;}return;}
-    if(m.type==='PA_PROBE_ROUTES'){send('PROBE_REPLY',{id:m.id,routes:routesOf(),current:location.hash});return;}
-    if(m.type==='PA_PROBE_NAV'){discoverNav().then(routes=>send('PROBE_REPLY',{id:m.id,routes,current:location.hash}),()=>send('PROBE_REPLY',{id:m.id,routes:[]}));return;}
+    if(m.type==='PA_PROBE_ROUTES'){send('PROBE_REPLY',{id:m.id,routes:routesOf(),current:location.hash,currentTitle:activeNav()||pageTitle()});return;}
+    if(m.type==='PA_PROBE_NAV'){const home=location.hash,homeTitle=activeNav()||pageTitle();discoverNav().then(routes=>send('PROBE_REPLY',{id:m.id,routes,current:home,currentTitle:homeTitle}),()=>send('PROBE_REPLY',{id:m.id,routes:[]}));return;}
     if(m.type==='PA_PROBE_INIT'){if(Array.isArray(m.routes))knownRoutes=m.routes;probeInit(!!m.full).then(r=>send('PROBE_REPLY',{id:m.id,...r}),err=>send('PROBE_REPLY',{id:m.id,ok:false,error:String(err)}));return;}
     if(m.type==='PA_PROBE_TRY'){probeTry(m.path||[],m.step).then(r=>send('PROBE_REPLY',{id:m.id,...r}),err=>send('PROBE_REPLY',{id:m.id,ok:false,error:String(err),needReload:true}));return;}
     if(m.type==='PA_REPLAY'){replay(m.path||[]).then(r=>send('REPLAYED',r),()=>send('REPLAYED',{ok:false,at:0}));return;}

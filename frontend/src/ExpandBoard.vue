@@ -34,7 +34,8 @@ const pages = computed(() => expand.routes.map(r => ({ ...r, count: expand.entri
   state: expand.jobs[r.hash] ? '展开中' : isFresh(r.hash) ? '' : expand.entries[r.hash] ? '待同步' : expand.queued.includes(r.hash) ? '排队中' : '未展开' })))
 const allDone = computed(() => expand.routes.length > 0 && expand.routes.every(r => isFresh(r.hash)))
 const allProgress = computed(() => ({ done: expand.routes.filter(r => isFresh(r.hash)).length, total: expand.routes.length }))
-const allRunning = computed(() => expand.discovering || (expand.routes.length > 0 && !allDone.value && (Object.keys(expand.jobs).length > 0 || expand.queued.length > 0)))
+// 只有点了「一键展开」才显示总进度；单看一页在展开时，按钮照常可点
+const allRunning = computed(() => expand.batch && !allDone.value && (expand.discovering || Object.keys(expand.jobs).length > 0 || expand.queued.length > 0))
 // 还要多久：每秒刷一次。估不准的时候宁可说「约」
 const now = ref(Date.now())
 let ticker = null

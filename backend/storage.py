@@ -368,7 +368,9 @@ def load_expand(project_id: str, page_id: str) -> dict[str, Any]:
     index = root / "routes.json"
     if index.exists():
         try:
-            out["routes"] = json.loads(index.read_text(encoding="utf-8")).get("routes", [])
+            saved = json.loads(index.read_text(encoding="utf-8"))
+            out["routes"] = saved.get("routes", [])
+            out["routes_v"] = int(saved.get("v", 0) or 0)
         except (OSError, ValueError):
             pass
     for path in sorted(root.glob("*.json")) if root.exists() else []:
@@ -382,7 +384,7 @@ def load_expand(project_id: str, page_id: str) -> dict[str, Any]:
     return out
 
 
-def save_expand_routes(project_id: str, page_id: str, routes: list[dict[str, Any]]) -> None:
+def save_expand_routes(project_id: str, page_id: str, routes: list[dict[str, Any]], version: int = 0) -> None:
     load_meta(project_id)
     clean = []
     for r in routes[:80]:
@@ -391,7 +393,7 @@ def save_expand_routes(project_id: str, page_id: str, routes: list[dict[str, Any
         if r.get("added"):
             item.update({"added": str(r["added"])[:80], "from": str(r.get("from", ""))[:200]})
         clean.append(item)
-    write_atomic(_expand_dir(project_id, page_id) / "routes.json", json.dumps({"routes": clean}, ensure_ascii=False))
+    write_atomic(_expand_dir(project_id, page_id) / "routes.json", json.dumps({"routes": clean, "v": int(version or 0)}, ensure_ascii=False))
 
 
 # 用户纠正过的认法：{路由: {按钮文字: "jump" | "subpage" | "tab"}}，下次展开按这个来

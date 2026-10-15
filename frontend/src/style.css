@@ -228,6 +228,8 @@ input[type=color]::-webkit-color-swatch { border: none; border-radius: 2px; }
 .reference-open img { width: 39px; height: 34px; object-fit: cover; border: 1px solid var(--line); border-radius: 3px; }
 .reference-open>span { overflow: hidden; text-overflow: ellipsis; font-size: 11px; }
 .reference-open small { display: block; font-size: 10px; color: var(--muted); padding-top: 3px; }
+.reference-open small.warn { color: var(--danger); }
+.composer.dragging { border-color: var(--primary); border-style: dashed; background: var(--primary-soft); }
 .studio-dialog form>label.vision-option { flex-wrap: nowrap; align-items: center; gap: 8px; font-size: 12px; }
 .studio-dialog form>label.vision-option input { width: 14px; height: 14px; margin: 0; accent-color: var(--primary); }
 .region-targets { display: flex; flex-wrap: wrap; gap: 5px; margin: 10px 0; }
