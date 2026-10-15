@@ -25,7 +25,7 @@ const showGuide = ref(stored('pf-hide-guide') !== 'true')
 const selected = ref(null), inspection = ref(null), textValue = ref(''), note = ref(''), input = ref('')
 const regionKey = ref(0)   // 自增一次就重挂 RegionCapture，把上一次画的框擦掉
 const busy = ref(false), saving = ref(false), loading = ref(false), status = ref('本地工作区')
-const error = ref(''), notice = ref(''), pendingUser = ref(''), lastResult = ref(null)
+const error = ref(''), notice = ref(''), pendingUser = ref(''), pendingRef = ref(null), lastResult = ref(null)
 const previewFrame = ref(null), previewDoc = ref(''), composer = ref(null), chatBox = ref(null), fileInput = ref(null)
 const dialog = ref(null), dialogType = ref(''), dialogBusy = ref(false), dialogError = ref('')
 const configDraft = ref({ base_url: '', model: '', api_key: '' }), projectName = ref(''), brief = ref('')
@@ -409,10 +409,14 @@ async function runAgent(text = '', runtimeFeedback = '', options = {}) {
   runs.value.push(run)
   const current = runs.value[runs.value.length - 1]
   busy.value = true; error.value = ''; pendingUser.value = message
+  // 截图跟着这一条发出去就算用过了：从输入框上方拿掉，挂到这条消息上；停止或失败再放回来
+  const sentRef = reference.value
+  pendingRef.value = sentRef
   if (!text || input.value.trim() === message) input.value = ''
+  reference.value = null
   lastResult.value = null; status.value = intent === 'edit' ? '正在读页面' : '思考中'; leftOpen.value = true
   try {
-    const response = await fetch('/api/projects/' + project.value.id + '/agent/stream', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ page_id: pageId.value, message, selection: target, runtime_feedback: runtimeFeedback, reference: reference.value, intent, include_annotations: options.includeAnnotations !== false }) })
+    const response = await fetch('/api/projects/' + project.value.id + '/agent/stream', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ page_id: pageId.value, message, selection: target, runtime_feedback: runtimeFeedback, reference: sentRef, intent, include_annotations: options.includeAnnotations !== false }) })
     const result = await consumeAgentStream(response, event => {
       if (event.type === 'started' && event.run_id) current.runId = event.run_id
       // 模型服务忙：后台自动等几秒重试，这里只记一笔，让人知道不是卡住了
@@ -451,6 +455,7 @@ async function runAgent(text = '', runtimeFeedback = '', options = {}) {
       current.status = 'stopped'; current.error = { code: 'stopped', message: '已停止，当前文件没有改动' }
       current.steps.filter(s => s.state === 'running').forEach(s => { s.state = 'done' })
       if (!input.value.trim()) input.value = message
+      if (!reference.value && sentRef) reference.value = sentRef
       status.value = '已停止 · 页面没有改动'; return
     }
     if (current.committed) {   // 已经存进去了，只是刷新预览没成功：不能报「未保存」，否则重试会再改一遍
@@ -462,10 +467,11 @@ async function runAgent(text = '', runtimeFeedback = '', options = {}) {
     current.steps.filter(s => s.state === 'running').forEach(s => { s.state = 'error'; s.error = '本次处理已停止' })
     current.error = { code: e.code || 'network', message: e.message, detail: e.detail || e.message }
     if (!input.value.trim()) input.value = message
+    if (!reference.value && sentRef) reference.value = sentRef
     status.value = current.intent === 'discuss' ? '本次回复未完成 · 可以重试' : '本次修改未保存'
     await refresh(false).catch(() => {})
   } finally {
-    current.finished = Date.now(); busy.value = false; pendingUser.value = ''
+    current.finished = Date.now(); busy.value = false; pendingUser.value = ''; pendingRef.value = null
     await nextTick(); if (chatBox.value) chatBox.value.scrollTop = chatBox.value.scrollHeight
   }
 }
@@ -738,7 +744,7 @@ onUnmounted(() => { window.removeEventListener('message', onMessage); window.rem
           <div ref="chatBox" class="messages" aria-live="polite">
             <div v-if="!messages.length && !pendingUser && showGuide" class="conversation-empty compact-guide"><h2>先聊清楚，再动手。</h2><p>可以一起评价设计、比较方案；确定方向后，只改需要调整的位置。</p><button v-for="suggestion in ['现在的设计怎么样？', '有哪些地方值得优化？', selected ? '调整选中区域的对齐' : '检查一下交互有没有漏的']" :key="suggestion" class="prompt-suggestion" :disabled="!page" @click="input = suggestion; toAI()">{{ suggestion }}<ChevronRight :size="14" /></button><button class="text-button dismiss-guide" @click="hideGuide">不再显示</button></div>
             <article v-for="message in messages" :key="message.id" class="message" :class="message.role"><div class="message-author"><span>{{ message.role === 'user' ? '你' : '设计助手' }}</span><time>{{ formatTime(message.created_at) }}</time></div><ResultCard v-if="message.role === 'assistant' && (message.report || message.clarification || message.discussion || message.changed)" :result="message" :locked="locked" :can-undo="page?.last_undo_id === message.change_id" @undo="undo" @choose="chooseAnswer" @apply="applySuggestion" @discuss="discussSuggestion" @rephrase="useRephrase" /><p v-else>{{ message.content }}</p><div class="message-tools"><button class="icon-button" aria-label="复制这条内容" title="复制" @click="copyMessage(message.report?.summary || message.discussion?.answer || message.content)"><Copy :size="13" /></button><button v-if="message.role === 'user'" class="icon-button" aria-label="编辑后重新发送" title="编辑后重发" :disabled="locked" @click="editAndResend(message)"><Pencil :size="13" /></button></div></article>
-            <article v-if="pendingUser && !messages.some(m => m.role === 'user' && m.content === pendingUser && m === messages[messages.length - 1])" class="message user"><div class="message-author">你</div><p>{{ pendingUser }}</p></article>
+            <article v-if="pendingUser && !messages.some(m => m.role === 'user' && m.content === pendingUser && m === messages[messages.length - 1])" class="message user"><div class="message-author">你</div><p>{{ pendingUser }}</p><img v-if="pendingRef" class="message-shot" :src="pendingRef.data_url" :alt="pendingRef.name"></article>
                         <ExecutionCard v-for="run in currentRuns" :key="run.id" :run="run" :locked="locked" @retry="runAgent(run.request, '', run.options)" @repair="runAgent(run.request, run.error.detail, run.options)" @settings="openDialog('settings')" @select="setMode('select')" @fill="smallerRequest(run)" @dismiss="run.status = 'dismissed'" @stop="stopAgent" />
 
           </div>
