@@ -318,6 +318,27 @@ def restore_item(body: RestoreItemIn):
         raise HTTPException(400, str(exc))
 
 
+@app.post("/api/trash/purge")
+def purge_item(body: RestoreItemIn):
+    try:
+        with transactions.LOCK:
+            storage.purge_item(body.project_id, body.page_id)
+            transactions.invalidate(body.project_id, body.page_id)
+        return {"ok": True}
+    except (ValueError, KeyError, FileNotFoundError) as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.post("/api/trash/empty")
+def empty_trash():
+    with transactions.LOCK:
+        items = storage.list_trash()
+        count = storage.purge_all()
+        for item in items:
+            transactions.invalidate(item["project_id"], item.get("page_id", ""))
+    return {"ok": True, "count": count}
+
+
 @app.patch("/api/projects/{project_id}")
 def rename_project(project_id: str, body: RenameIn):
     try:

@@ -12,7 +12,7 @@ defineEmits(['pick', 'edit', 'play', 'refind', 'toggle', 'close', 'open', 'goto'
 <template>
   <div class="branch">
     <span class="edge" :title="node.label">{{ node.label }}<ArrowRight :size="12" /></span>
-    <!-- 正在编辑 / 试玩的那张：原地放大，不切屏 -->
+    <!-- 正在编辑 / 交互的那张：原地放大，不切屏 -->
     <InlineFocus v-if="focus === node.id" :node="node" :route="route" :styles="styles" :frame="frame" :picked="picked" :mode="mode" :patch="patch" :crumb="node.crumb" :width="focusWidth" @pick="$emit('pick', $event)" @edit="$emit('edit', $event)" @play="$emit('play', $event)" @close="$emit('close')" @open="$emit('open', $event)" @goto="$emit('goto', $event)" />
     <div v-else class="branch-card">
       <SceneCard :node="node" :styles="styles" :frame="frame" :picked="picked" :mode="mode" :crumb="node.crumb" :notes="node.notes" :width="336" :patch="patch" compact @pick="$emit('pick', $event)" @edit="$emit('edit', $event)" @play="$emit('play', $event)" @refind="$emit('refind')" @fix="$emit('fix', $event)" />

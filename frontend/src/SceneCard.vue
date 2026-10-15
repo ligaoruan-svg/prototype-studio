@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { ChevronDown, ChevronRight, Code2, Layers, LoaderCircle, Monitor, Play, PencilLine, RotateCw } from 'lucide-vue-next'
+import { ChevronDown, ChevronRight, Code2, Layers, LoaderCircle, Monitor, PencilLine, RotateCw, Hand } from 'lucide-vue-next'
 import { cardDocument } from './probeTree.js'
 const props = defineProps({ node: Object, styles: Object, frame: Object, picked: Object, mode: String, crumb: String, large: Boolean, notes: Number, compact: Boolean, width: Number, patch: Object })
 const emit = defineEmits(['pick', 'edit', 'play', 'refind', 'fix'])
@@ -81,7 +81,7 @@ onUnmounted(() => { window.removeEventListener('message', listen); observer?.dis
     <div v-if="!large && !compact" class="scene-trail" :title="crumb"><ChevronRight :size="12" /><span>{{ crumb }}</span></div>
     <div ref="stage" class="scene-preview">
       <!-- 交互模式：卡片是快照不能点，点一下放大成真的在跑的原型 -->
-      <button v-if="mode === 'interact' && !large" type="button" class="play-cover" :aria-label="`试玩${node.title}`" @click="$emit('play', node)"><span><Play :size="14" />点一下试玩</span></button>
+      <button v-if="mode === 'interact' && !large" type="button" class="play-cover" :aria-label="`交互${node.title}`" @click="$emit('play', node)"><span><Hand :size="14" />点一下交互</span></button>
       <div class="thumb" :class="{ asleep: !live }" :style="{ width: view.width + 'px', height: view.height + 'px' }">
         <iframe v-if="live" ref="iframe" sandbox="allow-scripts" :title="`${node.title} · 点选要改的地方`" :srcdoc="doc" :style="{ width: frame.w + 'px', height: frame.h + 'px', transform: view.transform }" @load="sync"></iframe>
       </div>
@@ -89,7 +89,7 @@ onUnmounted(() => { window.removeEventListener('message', listen); observer?.dis
     <footer v-if="!large" class="scene-foot">
       <button v-if="fixable" type="button" class="source-type fixable" :aria-expanded="fixOpen" title="认错了？点这里改成子页面 / 页签 / 别的业务页面，下次展开照你改的来" @click="fixOpen = !fixOpen"><Code2 :size="12" />{{ kindLabel }}<span v-if="node.forced" class="mine">你改的</span><ChevronDown :size="11" /></button>
       <span v-else class="source-type"><component :is="pageLike ? Code2 : Layers" :size="12" />{{ kindLabel }}</span>
-      <button type="button" class="play-mini" :title="`试玩「${node.title}」：真的跑起来随便点，演示数据不保存`" @click="$emit('play', node)"><Play :size="12" />试玩</button>
+      <button type="button" class="play-mini" :title="`交互「${node.title}」：真的跑起来随便点，演示数据不保存`" @click="$emit('play', node)"><Hand :size="12" />交互</button>
       <div v-if="fixOpen" class="fix-menu" role="menu" aria-label="纠正这张卡的类型">
         <p>认错了？「{{ node.label }}」点出来的其实是</p>
         <button v-for="o in fixOptions" :key="o.kind" type="button" role="menuitem" @click="fix(o.kind)"><b>{{ o.label }}</b><small>{{ o.hint }}</small></button>

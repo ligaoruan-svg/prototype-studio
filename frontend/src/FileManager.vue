@@ -4,7 +4,7 @@ import { FolderOpen, FileCode2, Pencil, Trash2, RotateCcw, Search, LoaderCircle,
 const props = defineProps({ currentProjectId: String })
 const emit = defineEmits(['changed', 'open', 'busy'])
 const projects = ref([]), trash = ref([]), view = ref('projects'), query = ref('')
-const busy = ref(false), error = ref(''), message = ref(''), deleting = ref(null), renaming = ref(null), name = ref('')
+const busy = ref(false), error = ref(''), message = ref(''), deleting = ref(null), renaming = ref(null), purging = ref(null), name = ref('')
 const actionBox = ref(null)
 const visibleProjects = computed(() => projects.value.filter(p => p.name.toLowerCase().includes(query.value.toLowerCase()) || p.pages.some(page => page.title.toLowerCase().includes(query.value.toLowerCase()))))
 const visibleTrash = computed(() => trash.value.filter(p => p.name.toLowerCase().includes(query.value.toLowerCase())))
@@ -24,12 +24,22 @@ async function perform(action, success) {
 }
 function target(project, page) { return { kind: page ? 'page' : 'project', project_id: project.id, page_id: page?.id || '', name: page?.title || project.name, page_count: project.page_count } }
 function url(item) { return `/api/projects/${item.project_id}` + (item.page_id ? `/pages/${item.page_id}` : '') }
-async function rename(item) { renaming.value = item; deleting.value = null; name.value = item.name; error.value = ''; await nextTick(); actionBox.value?.querySelector('input')?.focus() }
-async function remove(item) { deleting.value = item; renaming.value = null; error.value = ''; await nextTick(); actionBox.value?.querySelector('button')?.focus() }
+async function rename(item) { renaming.value = item; deleting.value = null; purging.value = null; name.value = item.name; error.value = ''; await nextTick(); actionBox.value?.querySelector('input')?.focus() }
+async function remove(item) { deleting.value = item; renaming.value = null; purging.value = null; error.value = ''; await nextTick(); actionBox.value?.querySelector('button')?.focus() }
 async function saveName() { await perform(async () => { await request(url(renaming.value), 'PATCH', { name: name.value }); renaming.value = null }, '名称已更新，原始文件路径保持不变') }
 async function confirmDelete() { await perform(async () => { await request(url(deleting.value), 'DELETE'); deleting.value = null }, '已移入回收站，可以随时恢复') }
 async function restore(item) { await perform(() => request('/api/trash/restore', 'POST', { project_id: item.project_id, page_id: item.page_id || '' }), '已恢复，可在项目列表中打开') }
-function switchView(value) { view.value = value; deleting.value = null; renaming.value = null; error.value = ''; message.value = '' }
+// 彻底删除：回收站里不要的东西真正删掉，腾出空间。删前确认一次，删了不能恢复
+async function askPurge(item) { purging.value = item; deleting.value = null; renaming.value = null; error.value = ''; await nextTick(); actionBox.value?.querySelector('button')?.focus() }
+async function confirmPurge() {
+  const item = purging.value
+  await perform(async () => {
+    if (item.all) await request('/api/trash/empty', 'POST')
+    else await request('/api/trash/purge', 'POST', { project_id: item.project_id, page_id: item.page_id || '' })
+    purging.value = null
+  }, item.all ? '回收站已清空' : '已彻底删除')
+}
+function switchView(value) { view.value = value; deleting.value = null; purging.value = null; renaming.value = null; error.value = ''; message.value = '' }
 function date(value) { return new Date(value).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }) }
 onMounted(async () => { busy.value = true; try { await load() } catch (e) { error.value = e.message } finally { busy.value = false } })
 </script>
@@ -52,6 +62,11 @@ onMounted(async () => { busy.value = true; try { await load() } catch (e) { erro
       <p>{{ deleting.kind === 'project' ? `此项目及其 ${deleting.page_count} 个在用页面将从工作区移除。` : '此页面将从项目中移除，其他页面不受影响；指向它的链接可能暂时不可用。' }}你可以在回收站恢复，不会删除最初上传的文件。</p>
       <div class="file-action-buttons"><button class="outline" :disabled="busy" @click="deleting = null">取消</button><button class="danger-button" :disabled="busy" @click="confirmDelete"><Trash2 :size="15" />移入回收站</button></div>
     </div>
+    <div v-if="purging" ref="actionBox" class="file-action-box delete-confirm" role="alert">
+      <h3>{{ purging.all ? `清空回收站（${trash.length} 项）？` : `彻底删除${purging.kind === 'project' ? '项目' : '页面'}“${purging.name}”？` }}</h3>
+      <p>删除后无法恢复：工作区里的源码副本、历史版本、修改记录和展开结果都会删掉。你电脑上最初导入的那个文件不受影响。</p>
+      <div class="file-action-buttons"><button class="outline" :disabled="busy" @click="purging = null">取消</button><button class="danger-button" :disabled="busy" @click="confirmPurge"><Trash2 :size="15" />{{ purging.all ? '全部彻底删除' : '彻底删除' }}</button></div>
+    </div>
     <p v-if="error" class="form-error" role="alert">{{ error }}<button class="text-button" :disabled="busy" @click="perform(load, '列表已刷新')">重试加载</button></p>
     <p v-if="message" class="file-feedback" role="status">{{ message }}</p>
     <div v-if="busy" class="file-loading" role="status"><LoaderCircle class="spin" :size="16" />正在更新文件…</div>
@@ -64,15 +79,18 @@ onMounted(async () => { busy.value = true; try { await load() } catch (e) { erro
         <p v-if="!visibleProjects.length && !busy" class="file-empty">{{ query ? '没有匹配的项目或页面' : '还没有项目，可以从顶部导入或新建。' }}</p>
       </template>
       <template v-else>
-        <article v-for="item in visibleTrash" :key="item.project_id + (item.page_id || '')" class="managed-row recycled-row"><component :is="item.kind === 'project' ? FolderOpen : FileCode2" :size="21" class="file-kind" /><div class="managed-title"><b>{{ item.name }}</b><small>{{ item.kind === 'project' ? `项目 · ${item.page_count} 个页面` : `页面 · ${item.project_name}` }} · {{ date(item.deleted_at) }} 删除</small></div><button class="outline" :aria-label="`恢复${item.kind === 'project' ? '项目' : '页面'} ${item.name}`" :disabled="busy" @click="restore(item)"><RotateCcw :size="14" />恢复</button></article>
+        <div v-if="trash.length && !query" class="trash-bar"><span>回收站不会自动清空，不要的可以彻底删除</span><button type="button" class="text-button danger-text" :disabled="busy" @click="askPurge({ all: true })"><Trash2 :size="14" />清空回收站</button></div>
+        <article v-for="item in visibleTrash" :key="item.project_id + (item.page_id || '')" class="managed-row recycled-row"><component :is="item.kind === 'project' ? FolderOpen : FileCode2" :size="21" class="file-kind" /><div class="managed-title"><b>{{ item.name }}</b><small>{{ item.kind === 'project' ? `项目 · ${item.page_count} 个页面` : `页面 · ${item.project_name}` }} · {{ date(item.deleted_at) }} 删除</small></div><button class="outline" :aria-label="`恢复${item.kind === 'project' ? '项目' : '页面'} ${item.name}`" :disabled="busy" @click="restore(item)"><RotateCcw :size="14" />恢复</button><button class="icon-button file-delete" :aria-label="`彻底删除${item.kind === 'project' ? '项目' : '页面'} ${item.name}`" title="彻底删除（不能恢复）" :disabled="busy" @click="askPurge(item)"><Trash2 :size="15" /></button></article>
         <p v-if="!visibleTrash.length && !busy" class="file-empty">{{ query ? '回收站中没有匹配结果' : '回收站是空的' }}</p>
       </template>
     </div>
-    <p class="field-hint">回收站不会自动清空。资源文件随项目保留，避免误删共享图片和样式。</p>
+    <p class="field-hint">{{ view === 'trash' ? '彻底删除只删工作区里的副本，你电脑上最初导入的文件不受影响。' : '删除先放进回收站；在回收站里可以恢复，也可以彻底删除。' }}</p>
   </div>
 </template>
 
 <style scoped>
+.trash-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:2px 0 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--line)}
+.danger-text{display:inline-flex;align-items:center;gap:5px;color:var(--danger)!important;font-size:12.5px}
 .file-tabs{display:flex;gap:22px;border-bottom:1px solid var(--line);margin:20px 0 16px}
 .file-tabs button{position:relative;padding:0 0 12px;font-size:13px;color:var(--muted)}
 .file-tabs button[aria-selected=true]{color:var(--primary);font-weight:600}

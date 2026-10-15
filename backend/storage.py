@@ -177,6 +177,49 @@ def restore_item(project_id: str, page_id: str = "") -> None:
     save_meta(meta)
 
 
+# 彻底删除：只删回收站里的东西，删了就没了（项目连同它的源码副本、历史版本、展开结果一起删；
+# 最初导入时你电脑上的那个文件不在这里，不受影响）
+@_locked
+def purge_item(project_id: str, page_id: str = "") -> None:
+    meta = load_meta(project_id, include_deleted=True)
+    pdir = project_dir(project_id)
+    if not page_id:
+        if not meta.get("deleted_at"):
+            raise ValueError("只能彻底删除回收站里的项目")
+        shutil.rmtree(pdir)
+        return
+    page = next((p for p in meta.get("pages", []) if p["id"] == page_id), None)
+    if page is None:
+        raise KeyError("页面不存在")
+    if not page.get("deleted_at"):
+        raise ValueError("只能彻底删除回收站里的页面")
+    meta["pages"] = [p for p in meta["pages"] if p["id"] != page_id]
+    meta["annotations"] = [a for a in meta.get("annotations", []) if a.get("page_id") != page_id]
+    meta["updated_at"] = now_iso()
+    save_meta(meta)
+    if not re.fullmatch(r"page_[\w-]+", page_id):
+        return
+    for folder in (pdir / "versions" / page_id, pdir / "expand" / page_id):
+        shutil.rmtree(folder, ignore_errors=True)
+    # 源码副本：别的页面没在用同一个文件才删（资源图片、样式随项目留着）
+    path = str(page.get("path") or "")
+    if path and not any(p.get("path") == path for p in meta["pages"]):
+        source = (pdir / "source" / path).resolve()
+        if source.is_file() and (pdir / "source").resolve() in source.parents:
+            source.unlink()
+
+
+def purge_all() -> int:
+    count = 0
+    for item in list_trash():
+        try:
+            purge_item(item["project_id"], item.get("page_id", ""))
+            count += 1
+        except (ValueError, KeyError, FileNotFoundError):
+            continue   # 所属项目已经先被删掉了
+    return count
+
+
 def list_trash() -> list[dict[str, Any]]:
     result = []
     for path in DATA_ROOT.iterdir():

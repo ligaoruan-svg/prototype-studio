@@ -1,9 +1,9 @@
 <script setup>
 import { ref } from 'vue'
-import { ExternalLink, PencilLine, Play, RotateCw, Minimize2 } from 'lucide-vue-next'
+import { ExternalLink, PencilLine, RotateCw, Minimize2, Hand } from 'lucide-vue-next'
 import SceneCard from './SceneCard.vue'
 import LiveScene from './LiveScene.vue'
-// 在树里原地放大的那张卡：编辑（点选 / 拉框）和试玩都在这里，不切屏、不跳页。
+// 在树里原地放大的那张卡：编辑（点选 / 拉框）和交互都在这里，不切屏、不跳页。
 // 收起就回到原来的小卡，树的位置不动；只有「在预览中打开」会离开展开视图，而且按钮上写明了。
 defineProps({ node: Object, route: String, styles: Object, frame: Object, picked: Object, mode: String, patch: Object, crumb: String, width: Number })
 defineEmits(['pick', 'edit', 'play', 'close', 'open'])
@@ -13,12 +13,12 @@ const live = ref(null)
   <article class="inline-focus" :class="{ playing: mode === 'interact' }" :style="{ width: width + 'px' }" :data-node-id="node.id">
     <header class="if-head">
       <div class="if-title"><strong>{{ node.title }}</strong><span v-if="crumb" class="if-crumb">{{ crumb }}</span></div>
-      <span class="state-tag" :class="{ live: mode === 'interact' }">{{ mode === 'interact' ? '试玩中 · 演示数据不保存' : mode === 'box' ? '编辑中 · 拖动框选' : '编辑中 · 点选要改的地方' }}</span>
+      <span class="state-tag" :class="{ live: mode === 'interact' }">{{ mode === 'interact' ? '交互中 · 演示数据不保存' : mode === 'box' ? '编辑中 · 拖动框选' : '编辑中 · 点选要改的地方' }}</span>
       <template v-if="mode === 'interact'">
         <button type="button" class="if-btn" title="重新载入，回到刚打开的样子" @click="live?.restart()"><RotateCw :size="13" />重新开始</button>
         <button type="button" class="if-btn" @click="$emit('edit', node)"><PencilLine :size="13" />改为编辑</button>
       </template>
-      <button v-else type="button" class="if-btn" @click="$emit('play', node)"><Play :size="13" />试玩</button>
+      <button v-else type="button" class="if-btn" @click="$emit('play', node)"><Hand :size="13" />交互</button>
       <button type="button" class="if-btn quiet" title="离开展开视图，到预览里打开这个视图" @click="$emit('open', node)"><ExternalLink :size="13" />去预览</button>
       <button type="button" class="if-btn close" title="收回成小卡（Esc）" aria-label="收起放大" @click="$emit('close')"><Minimize2 :size="13" />收起</button>
     </header>
