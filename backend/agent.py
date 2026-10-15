@@ -135,8 +135,13 @@ TOOL_SPECS.extend([
 
 TOOL_SPECS.extend([
     {"type":"function","function":{"name":"remember",
-     "description":"用户说了对整个项目长期有效的约定时记下来，一次一条。一次性指令、你的推测、页面内容都不要记。",
-     "parameters":{"type":"object","properties":{"note":{"type":"string"}},"required":["note"]}}},
+     "description":"用户说了以后还算数的约定时记下来，一次一条。一次性指令、你的推测、页面内容都不要记。",
+     "parameters":{"type":"object","properties":{"note":{"type":"string","description":"用你自己的话写成一句"},
+       "category":{"type":"string","enum":list(memory.CATEGORIES)},
+       "scope":{"type":"string","enum":["project","global"],"description":"project 只对这个项目；global 是他在所有项目里的个人习惯"}},"required":["note"]}}},
+    {"type":"function","function":{"name":"search_chats",
+     "description":"在这个项目以前的全部对话里按关键词查（对话记录只带了最近几条）。用户说「上次那个」「之前说过的」时用。",
+     "parameters":{"type":"object","properties":{"query":{"type":"string","description":"一到三个关键词，空格隔开"}},"required":["query"]}}},
     {"type":"function","function":{"name":"forget",
      "description":"用户说不用再守某条约定时，传它的 id 删掉。",
      "parameters":{"type":"object","properties":{"id":{"type":"string"}},"required":["id"]}}},
@@ -213,7 +218,7 @@ WRAPUP_PROMPT = ("别再读源码了，根据已经读到的内容收个尾，�
                  "3. 实在找不到 → report_result 写明查了哪几处、为什么对不上，并告诉用户怎么指给你"
                  "（点选那个元素，或在交互模式下把出问题的操作点一遍再发）。")
 REJECT_LIMIT = 3     # 同一个工具被同一个理由拒绝这么多次，就收手
-READ_ONLY_TOOLS = {"inspect_page", "search_source", "read_source_slice", "read_region",
+READ_ONLY_TOOLS = {"inspect_page", "search_source", "read_source_slice", "read_region", "search_chats",
                    "read_component", "read_skill", "read_skill_file", "search_skill_file"}
 
 
@@ -577,12 +582,21 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
                               **_search_source(whole, str(args.get("query","")))}
                 elif fn == "remember":
                     try:
-                        saved = memory.add(project_id, str(args.get("note", "")))
+                        if memory.paused(project_id):
+                            raise PatchError("用户暂停了记忆，这次不记；照常把事情做完")
+                        saved = memory.add(project_id, str(args.get("note", "")), str(args.get("category", "")),
+                                           str(args.get("scope", "project")), "said")
                     except ValueError as exc:
                         raise PatchError(str(exc)) from exc
                     output = {"ok": True, **saved}
                     if not saved.get("duplicate"):
-                        remembered.append({"id": saved["id"], "text": saved["text"]})
+                        remembered.append({"id": saved["id"], "text": saved["text"], "scope": saved.get("scope", "project")})
+                elif fn == "search_chats":
+                    found = storage.search_chat_log(project_id, str(args.get("query", "")))
+                    output = {"hits": len(found), "results": [{"who": "用户" if r.get("role") == "user" else "设计助手",
+                              "when": str(r.get("created_at", ""))[:16], "page": r.get("page", ""), "text": r.get("content", "")} for r in found]}
+                    if not found:
+                        output["note"] = "以前的对话里没有这些词。别再换词反复查，直接问用户或按现有信息处理。"
                 elif fn == "forget":
                     output = {"ok": memory.remove(project_id, str(args.get("id", ""))),
                               "id": args.get("id")}

@@ -457,3 +457,6 @@ input[type=color]::-webkit-color-swatch { border: none; border-radius: 2px; }
 
 .memory-add { display: flex; gap: 8px; margin: 4px 0 16px; }
 .memory-add input { flex: 1; min-width: 0; }
+
+.memory-status { display: inline-flex; align-items: center; gap: 4px; margin-right: 8px; }
+.memory-status svg { color: var(--primary); }

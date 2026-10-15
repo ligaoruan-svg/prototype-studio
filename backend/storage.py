@@ -328,15 +328,45 @@ def delete_annotation(project_id: str, ann_id: str) -> None:
 
 
 @_locked
+@_locked
 def append_chat(project_id: str, role: str, content: str, extra: dict[str, Any] | None = None) -> None:
     meta = load_meta(project_id)
-    entry = {"id": safe_id("msg"), "role": role, "content": content, "created_at": now_iso()}
+    # seq 一直往上数：project.json 里只留最近 40 条，记忆整理靠它知道「上次整理到哪了」
+    meta["chat_seq"] = int(meta.get("chat_seq", 0) or 0) + 1
+    entry = {"id": safe_id("msg"), "role": role, "content": content, "created_at": now_iso(), "seq": meta["chat_seq"]}
     if extra:
         entry.update(extra)
     meta.setdefault("chat", []).append(entry)
     meta["chat"] = meta["chat"][-40:]
     meta["updated_at"] = now_iso()
     save_meta(meta)
+    # 完整的对话另外按行追加一份：40 条之前的也能被「查以前的对话」找到
+    try:
+        page = next((p.get("title", "") for p in meta.get("pages", []) if p["id"] == entry.get("page_id")), "")
+        line = json.dumps({"seq": entry["seq"], "role": role, "content": str(content)[:2000], "created_at": entry["created_at"],
+                           "page": page}, ensure_ascii=False)
+        with open(project_dir(project_id) / "chat_log.jsonl", "a", encoding="utf-8") as fh:
+            fh.write(line + "\n")
+    except OSError:
+        pass
+
+
+def search_chat_log(project_id: str, query: str, limit: int = 6) -> list[dict[str, Any]]:
+    words = [w for w in re.split(r"\s+", str(query or "").strip()) if w][:5]
+    path = project_dir(project_id) / "chat_log.jsonl"
+    if not words or not path.exists():
+        return []
+    hits = []
+    for raw in path.read_text("utf-8", errors="replace").splitlines():
+        try:
+            row = json.loads(raw)
+        except ValueError:
+            continue
+        text = str(row.get("content") or "")
+        if all(w.lower() in text.lower() for w in words):
+            at = text.lower().find(words[0].lower())
+            hits.append({**row, "content": text[max(0, at - 80): at + 220]})
+    return hits[-limit:][::-1]
 
 
 # ===== 展开视图的快照 =====
