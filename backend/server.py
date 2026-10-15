@@ -203,8 +203,8 @@ def synthesize_later(project_id: str) -> None:
             return
     except Exception:
         return
+    SYNTHESIZING.add(project_id)   # 先占上：两次修改紧挨着结束时别起两个整理
     def go():
-        SYNTHESIZING.add(project_id)
         try:
             memory.synthesize(project_id, _memory_llm())
         except Exception:

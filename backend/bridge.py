@@ -136,7 +136,9 @@ _TEMPLATE = r'''
   function traceClick(el){
     if(el.closest('[data-pa-overlay]'))return;
     const target=el.closest('button,a,[role=button],[role=tab],[role=menuitem],[onclick],[data-action],li,td,label,input,select,summary')||el;
-    const label=((target.innerText||target.value||target.getAttribute('aria-label')||target.title||'').replace(/\s+/g,' ').trim()||target.tagName.toLowerCase()).slice(0,40);
+    // 输入框只报它是哪个框（提示文字 / 名字），不报里面填了什么：用户可能在原型里随手填了真实信息
+    const field=/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName);
+    const label=((field?(target.getAttribute('aria-label')||target.placeholder||target.name||''):(target.innerText||target.getAttribute('aria-label')||target.title||'')).replace(/\s+/g,' ').trim()||target.tagName.toLowerCase()).slice(0,40);
     let selector='';try{selector=selectorFor(target);}catch{}
     const at=Date.now(),hashBefore=location.hash,sigBefore=quickSig(),layersBefore=layers().length;
     setTimeout(()=>{

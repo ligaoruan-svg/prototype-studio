@@ -302,19 +302,28 @@ def locate_lines(source: str, target: dict, limit: int = 3) -> list[dict]:
         return []
     picked = sorted(tokens.items(), key=lambda kv: -kv[1])[:12]
     hits: dict[int, set] = {}
-    for token, _ in picked:
-        for i, line in enumerate(lines):
-            if token in line:
-                hits.setdefault(i, set()).add(token)
-    weight = dict(picked)
+    weight: dict[str, float] = {}
+    for token, w in picked:
+        rows = [i for i, line in enumerate(lines) if token in line]
+        # 到处都有的词（「查看」「保存」）说明不了位置：命中的行越多分量越轻，太泛的直接不用；
+        # 真正靠得住的是几样东西挤在同一小段里
+        if not rows or len(rows) > 300:
+            continue
+        weight[token] = w * (1 if len(rows) <= 15 else 0.5 if len(rows) <= 60 else 0.25)
+        for i in rows:
+            hits.setdefault(i, set()).add(token)
+    if not weight:
+        return []
     scored = []
     for i in hits:
         near = set().union(*(hits.get(j, set()) for j in range(i - 4, i + 5)))
-        scored.append((sum(weight[t] for t in near), -i, near))
+        score = sum(weight[t] for t in near)
+        if (len(near) >= 2 and score >= 1.5) or score >= 3:
+            scored.append((score, -i, near))
     out = []
     for score, neg_i, near in sorted(scored, reverse=True):
         i = -neg_i
-        if score < 3 or any(abs(i + 1 - o["line"]) <= 8 for o in out):
+        if any(abs(i + 1 - o["line"]) <= 8 for o in out):
             continue
         out.append({"line": i + 1, "matched": sorted(near, key=lambda t: -weight[t])[:5], "snippet": lines[i].strip()[:160]})
         if len(out) >= limit:
@@ -715,7 +724,9 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
             # 用户看到的是「我查到了这些，你指的是哪个？」，而不是一张「已停下」的报错卡
             wrapup_round = round_no + 1
             emit({"type":"step_done","id":"wrapup-" + str(round_no),"label":"定位不太顺，先整理查到的线索","detail":"不再翻源码，把查到的位置交给你确认"})
-            messages.append({"role":"user","content":WRAPUP_PROMPT})
+            messages.append({"role":"user","content":WRAPUP_PROMPT if not read_only else
+                "别再读源码了。根据已经读到的内容直接用文字回答用户：说你看到了什么、结论是什么；"
+                "拿不准对方指的是哪一处，就用 ask_user 列出 2–3 个可能的位置让他选。"})
         elif idle_rounds == IDLE_LIMIT:
             messages.append({"role":"user","content":
                 f"提醒：已经连续 {IDLE_LIMIT} 轮只在读源码，一处都还没改。"
