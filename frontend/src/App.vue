@@ -757,6 +757,12 @@ function keydown(event) {
 
 watch(view, value => { if (value === 'preview' && previewDoc.value) previewDoc.value = preparePreview(previewDoc.value) })
 watch(mode, () => send({ type: 'PA_SET_MODE', mode: mode.value }))
+// 后台在跑的是旧代码（改过没重启）：页面是新的、接口是旧的，新功能会报「Method Not Allowed」。挂一条提示说清楚怎么办
+const backendStale = ref(false)
+async function checkBackend() {
+  try { const h = await api('/api/health'); backendStale.value = !h.code_epoch ? true : h.code_epoch > h.started_epoch + 1 } catch { /* 连不上另有提示 */ }
+}
+onMounted(checkBackend)
 onMounted(async () => { window.addEventListener('message', onMessage); window.addEventListener('keydown', keydown); try { model.value = await api('/api/config'); await loadProjects() } catch (e) { error.value = e.message } })
 onUnmounted(() => { window.removeEventListener('message', onMessage); window.removeEventListener('keydown', keydown); clearTimeout(toastTimer) })
 </script>
@@ -851,6 +857,7 @@ onUnmounted(() => { window.removeEventListener('message', onMessage); window.rem
       <form v-else-if="dialogType === 'new'" @submit.prevent="createProject"><p class="dialog-intro">先建立可编辑的页面骨架，再逐步把想法做出来。</p><label>原型名称<input v-model="projectName" autofocus required maxlength="80" placeholder="例如：订单售后管理"></label><label>你想做什么？<span class="optional">选填</span><textarea v-model="brief" rows="5" placeholder="为谁设计？页面需要哪些内容、按钮和交互？"></textarea></label><p class="field-hint">{{ model.has_key ? '填写需求后将调用已配置的模型制作第一版。' : '尚未连接模型，将先创建骨架。你仍可使用属性面板直接编辑。' }}</p><p v-if="dialogError" class="form-error" role="alert">{{ dialogError }}</p><div class="dialog-actions"><button class="outline" type="button" :disabled="dialogBusy" @click="closeDialog">取消</button><button class="primary" :disabled="dialogBusy || !projectName.trim()"><LoaderCircle v-if="dialogBusy" class="spin" :size="16" />创建原型</button></div></form>
       <div v-else class="history-content"><p class="dialog-intro">退回历史会生成新版本，已有版本始终保留。</p><div v-if="undoCount" class="manual-summary"><SlidersHorizontal :size="16" />还有 {{ undoCount }} 步修改可撤销，使用顶部撤销按钮。</div><div class="version-list"><div v-for="v in [...(page?.versions || [])].reverse()" :key="v.version" class="version-row"><span class="version-node" :class="{ current: v.version === page?.version }"></span><div><b>v{{ v.version }}<span v-if="v.version === page?.version" class="current-badge">当前基础版本</span></b><p>{{ v.reason }}</p><time>{{ formatTime(v.created_at) }}</time></div><button class="outline" :disabled="dialogBusy || (v.version === page?.version && !undoCount)" @click="restore(v.version)">退回</button></div></div><p v-if="dialogError" class="form-error" role="alert">{{ dialogError }}</p></div>
     </dialog>
+    <div v-if="backendStale" class="stale-banner" role="alert"><AlertCircle :size="15" /><span>后台服务还在跑旧代码，新功能可能用不了：关掉原型工坊的终端窗口，再双击「启动原型工坊」重启一下。</span><button type="button" class="icon-button" aria-label="知道了" @click="backendStale = false"><X :size="13" /></button></div>
     <div v-if="notice" class="toast" role="status"><Check :size="16" />{{ notice }}</div>
   </div>
 </template>

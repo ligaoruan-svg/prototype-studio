@@ -27,12 +27,17 @@ const keyHint = computed(() => {
   if (sameHost.value) return `留空就用已绑定的「${sameHost.value.name || sameHost.value.model}」那把密钥`
   return '填这个服务商给你的 API Key'
 })
+// 模型名太短、显示名却像个模型名（带 - 和数字 / 版本号）：多半是两个框填反了
+const looksSwapped = computed(() => form.value && form.value.model.length <= 3 && /[a-z].*[-.].*\d|\d.*[-.]/i.test(form.value.name || ''))
 function addNew() { form.value = blank(); error.value = ''; done.value = '' }
 function edit(p) { form.value = { ...blank(), ...p, api_key: '' }; error.value = ''; done.value = '' }
 function pickProvider(p) { form.value.base_url = p.url; if (p.models && !p.models.includes(form.value.model)) form.value.model = p.models[0] }
 async function call(url, method = 'POST', body) {
   const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) })
   const j = await r.json().catch(() => ({}))
+  // 404 / 405：页面是新的，后台服务还是旧的（改了代码没重启），根本没有这个接口
+  if (r.status === 405 || (r.status === 404 && typeof j.detail !== 'string') || (r.status === 404 && j.detail === 'Not Found'))
+    throw new Error('后台服务还是旧版本，没有这个功能：关掉原型工坊的终端窗口，再双击「启动原型工坊」重启一下就好')
   if (!r.ok) throw new Error(typeof j.detail === 'string' ? j.detail : '操作没成功，请重试')
   return j
 }
@@ -79,10 +84,11 @@ function testOne(p) { act('test' + p.id, async () => { await call('/api/config/t
       <h4>{{ form.id ? '修改「' + (form.name || form.model) + '」' : '绑定新模型' }}</h4>
       <div class="providers" role="group" aria-label="服务商"><span>服务商</span><button v-for="p in PROVIDERS" :key="p.name" type="button" :class="{ on: provider?.name === p.name }" @click="pickProvider(p)">{{ p.name }}</button><button type="button" :class="{ on: !provider }" @click="form.base_url = ''">其他</button></div>
       <label>接口地址<input v-model="form.base_url" type="url" required placeholder="https://…/v1"></label>
-      <div class="two"><label>模型名称<input v-model="form.model" required :placeholder="provider?.models?.[0] || '服务商控制台里的模型名'" list="model-name-options"><datalist id="model-name-options"><option v-for="m in provider?.models || []" :key="m" :value="m"></option></datalist></label>
-        <label>显示名<small>可不填</small><input v-model="form.name" maxlength="30" placeholder="比如：快的 / 能看图的"></label></div>
+      <div class="two"><label>模型名称<small>接口里认的名字</small><input v-model="form.model" required :placeholder="provider?.models?.[0] || '服务商控制台里的模型名'" list="model-name-options"><datalist id="model-name-options"><option v-for="m in provider?.models || []" :key="m" :value="m"></option></datalist></label>
+        <label>显示名<small>只给你自己看，可不填</small><input v-model="form.name" maxlength="30" placeholder="比如：快的 / 能看图的"></label></div>
       <label>API 密钥<input v-model="form.api_key" type="password" autocomplete="off" :placeholder="keyHint"></label>
       <div class="limit-grid"><label>单次输出<small>tokens</small><input v-model.number="form.max_tokens" type="number" min="1024" max="131072" step="1024" required></label><label>上下文预算<small>字符</small><input v-model.number="form.context_budget" type="number" min="20000" max="2000000" step="20000" required></label><label>轮次上限<small>次</small><input v-model.number="form.max_rounds" type="number" min="4" max="60" step="2" required></label></div>
+      <p v-if="looksSwapped" class="form-error">模型名称「{{ form.model }}」看着不像模型名，「{{ form.name }}」倒像——是不是填反了？</p>
       <p class="field-hint">按模型的真实能力填，填大了接口会报错。上下文预算要大于你的组件库，否则读进来就被折叠掉。</p>
       <label class="vision-option"><input type="checkbox" v-model="form.supports_vision">这个模型能看图片（截图理解）</label>
       <label class="vision-option"><input type="checkbox" v-model="form.stream">逐字显示回复（接口不支持流式时关掉）</label>
@@ -116,7 +122,12 @@ function testOne(p) { act('test' + p.id, async () => { await call('/api/config/t
 .providers span{font-size:12px;color:var(--muted);margin-right:2px}
 .providers button{padding:3px 10px;border:1px solid var(--line);border-radius:20px;background:#fff;font-size:12px;color:var(--muted)}
 .providers button.on{border-color:var(--primary);color:var(--primary);background:var(--primary-soft)}
-.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:18px}
+.two label{display:flex;flex-wrap:wrap;align-items:baseline;gap:5px;margin:0;font-size:12px;font-weight:550}
+.two small{font-weight:400;color:#ada4a0;font-size:11px}
+.two input{display:block;width:100%;padding:10px 11px;border:1px solid #e5dfdc;border-radius:18px;font-weight:400;color:var(--ink);background:#fff;font-size:13px}
+.pref{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:550}
+.pref input{width:14px;height:14px;margin:0;accent-color:var(--primary)}
 .model-done{display:flex;align-items:center;gap:5px;color:var(--success);font-size:12px;margin:8px 0}
 .pref{margin-top:12px}
 @media (max-width:640px){.two{grid-template-columns:1fr}}

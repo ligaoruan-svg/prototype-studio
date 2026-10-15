@@ -117,10 +117,23 @@ class RestoreItemIn(BaseModel):
     page_id: str = ""
 
 
+def _code_epoch() -> float:
+    """后端代码和提示词最后一次改动的时间：比服务启动时间新，说明在跑的是旧代码"""
+    newest = 0.0
+    for folder in (ROOT / "backend", ROOT / "prompts"):
+        for path in folder.rglob("*"):
+            if path.suffix in {".py", ".md"} and "tests" not in path.parts and "__pycache__" not in path.parts:
+                try:
+                    newest = max(newest, path.stat().st_mtime)
+                except OSError:
+                    pass
+    return newest
+
+
 @app.get("/api/health")
 def health():
     return {"ok": True, "version": config.VERSION, "service": "prototype-agent",
-            "started_epoch": config.STARTED_EPOCH}
+            "started_epoch": config.STARTED_EPOCH, "code_epoch": _code_epoch()}
 
 
 @app.get("/api/config")

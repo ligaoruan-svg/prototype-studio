@@ -475,3 +475,6 @@ input[type=color]::-webkit-color-swatch { border: none; border-radius: 2px; }
 .model-menu button em { font-style: normal; font-size: 10.5px; padding: 0 6px; border-radius: 10px; background: #eef3fb; color: #4c6a8a; }
 .model-menu .manage { margin-top: 4px; border-top: 1px solid var(--line); border-radius: 0 0 8px 8px; color: var(--muted); }
 .model-menu .menu-note { display: block; margin: 4px 8px; font-size: 11px; color: var(--muted); }
+
+.stale-banner { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); z-index: 60; display: flex; align-items: center; gap: 8px; max-width: min(640px, calc(100vw - 32px)); padding: 9px 10px 9px 14px; border: 1px solid #edd6a6; border-radius: 12px; background: #fffaf0; color: #7a4f0b; font-size: 12.5px; box-shadow: 0 8px 24px #2b201a1a; }
+.stale-banner svg { flex-shrink: 0; }
