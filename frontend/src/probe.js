@@ -4,6 +4,21 @@
 
 const MAX_TRIES = 120, MAX_DEPTH = 4, BUDGET_MS = 240_000
 const plain = value => JSON.parse(JSON.stringify(value ?? null))
+// 页面上第一层的按钮和页签（去掉「表格行 · 」，同类按钮每行都有，只认名字）
+const bareLabel = t => String(t || '').replace(/^表格行 · /, '').replace(/^页签 · /, '')
+export function topLabels(init) {
+  return [...new Set([...(init.triggers || []).map(t => bareLabel(t.text)), ...(init.tabs || []).map(t => '页签 · ' + bareLabel(t.text))].filter(Boolean))].sort()
+}
+// 改版以后页面上多出来的按钮：上次没见过的名字。旧结果没记 top，就用它记下的各种按钮名凑一份
+export function newLabels(now, prev) {
+  const known = new Set(prev.top || [
+    ...(prev.nodes || []).filter(n => n.parent == null).map(n => (n.tab ? '页签 · ' : '') + bareLabel(n.label)),
+    ...['jumps', 'links', 'dead'].flatMap(k => (prev[k] || []).filter(x => x.parent == null).map(x => bareLabel(x.label))),
+    ...['none', 'fail'].flatMap(k => prev.coverage?.[k]?.labels || []),
+    ...Object.values(prev.coverage?.skipped || {}).flatMap(v => v?.labels || []),
+  ].map(bareLabel))
+  return now.filter(l => !known.has(bareLabel(l)) && !known.has(l))
+}
 
 // 一个后台副本：载入、发指令、出问题时重载
 function probeFrame(doc, width, height, routes = []) {
@@ -77,6 +92,7 @@ export async function probePage({ doc, width = 1150, height = 800, routes = [], 
     const { init, base } = await begin(probe, width, height)
     Object.assign(result, base)
     coverage.skipped = init.skipped || {}
+    result.top = topLabels(init)   // 这一页刚打开时有哪些按钮：改版后对一下，多了新按钮就要重新找
     const queue = (init.triggers || []).map(target => ({ path: [], step: withFix(target.text, { target }), label: target.text, parent: null, depth: 1 }))
     // 页签（巡检计划 / 路线配置 / 巡检点）：同一业务页面的另一个视图，切过去以后里面的按钮也要试
     for (const target of init.tabs || []) queue.push({ path: [], step: withFix('页签 · ' + target.text, { target, tab: true }), label: '页签 · ' + target.text, parent: null, depth: 1 })
@@ -162,7 +178,7 @@ export async function probePage({ doc, width = 1150, height = 800, routes = [], 
 
 // 改完之后同步：已经知道每张卡怎么点开，直接按路径重新点一遍拍新快照，
 // 不再把整页按钮从头试一遍。刚改的那张排第一个，通常一两秒就换上新样子。
-export async function syncNodes({ doc, pause = null, nodes = [], jumps = [], links = [], dead = [], coverage = null, first = [], width = 1150, height = 800, routes = [], onUpdate = () => {}, cancelled = () => false }) {
+export async function syncNodes({ doc, pause = null, nodes = [], jumps = [], links = [], dead = [], coverage = null, top = null, first = [], width = 1150, height = 800, routes = [], onUpdate = () => {}, cancelled = () => false }) {
   const probe = probeFrame(doc, width, height, routes)
   // 每张卡先标「更新中」，拍到新样子再去掉：哪张已经是新的、哪张还在等，一眼能看出来
   const result = { title: '', styles: null, page: '', width, height, nodes: plain(nodes).map(n => ({ ...n, pending: true })), jumps: plain(jumps), links: plain(links), dead: plain(dead), coverage: plain(coverage), done: 0, total: nodes.length, stale: 0 }
@@ -171,8 +187,12 @@ export async function syncNodes({ doc, pause = null, nodes = [], jumps = [], lin
   const report = () => onUpdate(plain(result))
   try {
     if (pause) await pause()
-    const { base } = await begin(probe, width, height)
+    const { init, base } = await begin(probe, width, height)
     Object.assign(result, base)
+    // AI 加了新按钮（新增、编辑……）：同步只会重拍认识的弹窗，新的找不到。记下来，同步完整页重找
+    const now = topLabels(init), added = newLabels(now, { top, nodes, jumps, links, dead, coverage })
+    result.top = now
+    if (added.length) result.needsProbe = added
     report()   // 页面本身那张卡先换上
     const order = [...nodes].sort((a, b) => first.includes(b.id) - first.includes(a.id))
     for (const node of order) {

@@ -14,6 +14,9 @@ _TEMPLATE = r'''
   // 打开新窗口、打印同理。副本里点什么都只是为了看会弹出什么，统统静音。
   const PROBE=!!window.__paProbe;
   if(PROBE){try{window.alert=()=>{};window.confirm=()=>false;window.prompt=()=>null;window.open=()=>null;window.print=()=>{};}catch{}}
+  // 后台副本放在屏幕外，浏览器会把屏幕外 iframe 的动画冻住：淡入的弹窗永远停在第一帧（透明度 0），
+  // 看起来就像「点了没反应」。副本里把动画、过渡都改成瞬间完成（只在副本里，预览不受影响）
+  if(PROBE){const calm=()=>{if(document.querySelector('style[data-pa-calm]'))return;const s=document.createElement('style');s.setAttribute('data-pa-overlay','');s.setAttribute('data-pa-calm','');s.textContent='*,*::before,*::after{animation-duration:0s!important;animation-delay:0s!important;transition-duration:0s!important;transition-delay:0s!important}';(document.head||document.documentElement).appendChild(s);};calm();document.addEventListener('DOMContentLoaded',calm);}
   const esc = value => CSS.escape(String(value));
   const scrollContainers = new Set(); let scrollTimer, restoringScroll=false;
   // Opaque sandbox origins cannot use native localStorage. Keep demo data scoped
@@ -220,13 +223,15 @@ _TEMPLATE = r'''
   }
   const CLOSE_TEXT=/^(×|✕|✖|x|X|取消|关闭|返回)$/;
   // 会真的落数据的按钮不点：在真实预览里复现路径时，点了就是改了用户的演示数据
-  const COMMIT_TEXT=/^(保存|确定|确认|提交|完成|删除|移除|确认删除|启用|停用|发布|撤回|通过|驳回)$/;
+  const COMMIT_TEXT=/^(保存|确定|确认|提交|完成|删除|移除|确认删除|启用|停用|发布|撤回|通过|驳回|发起|派发|下发|生成)$/;
   const NOISE_TEXT=/^(查询|搜索|重置|刷新|导出.*|下载.*|全屏|退出.*|打印|返回.*|收起|展开|更多|上一页|下一页)$/;
   const WIZARD_TEXT=/^(下一步|继续|下一页|next)/i;
   // vis：按钮、下拉这种小东西看得见就行；shown：够大才算得上一层弹窗
   function vis(el){
     if(!el?.isConnected)return false;const cs=getComputedStyle(el);
-    if(cs.display==='none'||cs.visibility==='hidden'||Number(cs.opacity)===0)return false;
+    if(cs.display==='none'||cs.visibility==='hidden')return false;
+    // 透明度 0 但正在播淡入动画的，算看得见（动画被冻住时会一直停在 0）
+    if(Number(cs.opacity)===0&&!(el.getAnimations?.()||[]).some(a=>a.playState==='running'||a.playState==='pending'))return false;
     const r=el.getBoundingClientRect();return r.width>0&&r.height>0;
   }
   function shown(el){if(!vis(el))return false;const r=el.getBoundingClientRect();return r.width>40&&r.height>30;}

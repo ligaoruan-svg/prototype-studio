@@ -10,7 +10,7 @@ const CONCURRENCY = 2
 // 业务页面清单的找法版本：v2 起首页（刚打开时那一页）也算一页；旧清单下次用到时重找一遍
 const ROUTES_V = 2
 let routesV = 0
-const SCHEMA = 's5'  // s5：跳到别的业务页面不算子页面；页签、展示类按钮的关联和待补也记下来，旧结果要重拍
+const SCHEMA = 's6'  // s6：后台副本里动画冻住、淡入的弹窗被当成「没反应」，旧结果漏了弹窗，要重拍
 export const expand = reactive({
   scope: '',          // 项目:页面
   hash: '',           // 当前版本的源码哈希
@@ -106,7 +106,7 @@ export async function bindExpand({ pid, pageId, hash, makeDoc, width }) {
     return
   }
   await ready
-  if (hash && hash !== expand.hash) { expand.hash = hash; syncStale() }
+  if (hash && hash !== expand.hash) { expand.hash = hash; syncStale(); refreshRoutes() }
 }
 
 // 某一页要看了：没展开过就展开，过期了就同步，都排在最前面
@@ -142,6 +142,18 @@ async function ensureRoutes(currentRoute = '') {
     finally { if (g === gen) expand.discovering = false; routesJob = null }
   })()
   return routesJob
+}
+
+// 改了一版：菜单里可能多了页面（AI 加了「巡检人员」）或少了。重新认一遍业务页面；
+// 新多出来的页面，如果别的页面都展开过了，就在后台也展开它
+async function refreshRoutes() {
+  if (!ctx || !expand.routes.length) return
+  const g = gen, before = new Set(expand.routes.map(r => r.hash))
+  routesV = 0
+  await ensureRoutes(expand.focusRoute || '')
+  if (g !== gen) return
+  const fresh = expand.routes.filter(r => !before.has(r.hash))
+  if (fresh.length && Object.keys(expand.entries).length >= 2) for (const r of fresh) schedule(r.hash, 'probe')
 }
 
 // 一键展开全部页面
@@ -211,7 +223,7 @@ export function adoptPresync(token, rawHash) {
   const hash = `${SCHEMA}:${rawHash}`
   adopted.set(token, hash)
   // 还在拍的那页先不落盘：卡片里还有「更新中」的旧快照，等它拍完 run 自己按正式版本存
-  for (const [route, e] of Object.entries(expand.entries)) if (e.hash === `pending:${token}` && !expand.jobs[route]) { expand.entries[route] = { hash, result: e.result }; persist(route, hash, e.result) }
+  for (const [route, e] of Object.entries(expand.entries)) if (e.hash === `pending:${token}` && !expand.jobs[route]) { expand.entries[route] = { hash, result: e.result }; persist(route, hash, e.result); if (e.result?.needsProbe?.length) schedule(route, 'probe', route === expand.focusRoute, true) }
   forget(token)
 }
 export function dropPresync(token) {
@@ -279,7 +291,7 @@ async function run({ route, kind, token, priority }) {
     const doc = ((token && candidates.get(token)) || c.makeDoc)(route)
     let result
     if (kind === 'sync' && entry?.result?.nodes?.length) {
-      result = await syncNodes({ doc, pause, nodes: entry.result.nodes, jumps: entry.result.jumps || [], links: entry.result.links || [], dead: entry.result.dead || [], coverage: entry.result.coverage || null, routes: expand.routes.map(r => r.hash), first: [...(touched[route] || [])], width: c.width, height: 800, cancelled: () => !alive() || adopted.get(token) === null,
+      result = await syncNodes({ doc, pause, nodes: entry.result.nodes, jumps: entry.result.jumps || [], links: entry.result.links || [], dead: entry.result.dead || [], coverage: entry.result.coverage || null, top: entry.result.top || null, routes: expand.routes.map(r => r.hash), first: [...(touched[route] || [])], width: c.width, height: 800, cancelled: () => !alive() || adopted.get(token) === null,
         onUpdate: update => { if (!alive() || adopted.get(token) === null) return; progress(update); expand.entries[route] = { ...expand.entries[route], result: update, ...(token ? { hash, prev: entry } : {}) } } })
     } else {
       result = await probePage({ doc, pause, overrides: expand.overrides[route] || {}, width: c.width, routes: expand.routes.map(r => r.hash), height: 800, cancelled: () => !alive(),
@@ -292,13 +304,14 @@ async function run({ route, kind, token, priority }) {
       if (adopted.get(token) === null) { expand.entries[route] = entry; return }   // 检查没通过，候选作废
       if (adopted.has(token)) hash = adopted.get(token)                           // 已经提交：直接是正式版本
       expand.entries[route] = hash.startsWith('pending:') ? { hash, result, prev: entry } : { hash, result }
-      if (!hash.startsWith('pending:')) persist(route, hash, result, c)
+      if (!hash.startsWith('pending:')) { persist(route, hash, result, c); if (kind === 'sync' && result.needsProbe?.length) schedule(route, 'probe', !!priority, true) }
       delete touched[route]
       return
     }
     expand.entries[route] = { hash, result }
     delete touched[route]
     persist(route, hash, result, c)
+    if (kind === 'sync' && result.needsProbe?.length) schedule(route, 'probe', !!priority, true)   // 页面上多了新按钮：整页重找一遍
   } catch (e) {
     if (!alive()) return
     expand.error = `${route || '当前页面'}：${e.message || '展开失败'}`
