@@ -29,7 +29,7 @@ const error = ref(''), notice = ref(''), pendingUser = ref(''), pendingRef = ref
 const previewFrame = ref(null), previewDoc = ref(''), composer = ref(null), chatBox = ref(null), fileInput = ref(null)
 const dialog = ref(null), dialogType = ref(''), dialogBusy = ref(false), dialogError = ref('')
 const configDraft = ref({ base_url: '', model: '', api_key: '' }), projectName = ref(''), brief = ref('')
-const codeRegion = ref('all'), codeCopied = ref(false), runtimeErrors = ref([]), previewRoute = ref('')
+const codeRegion = ref('all'), codeCopied = ref(false), runtimeErrors = ref([]), recentClicks = ref([]), previewRoute = ref('')
 const imageInput = ref(null), reference = ref(null)
 const specDraft = ref(''), specSaved = ref(''), specInput = ref(null), specNotice = ref('')
 const componentList = ref([]), componentInput = ref(null), specTab = ref('spec')
@@ -190,7 +190,7 @@ async function refresh(reload = true) {
     if (!response.ok) throw new Error('预览加载失败，请重试')
     const html = await response.text()
     if (serial !== loadSequence) return
-    runtimeErrors.value = []; previewDoc.value = preparePreview(html); previewHash.value = info.hash; previewOwner.value = `${pid}:${id}`
+    runtimeErrors.value = []; recentClicks.value = []; previewDoc.value = preparePreview(html); previewHash.value = info.hash; previewOwner.value = `${pid}:${id}`
   }
   await nextTick(); if (chatBox.value) chatBox.value.scrollTop = chatBox.value.scrollHeight
 }
@@ -281,6 +281,8 @@ async function onMessage(event) {
   if (data.type === 'ROUTE') { previewRoute.value = data.hash; if (boardOpen.value && !boardRoute.value) boardRoute.value = data.hash }
   if (data.type === 'STORAGE') { try { localStorage.setItem(runtimeKey(), JSON.stringify(data.data)) } catch {} }
   if (data.type === 'RUNTIME_ERROR' && !runtimeErrors.value.includes(data.message)) runtimeErrors.value.push(data.message)
+  // 预览里真点过的几下（点了什么、有没有反应、报没报错）：发需求时一起交给 AI，「点了没反应」它就知道是哪个
+  if (data.type === 'CLICK_TRACE') recentClicks.value = [...recentClicks.value, { label: data.label, selector: data.selector, tag: data.tag, hashBefore: data.hashBefore, hashAfter: data.hashAfter, changed: !!data.changed, opened: !!data.opened, errors: data.errors || [], at: Date.now() }].slice(-6)
   if (data.type === 'NAVIGATE') {
     try { const resolved = await api(`/api/projects/${project.value.id}/resolve?href=${encodeURIComponent(data.href)}&page_id=${pageId.value}`); if (resolved.page_id) await choosePage(resolved.page_id); else toast('导入的项目中没有这个页面') } catch (e) { error.value = e.message }
   }
@@ -398,6 +400,11 @@ async function removeAnnotation(id) {
 function openLeft() { leftOpen.value = true; if (window.innerWidth <= 960) rightOpen.value = false }
 function toggleRight() { rightOpen.value = !rightOpen.value; if (rightOpen.value && window.innerWidth <= 960) leftOpen.value = false }
 async function toAI() { leftOpen.value = true; if (window.innerWidth <= 960) rightOpen.value = false; await nextTick(); composer.value?.focus() }
+// 预览现场：停在哪一页、最近 5 分钟里点过什么、页面报过什么错
+function previewScene() {
+  const since = Date.now() - 5 * 60_000
+  return { route: previewRoute.value || '', clicks: recentClicks.value.filter(c => c.at >= since).map(({ at, ...c }) => c), errors: runtimeErrors.value.slice(-5) }
+}
 async function runAgent(text = '', runtimeFeedback = '', options = {}) {
   const message = (typeof text === 'string' && text ? text : input.value).trim() || (annotations.value.length ? '请逐条处理已记下的修改意见，保留其他区域。' : '')
   if (locked.value || !message || !pageId.value) return
@@ -416,7 +423,7 @@ async function runAgent(text = '', runtimeFeedback = '', options = {}) {
   reference.value = null
   lastResult.value = null; status.value = intent === 'edit' ? '正在读页面' : '思考中'; leftOpen.value = true
   try {
-    const response = await fetch('/api/projects/' + project.value.id + '/agent/stream', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ page_id: pageId.value, message, selection: target, runtime_feedback: runtimeFeedback, reference: sentRef, intent, include_annotations: options.includeAnnotations !== false }) })
+    const response = await fetch('/api/projects/' + project.value.id + '/agent/stream', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ page_id: pageId.value, message, selection: target, runtime_feedback: runtimeFeedback, reference: sentRef, scene: previewScene(), intent, include_annotations: options.includeAnnotations !== false }) })
     const result = await consumeAgentStream(response, event => {
       if (event.type === 'started' && event.run_id) current.runId = event.run_id
       // 模型服务忙：后台自动等几秒重试，这里只记一笔，让人知道不是卡住了

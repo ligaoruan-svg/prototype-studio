@@ -27,10 +27,13 @@ _TEMPLATE = r'''
   try { Object.defineProperty(window,'localStorage',{value:store}); Object.defineProperty(window,'sessionStorage',{value:store}); } catch {}
   if(window.__paRoute&&String(window.__paRoute).startsWith('#')) location.hash=window.__paRoute;
   window.addEventListener('hashchange',()=>send('ROUTE',{hash:location.hash}));
-  window.addEventListener('error',e=>{if(e.message)send('RUNTIME_ERROR',{message:e.message,lineno:e.lineno});});
-  window.addEventListener('unhandledrejection',e=>send('RUNTIME_ERROR',{message:String(e.reason?.message||e.reason||'Promise rejection')}));
+  // 报错既发给宿主，也记在这里：用户点了某个按钮之后冒出来的报错，要跟着那次点击一起交给 AI
+  const recentErrors=[];
+  const noteError=message=>{recentErrors.push({at:Date.now(),message:String(message).slice(0,300)});if(recentErrors.length>20)recentErrors.shift();};
+  window.addEventListener('error',e=>{if(e.message){noteError(e.message);send('RUNTIME_ERROR',{message:e.message,lineno:e.lineno});}});
+  window.addEventListener('unhandledrejection',e=>{const m=String(e.reason?.message||e.reason||'Promise rejection');noteError(m);send('RUNTIME_ERROR',{message:m});});
   const originalError=console.error;
-  console.error=(...args)=>{send('RUNTIME_ERROR',{message:args.map(x=>String(x?.message||x)).join(' ').slice(0,1200)});originalError.apply(console,args);};
+  console.error=(...args)=>{const m=args.map(x=>String(x?.message||x)).join(' ').slice(0,1200);noteError(m);send('RUNTIME_ERROR',{message:m});originalError.apply(console,args);};
 
   function selectorFor(el){
     const pid=el.getAttribute('data-pid');
@@ -122,10 +125,26 @@ _TEMPLATE = r'''
       }else picked=[el];
       paint();reportPicks();return;
     }
+    if(e.isTrusted)traceClick(el);
     const link=el.closest('a[href]');const href=link?.getAttribute('href')||'';
     if(href.startsWith('#')){e.preventDefault();location.hash=href;return;}
     if(/\.html?(?:[?#].*)?$/i.test(href) && !/^(?:https?:)?\/\//i.test(href)){e.preventDefault();send('NAVIGATE',{href});}
   },true);
+  // 交互模式下用户真点的每一下：点了什么、点完地址变没变、内容变没变、有没有弹窗、有没有报错。
+  // 用户说「点了没反应」时，AI 不用在几千行源码里猜是哪个按钮
+  function quickSig(){const t=(document.body&&document.body.innerText)||'';let h=0;for(let i=0;i<t.length;i+=5)h=(h*31+t.charCodeAt(i))|0;return t.length+':'+h;}
+  function traceClick(el){
+    if(el.closest('[data-pa-overlay]'))return;
+    const target=el.closest('button,a,[role=button],[role=tab],[role=menuitem],[onclick],[data-action],li,td,label,input,select,summary')||el;
+    const label=((target.innerText||target.value||target.getAttribute('aria-label')||target.title||'').replace(/\s+/g,' ').trim()||target.tagName.toLowerCase()).slice(0,40);
+    let selector='';try{selector=selectorFor(target);}catch{}
+    const at=Date.now(),hashBefore=location.hash,sigBefore=quickSig(),layersBefore=layers().length;
+    setTimeout(()=>{
+      const errors=recentErrors.filter(x=>x.at>=at).map(x=>x.message).slice(0,3);
+      send('CLICK_TRACE',{label,selector,tag:target.tagName.toLowerCase(),hashBefore,hashAfter:location.hash,
+        changed:quickSig()!==sigBefore,opened:layers().length>layersBefore,errors,at});
+    },700);
+  }
   for(const type of ['pointerdown','mousedown'])window.addEventListener(type,e=>{if(mode==='select'){e.preventDefault();e.stopImmediatePropagation();}},true);
   function dragDown(e){
     if(mode!=='box'||e.button!==0)return;e.preventDefault();e.stopImmediatePropagation();

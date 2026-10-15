@@ -68,6 +68,7 @@ class AgentIn(BaseModel):
     selection: dict | None = None
     runtime_feedback: str = ""
     reference: dict | None = None
+    scene: dict | None = None   # 预览现场：停在哪页、最近点过什么、报过什么错
     intent: str = Field(default='auto', pattern='^(auto|discuss|edit)$')
     include_annotations: bool = True
 
@@ -452,7 +453,7 @@ def agent_chat(project_id: str, body: AgentIn, x_deepseek_key: str | None = Head
         return run_agent(project_id, body.page_id, body.message, key, body.model or settings['model'],
                          settings['base_url'], body.selection, body.runtime_feedback, body.reference, settings['max_tokens'],
                          settings.get('context_budget', 200_000), settings.get('max_rounds', 24),
-                         intent=body.intent, include_annotations=body.include_annotations)
+                         intent=body.intent, include_annotations=body.include_annotations, scene=body.scene)
     except Exception as exc:
         if not isinstance(exc, (WorkError, PatchError)):
             logging.getLogger(__name__).exception('Unexpected agent request failure')
@@ -505,7 +506,7 @@ def agent_stream(project_id: str, body: AgentIn):
                                settings['base_url'], body.selection, body.runtime_feedback, body.reference,
                                settings['max_tokens'], settings.get('context_budget', 200_000),
                                settings.get('max_rounds', 24),
-                               on_event=events.put, intent=body.intent, include_annotations=body.include_annotations,
+                               on_event=events.put, intent=body.intent, include_annotations=body.include_annotations, scene=body.scene,
                                stream=settings.get('stream', True), should_stop=stop.is_set)
             events.put({'type':'complete','result':result})
         except Exception as exc:

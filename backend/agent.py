@@ -204,6 +204,14 @@ def read_budget(context_budget: int) -> int:
     """
     return max(12_000, context_budget // 4)
 IDLE_LIMIT = 4       # 连续这么多轮只读不改，就催它下手或收工
+WRAPUP_AFTER = 6     # 催过还在读：只留「提问 / 汇报」两个工具，让它把找到的线索交出来，而不是报错收场
+WRAPUP_TOOLS = {"ask_user", "report_result"}
+WRAPUP_PROMPT = ("别再读源码了，根据已经读到的内容收个尾，三选一：\n"
+                 "1. 大致知道问题在哪、还差用户一句话 → ask_user：问题里先用一句话说你查到了什么，"
+                 "选项给 2–3 个最可能的位置或做法，用页面上的叫法（比如「左侧菜单的减碳项目管理」），不写选择器；\n"
+                 "2. 确认页面本来就没问题、不需要改 → report_result 说清依据；\n"
+                 "3. 实在找不到 → report_result 写明查了哪几处、为什么对不上，并告诉用户怎么指给你"
+                 "（点选那个元素，或在交互模式下把出问题的操作点一遍再发）。")
 REJECT_LIMIT = 3     # 同一个工具被同一个理由拒绝这么多次，就收手
 READ_ONLY_TOOLS = {"inspect_page", "search_source", "read_source_slice", "read_region",
                    "read_component", "read_skill", "read_skill_file", "search_skill_file"}
@@ -262,12 +270,38 @@ def context_text(a: dict) -> str:
     return "".join(f" {k}={a[k]!r}" for k in CONTEXT_KEYS if a.get(k))
 
 
+def scene_text(scene: dict | None) -> str:
+    """预览现场写成几行话：用户说「点了没反应」「报错了」时，AI 直接知道是哪个按钮、发生了什么。"""
+    if not isinstance(scene, dict):
+        return ""
+    text = lambda v, n=60: str(v or "").replace("\n", " ")[:n]
+    lines = []
+    if scene.get("route"):
+        lines.append(f"预览停在：{text(scene['route'], 120)}")
+    for c in [c for c in (scene.get("clicks") or []) if isinstance(c, dict)][-5:]:
+        what = []
+        if text(c.get("hashBefore"), 120) != text(c.get("hashAfter"), 120):
+            what.append(f"地址 {text(c.get('hashBefore'), 120) or '（空）'} → {text(c.get('hashAfter'), 120) or '（空）'}")
+        what.append("弹出了弹窗" if c.get("opened") else "内容有变化" if c.get("changed") else "页面没有任何变化")
+        errors = [text(e, 200) for e in (c.get("errors") or [])[:3]]
+        if errors:
+            what.append("报错：" + "；".join(errors))
+        lines.append(f"- 点了「{text(c.get('label'), 40)}」<{text(c.get('tag'), 12)}> selector={text(c.get('selector'), 200)} → {'，'.join(what)}")
+    errors = [text(e, 300) for e in (scene.get("errors") or [])[-5:]]
+    if errors:
+        lines.append("页面报过的错：" + "；".join(errors))
+    if not lines:
+        return ""
+    return ("\n用户在预览里的现场（按时间先后，最后一条最近）。用户说「点了没反应」「报错」「这里不对」时，"
+            "先按这里的 selector 和报错去源码里找，不要从头通读：\n" + "\n".join(lines))
+
+
 def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, model: str,
               base_url: str = "https://api.deepseek.com", selection: dict | None = None,
               runtime_feedback: str = "", reference: dict | None = None,
               max_tokens: int = 32000, context_budget: int = 200_000, max_rounds: int = 24,
               on_event=None, intent: str = 'auto', include_annotations: bool = True,
-              stream: bool = True, should_stop=None) -> dict[str, Any]:
+              stream: bool = True, should_stop=None, scene: dict | None = None) -> dict[str, Any]:
     emit = on_event or (lambda event: None)
     intent = resolve_intent(user_message, intent)
     read_only = intent == 'discuss'
@@ -297,7 +331,7 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
     # 也会被页面骨架带着跑，答成一份页面状态报告。
     background = (f"当前项目：{meta.get('name')}\n当前页面：{page.get('title')} / v{page.get('version')}\n"
                   f"保存的修改意见：\n{annotation_text}\n定位目标：\n{target_text}\n"
-                  f"页面骨架：{json.dumps(outline(source),ensure_ascii=False)}")
+                  f"页面骨架：{json.dumps(outline(source),ensure_ascii=False)}" + scene_text(scene))
     if runtime_feedback and not read_only:
         background += f"\n上次检查错误：{runtime_feedback[:2000]}"
     kickoff = ("以下是背景资料，只在和用户这轮问的事情相关时才用：\n" + background
@@ -319,6 +353,7 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
     changed, final_text = False, ""
     # 只读工具的调用指纹，用来识别"同一段又读一遍"；以及连续多少轮只看不动。
     read_seen, idle_rounds = set(), 0
+    wrapup_round = None   # 从第几轮起进入收尾（只能提问或汇报）
     budget = read_budget(context_budget)
     # 同一个工具被同一个理由连续拒绝多少次。failures 只管补丁失败，
     # 别的拒绝（只讨论模式下调修改工具、区域太大、参数越界）原来一次都不计，
@@ -341,7 +376,9 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
         on_delta = ((lambda text, kind="result": emit({"type": "note_delta" if kind == "note" else "text_delta", "text": text}))
                     if (stream and on_event) else None)
         try:
-            resp = chat(api_key, model, messages, tools, base_url=base_url, max_tokens=max_tokens, on_delta=on_delta,
+            wrapping = wrapup_round is not None and round_no >= wrapup_round
+            round_tools = [t for t in tools if t["function"]["name"] in WRAPUP_TOOLS] if wrapping else tools
+            resp = chat(api_key, model, messages, round_tools, base_url=base_url, max_tokens=max_tokens, on_delta=on_delta,
                         on_retry=lambda n, wait, exc: emit({"type":"model_retry","round":round_no+1,"attempt":n,
                                                             "label":f"模型服务忙，{wait} 秒后自动重试（第 {n} 次）"}),
                         should_stop=stopped)
@@ -385,7 +422,8 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
                     discussion = discussion_result(final_text)
                     break
                 raise WorkError('invalid_arguments', '模型返回了空回复，请重试')
-            if changed:
+            if changed or (wrapup_round is not None and round_no >= wrapup_round and final_text.strip()):
+                # 收尾轮直接用文字说了查到的情况：当作结论交给用户，不再追问
                 report = result_report({"summary":final_text}, saved_annotations, changed)
                 break
             if not saved_annotations and not re.search(r"改|新增|删除|调整|替换|增加|优化", user_message):
@@ -584,15 +622,22 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
         # 到了阈值就明确要求它二选一：动手，或者说清没什么要改的。
         if any(c.get("function",{}).get("name") in READ_ONLY_TOOLS for c in calls):
             idle_rounds = idle_rounds + 1 if not changed else 0
-        if idle_rounds >= IDLE_LIMIT * 2:
-            # 已经提醒过一轮还在读，说明它自己出不来了。停下比烧完额度再报"轮次上限"诚实。
+        if wrapup_round is not None and round_no >= wrapup_round:
+            # 收尾轮也没给出提问或结论（参数不对之类）：这时才算真的卡住
             incomplete = ("stalled", f"连续 {idle_rounds} 轮都在读源码、没有做出任何改动，已经停下")
             break
-        if idle_rounds == IDLE_LIMIT:
+        if idle_rounds >= WRAPUP_AFTER and wrapup_round is None and not changed:
+            # 催过还在读，说明它自己出不来了：不再让它读，逼它把线索交出来——问用户或者说明情况，
+            # 用户看到的是「我查到了这些，你指的是哪个？」，而不是一张「已停下」的报错卡
+            wrapup_round = round_no + 1
+            emit({"type":"step_done","id":"wrapup-" + str(round_no),"label":"定位不太顺，先整理查到的线索","detail":"不再翻源码，把查到的位置交给你确认"})
+            messages.append({"role":"user","content":WRAPUP_PROMPT})
+        elif idle_rounds == IDLE_LIMIT:
             messages.append({"role":"user","content":
                 f"提醒：已经连续 {IDLE_LIMIT} 轮只在读源码，一处都还没改。"
-                "现在只能二选一——要么基于已经读到的内容立刻改一处，"
-                "要么确认页面上本来就没有需要改的地方、用 report_result 把这个事实说清楚。"
+                "现在只能三选一——要么基于已经读到的内容立刻改一处；"
+                "要么确认页面上本来就没有需要改的地方、用 report_result 把这个事实说清楚；"
+                "要么定位不准时用 ask_user 列出你怀疑的 2–3 个位置让用户选。"
                 "不要再读同一片代码。若这类改动要落在很多处，用一条 CSS 规则或一段脚本统一处理，"
                 "不要一处一处改。"})
     else:
