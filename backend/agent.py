@@ -399,6 +399,9 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
         background += f"\n上次检查错误：{runtime_feedback[:2000]}"
     kickoff = ("以下是背景资料，只在和用户这轮问的事情相关时才用：\n" + background
                + "\n\n———\n用户这轮说的是：\n" + user_message)
+    if memory.looks_like_rule(user_message):
+        kickoff += ("\n\n（这句话里像有对整个项目长期有效的约定。如果是，除了照做，还要调 remember 用一句话记下来，"
+                    "以后别的页面也照这个来；只是这一次的要求就不用记。）")
     spec = (SYSTEM_PROMPT_PATH.parent / "design-spec.md").read_text("utf-8")
     content = kickoff
     if reference:
@@ -417,6 +420,7 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
     # 只读工具的调用指纹，用来识别"同一段又读一遍"；以及连续多少轮只看不动。
     read_seen, idle_rounds = set(), 0
     wrapup_round = None   # 从第几轮起进入收尾（只能提问或汇报）
+    remembered = []       # 这一轮新记住的约定：结果卡片上要让用户看见，记错了能当场撤销
     budget = read_budget(context_budget)
     # 同一个工具被同一个理由连续拒绝多少次。failures 只管补丁失败，
     # 别的拒绝（只讨论模式下调修改工具、区域太大、参数越界）原来一次都不计，
@@ -577,6 +581,8 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
                     except ValueError as exc:
                         raise PatchError(str(exc)) from exc
                     output = {"ok": True, **saved}
+                    if not saved.get("duplicate"):
+                        remembered.append({"id": saved["id"], "text": saved["text"]})
                 elif fn == "forget":
                     output = {"ok": memory.remove(project_id, str(args.get("id", ""))),
                               "id": args.get("id")}
@@ -717,13 +723,16 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
                                saved_annotations, changed)
     if discussion:
         discussion['selection'] = selection
+        if remembered: discussion['remembered'] = remembered
         storage.append_chat(project_id,'assistant',discussion['answer'],{'page_id':page_id,'changed':False,'intent':'discuss','discussion':discussion,'usage':usage})
-        return {'changed':False,'intent':'discuss','message':discussion['answer'],'discussion':discussion,'usage':usage,'tool_log':tool_log}
+        return {'changed':False,'intent':'discuss','message':discussion['answer'],'discussion':discussion,'usage':usage,'tool_log':tool_log,'remembered':remembered}
     if question:
+        if remembered: question['remembered'] = remembered
         storage.append_chat(project_id,"assistant",question['question'],{"page_id":page_id,"changed":False,"clarification":question,"usage":usage})
-        return {"changed":False,"intent":intent,"message":question['question'],"clarification":question,"usage":usage,"tool_log":tool_log}
+        return {"changed":False,"intent":intent,"message":question['question'],"clarification":question,"usage":usage,"tool_log":tool_log,"remembered":remembered}
     report = report or result_report({"summary":final_text},saved_annotations,changed)
     final_text = report['summary']
+    if remembered: report['remembered'] = remembered   # 跟着这条回复存进对话：刷新后卡片上照样看得到、撤得掉
     complete_ids = [a['id'] for a in report['annotations'] if a['status']=='completed']
     targets = changed_targets(all_operations,source,working_source,anns)
     if changed:
@@ -737,4 +746,4 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
         candidate = {}
         storage.append_chat(project_id,"assistant",final_text,{"page_id":page_id,"changed":False,"usage":usage,"report":report})
     return {"message":final_text,"changed":changed,"intent":intent,"version":page.get("version",1),"tool_log":tool_log,
-            "report":report,"usage":usage,**candidate}
+            "report":report,"usage":usage,"remembered":remembered,**candidate}

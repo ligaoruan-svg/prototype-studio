@@ -181,6 +181,18 @@ def list_memory(project_id: str):
     return {"memory": memory.listing(storage.load_meta(project_id)), "max": memory.MAX_ITEMS}
 
 
+class MemoryIn(BaseModel):
+    note: str
+
+
+@app.post("/api/projects/{project_id}/memory")
+def add_memory(project_id: str, body: MemoryIn):
+    try:
+        return memory.add(project_id, body.note)
+    except (ValueError, FileNotFoundError) as exc:
+        raise HTTPException(400, str(exc))
+
+
 @app.delete("/api/projects/{project_id}/memory/{note_id}")
 def delete_memory(project_id: str, note_id: str):
     return {"ok": memory.remove(project_id, note_id)}

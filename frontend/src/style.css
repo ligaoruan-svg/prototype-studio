@@ -454,3 +454,6 @@ input[type=color]::-webkit-color-swatch { border: none; border-radius: 2px; }
 .stop-run { margin-left: auto; min-height: 30px; gap: 5px; padding: 5px 12px; font-size: 12px; border-radius: 999px; color: var(--ink); }
 
 .message-shot { display: block; max-width: 160px; max-height: 110px; margin-top: 8px; border: 1px solid var(--line); border-radius: 8px; object-fit: cover; }
+
+.memory-add { display: flex; gap: 8px; margin: 4px 0 16px; }
+.memory-add input { flex: 1; min-width: 0; }

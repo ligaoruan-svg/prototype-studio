@@ -1,12 +1,16 @@
 <script setup>
-import { computed } from 'vue'
-import { Check, Undo2, ChevronDown, AlertCircle } from 'lucide-vue-next'
+import { computed, ref } from 'vue'
+import { Check, Undo2, ChevronDown, AlertCircle, BookmarkCheck } from 'lucide-vue-next'
 const props = defineProps({ result: Object, canUndo: Boolean, locked: Boolean, checking: Boolean })
-defineEmits(['undo', 'choose', 'apply', 'discuss', 'rephrase'])
+const emit = defineEmits(['undo', 'choose', 'apply', 'discuss', 'rephrase', 'forget'])
 const report = computed(() => props.result?.report)
 const discussion = computed(() => props.result?.discussion)
 // A question is already rendered by its own block; everything else needs a headline.
 const headline = computed(() => report.value?.summary || discussion.value?.answer || (props.result?.clarification ? '' : props.result?.content || ''))
+// 这次新记住的约定：明明白白摆在回复下面，记错了当场点「不用记」
+const remembered = computed(() => report.value?.remembered || discussion.value?.remembered || props.result?.clarification?.remembered || props.result?.remembered || [])
+const forgotten = ref(new Set())
+function forget(item) { forgotten.value = new Set([...forgotten.value, item.id]); emit('forget', item.id) }
 const statuses = { completed: '已完成', partial: '部分完成', unprocessed: '未处理' }
 </script>
 <template>
@@ -15,6 +19,7 @@ const statuses = { completed: '已完成', partial: '部分完成', unprocessed:
     <div v-if="result.clarification" class="clarification"><p>{{ result.clarification.question }}</p><button v-for="option in result.clarification.options" :key="option" class="outline" :disabled="locked" @click="$emit('choose', { option, clarification: result.clarification })">{{ option }}</button></div>
     <ol v-if="discussion?.suggestions?.length" class="suggestion-list"><li v-for="(suggestion, i) in discussion.suggestions" :key="i"><b>{{ suggestion.label }}</b><small>{{ suggestion.instruction }}</small><div class="suggestion-actions"><button class="outline" :disabled="locked" @click="$emit('apply', { suggestion, discussion })">按此建议修改</button><button class="text-button" :disabled="locked" @click="$emit('discuss', suggestion)">继续聊这条</button></div></li></ol>
     <ol v-if="report?.annotations?.length" class="opinion-results"><li v-for="item in report.annotations" :key="item.id" :class="item.status"><span>{{ item.number }}</span><div><b>{{ item.note || item.name }}</b><small>{{ statuses[item.status] }}{{ item.reason ? '：' + item.reason : '' }}</small></div></li></ol>
+    <div v-for="item in remembered" :key="item.id" class="remembered" :class="{ gone: forgotten.has(item.id) }"><BookmarkCheck :size="13" /><span v-if="!forgotten.has(item.id)">记住了：{{ item.text }}<small>以后这个项目的所有页面都照这个来</small></span><span v-else>已忘掉：{{ item.text }}</span><button v-if="!forgotten.has(item.id)" type="button" class="text-button" :disabled="locked" @click="forget(item)">不用记</button></div>
     <p v-for="assumption in report?.assumptions || []" :key="assumption" class="result-assumption">需要确认：{{ assumption }}</p>
     <p v-if="report?.out_of_scope" class="scope-note"><AlertCircle :size="12" />还改到了你圈定范围之外的 {{ report.out_of_scope.lines }} 行（{{ report.out_of_scope.places.join('、') }}{{ report.out_of_scope.more ? ' 等' : '' }}）。已经保存，请检查这些地方，不对就撤销这次修改</p>
     <div v-if="report?.retry_hint" class="retry-hint"><span>换种说法试试</span><button class="outline" :disabled="locked" @click="$emit('rephrase', report.retry_hint)">{{ report.retry_hint }}</button></div>
@@ -24,6 +29,10 @@ const statuses = { completed: '已完成', partial: '部分完成', unprocessed:
   </div>
 </template>
 <style scoped>
+.remembered{display:flex;align-items:flex-start;gap:7px;margin-top:10px;padding:8px 10px;border:1px solid #e6d8c6;border-radius:9px;background:#fbf7f0;font-size:12px;color:var(--ink)}
+.remembered svg{flex-shrink:0;margin-top:3px;color:var(--primary)}
+.remembered span{flex:1;min-width:0;overflow-wrap:anywhere}.remembered small{display:block;font-size:11px;color:var(--muted)}
+.remembered button{flex-shrink:0;font-size:11.5px}.remembered.gone{opacity:.6}
 /* 回复正文直接流在背景上；只有 diff、建议这类块才有自己的容器。 */
 .result-card{font-size:12px;line-height:1.7}
 .result-summary{font-size:13px;line-height:1.85;color:var(--ink);white-space:pre-wrap;overflow-wrap:anywhere}
