@@ -323,7 +323,8 @@ async function checkAndCommit(candidate) {
     const errors = await new Promise((resolve, reject) => {
       const frame = document.createElement('iframe')
       frame.title = '后台检查'; frame.setAttribute('sandbox', PREVIEW_SANDBOX); frame.setAttribute('aria-hidden', 'true'); frame.tabIndex = -1
-      Object.assign(frame.style, { position: 'fixed', left: '-20000px', top: '0', width: (canvasWidth.value || 1200) + 'px', height: '800px', border: '0' })
+      // 和展开的副本一样放在屏幕内、透明、点不到：放到屏幕外会被浏览器限速，慢一点的页面检查超时，好好的修改被拒
+      Object.assign(frame.style, { position: 'fixed', left: '0', top: '0', width: (canvasWidth.value || 1200) + 'px', height: '800px', border: '0', opacity: '0', pointerEvents: 'none', zIndex: '-1' })
       const found = []; let finishTimer, ready = false
       const cleanup = () => { clearTimeout(timeout); clearTimeout(finishTimer); window.removeEventListener('message', listener); frame.remove() }
       const listener = event => {
@@ -740,7 +741,9 @@ function exportExpand() {
   toast(`已导出 ${pages} 个业务页面、${views} 个视图${missing ? `；还有 ${missing} 个页面没展开，先点「一键展开」可以导出完整的` : ''}`)
 }
 function download(zip = false) { if (project.value) window.location.assign(zip ? `/api/projects/${project.value.id}/export` : endpoint('/download')) }
-function formatTime(value) { return new Date(value).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) }
+// 一个格式器反复用：每次 toLocaleString 都新建一个，聊天长了以后每敲一个字都要重算几百次
+const timeFormat = new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+function formatTime(value) { const d = new Date(value); return isNaN(d) ? '' : timeFormat.format(d) }
 function keydown(event) {
   if (dialog.value?.open) return
   const key = event.key.toLowerCase(), command = event.metaKey || event.ctrlKey
@@ -855,7 +858,7 @@ onUnmounted(() => { window.removeEventListener('message', onMessage); window.rem
       <div v-else-if="dialogType === 'palette'"><section class="property-section token-section"><div class="section-label"><span class="label-with-icon"><Palette :size="15" />项目设计变量</span><span>全局</span></div><p class="field-hint">修改变量，所有引用它的元素一起更新。</p><details><summary><span class="palette-preview"><i v-for="color in colors.slice(0, 6)" :key="color.key" :style="{ background: color.value }"></i></span><span>查看与调整</span><ChevronDown :size="13" /></summary><label v-for="color in colors" :key="color.key" class="token-row"><span>{{ color.label }}<small>{{ color.key }}</small></span><div><input type="color" :aria-label="`全局${color.label}`" :value="color.value.length === 7 ? color.value : '#ffffff'" :disabled="locked" @change="edit(color.key, $event.target.value)"><code>{{ color.value }}</code></div></label><p v-if="!Object.keys(sourceInfo.tokens).length" class="field-hint">当前为旧版原型。使用变量时会追加定义，现有视觉保持原样。</p></details></section></div>
       <ModelSettings v-else-if="dialogType === 'settings'" :model="model" :notice="dialogError" v-model:keep-inspector="keepInspector" @saved="model = $event" />
       <form v-else-if="dialogType === 'new'" @submit.prevent="createProject"><p class="dialog-intro">先建立可编辑的页面骨架，再逐步把想法做出来。</p><label>原型名称<input v-model="projectName" autofocus required maxlength="80" placeholder="例如：订单售后管理"></label><label>你想做什么？<span class="optional">选填</span><textarea v-model="brief" rows="5" placeholder="为谁设计？页面需要哪些内容、按钮和交互？"></textarea></label><p class="field-hint">{{ model.has_key ? '填写需求后将调用已配置的模型制作第一版。' : '尚未连接模型，将先创建骨架。你仍可使用属性面板直接编辑。' }}</p><p v-if="dialogError" class="form-error" role="alert">{{ dialogError }}</p><div class="dialog-actions"><button class="outline" type="button" :disabled="dialogBusy" @click="closeDialog">取消</button><button class="primary" :disabled="dialogBusy || !projectName.trim()"><LoaderCircle v-if="dialogBusy" class="spin" :size="16" />创建原型</button></div></form>
-      <div v-else class="history-content"><p class="dialog-intro">退回历史会生成新版本，已有版本始终保留。</p><div v-if="undoCount" class="manual-summary"><SlidersHorizontal :size="16" />还有 {{ undoCount }} 步修改可撤销，使用顶部撤销按钮。</div><div class="version-list"><div v-for="v in [...(page?.versions || [])].reverse()" :key="v.version" class="version-row"><span class="version-node" :class="{ current: v.version === page?.version }"></span><div><b>v{{ v.version }}<span v-if="v.version === page?.version" class="current-badge">当前基础版本</span></b><p>{{ v.reason }}</p><time>{{ formatTime(v.created_at) }}</time></div><button class="outline" :disabled="dialogBusy || (v.version === page?.version && !undoCount)" @click="restore(v.version)">退回</button></div></div><p v-if="dialogError" class="form-error" role="alert">{{ dialogError }}</p></div>
+      <div v-else class="history-content"><p class="dialog-intro">退回历史会生成新版本；保留第一版和最近 100 个版本。</p><div v-if="undoCount" class="manual-summary"><SlidersHorizontal :size="16" />还有 {{ undoCount }} 步修改可撤销，使用顶部撤销按钮。</div><div class="version-list"><div v-for="v in [...(page?.versions || [])].reverse()" :key="v.version" class="version-row"><span class="version-node" :class="{ current: v.version === page?.version }"></span><div><b>v{{ v.version }}<span v-if="v.version === page?.version" class="current-badge">当前基础版本</span></b><p>{{ v.reason }}</p><time>{{ formatTime(v.created_at) }}</time></div><button class="outline" :disabled="dialogBusy || (v.version === page?.version && !undoCount)" @click="restore(v.version)">退回</button></div></div><p v-if="dialogError" class="form-error" role="alert">{{ dialogError }}</p></div>
     </dialog>
     <div v-if="backendStale" class="stale-banner" role="alert"><AlertCircle :size="15" /><span>后台服务还在跑旧代码，新功能可能用不了：关掉原型工坊的终端窗口，再双击「启动原型工坊」重启一下。</span><button type="button" class="icon-button" aria-label="知道了" @click="backendStale = false"><X :size="13" /></button></div>
     <div v-if="notice" class="toast" role="status"><Check :size="16" />{{ notice }}</div>

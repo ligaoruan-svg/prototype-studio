@@ -129,7 +129,7 @@ async function ensureRoutes(currentRoute = '') {
   if (routesJob) return routesJob
   const g = gen, c = ctx
   expand.discovering = true
-  routesJob = (async () => {
+  const job = (async () => {
     try {
       const found = await discoverRoutes({ doc: c.makeDoc(''), width: c.width })   // 从刚打开的样子找，首页才不会漏
       if (g !== gen) return
@@ -139,9 +139,11 @@ async function ensureRoutes(currentRoute = '') {
       routesV = ROUTES_V
       saveRoutes(c)
     } catch (e) { if (g === gen) expand.error = e.message || '没找到页面列表' }
-    finally { if (g === gen) expand.discovering = false; routesJob = null }
+    // 只清自己：切了项目以后新项目可能已经开始自己的查找，旧的跑完不能把它的标记一起清掉（否则会再开一份）
+    finally { if (g === gen) expand.discovering = false; if (routesJob === job) routesJob = null }
   })()
-  return routesJob
+  routesJob = job
+  return job
 }
 
 // 改了一版：菜单里可能多了页面（AI 加了「巡检人员」）或少了。重新认一遍业务页面；

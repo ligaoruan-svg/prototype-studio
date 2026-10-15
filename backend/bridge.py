@@ -432,16 +432,19 @@ _TEMPLATE = r'''
     const seen=new Set();return items.filter(el=>{const t=ownText(el);if(seen.has(t))return false;seen.add(t);return true});
   }
   let navCache=null;
+  let navMiss=0;
   function navBox(){
     if(navCache&&navCache.isConnected&&vis(navCache))return navCache;
+    // 没有侧栏/顶栏的页面：每次都要把整页元素量一遍，一次试按钮里会调好几次。没找到就记一会儿，别反复量
+    if(Date.now()-navMiss<1500)return null;
     const W=innerWidth,H=innerHeight;
     const cand=new Set([...document.querySelectorAll(NAV_SEL)].filter(vis));
     for(const el of document.body.querySelectorAll('*')){if(!vis(el)||el.closest('[data-pa-overlay]'))continue;const r=el.getBoundingClientRect();
       if((r.left<40&&r.width<W*0.35&&r.height>H*0.55)||(r.top<90&&r.height<130&&r.width>W*0.6))cand.add(el);}
-    let best=null,score=2;
-    for(const el of cand){if(layers().some(l=>l.contains(el)))continue;const r=el.getBoundingClientRect();if(r.width>W*0.6&&r.height>H*0.6)continue;
+    let best=null,score=2;const open=layers();
+    for(const el of cand){if(open.some(l=>l.contains(el)))continue;const r=el.getBoundingClientRect();if(r.width>W*0.6&&r.height>H*0.6)continue;
       const n=navItems(el).length;if(n>score||(n===score&&best&&best.contains(el))){best=el;score=n;}}
-    navCache=best;return best;
+    navCache=best;if(!best)navMiss=Date.now();return best;
   }
   const ACTIVE=/(^|[\s_-])(active|current|selected|is-active|on|checked|router-link-active|router-link-exact-active)($|[\s_-])/i;
   // 当前高亮的菜单项：先认 class / aria，再认「颜色和其他项都不一样」的那一个

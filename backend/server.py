@@ -21,7 +21,9 @@ from . import storage, config, transactions, components, memory, skills
 from .agent import run_agent
 from .atomicio import write_atomic
 from .bridge import build_bridge
+from .safety import host_name, zip_member_ok, to_utf8
 from .patcher import apply_operations, locate, outline, token_values, DEFAULT_TOKENS, PatchError
+from starlette.concurrency import run_in_threadpool
 from .deepseek_client import chat
 from .errors import WorkError, error_payload
 from .experience import REGION_NAMES, element_name
@@ -37,13 +39,29 @@ from urllib.parse import urlsplit as _urlsplit
 from fastapi.responses import JSONResponse as _JSONResponse
 
 
+# DNS rebinding：恶意网站把自己的域名临时解析到 127.0.0.1，浏览器就把它当成同源，
+# Origin 和 Host 都是 evil.com:5173，上面的比较拦不住。所以 Host 本身必须是本机地址。
+LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1", "testserver"}
+
+
 @app.middleware("http")
 async def same_origin_only(request, call_next):
+    if host_name(request.headers.get("host", "")) not in LOCAL_HOSTS:
+        return _JSONResponse({"detail": "原型工坊只接受本机地址（127.0.0.1 / localhost）的访问"}, status_code=400)
     if request.method not in ("GET", "HEAD", "OPTIONS"):
         origin = request.headers.get("origin")
         if origin is not None and _urlsplit(origin).netloc != request.headers.get("host", ""):
             return _JSONResponse({"detail": "只接受原型工坊自己页面发来的修改请求"}, status_code=403)
+        # 没带 Origin 的浏览器请求（老式表单之类），看 Sec-Fetch-Site：不是同源发来的一律不收
+        site = request.headers.get("sec-fetch-site")
+        if origin is None and site and site not in ("same-origin", "none"):
+            return _JSONResponse({"detail": "只接受原型工坊自己页面发来的修改请求"}, status_code=403)
     return await call_next(request)
+
+
+# 原型的 HTML 和 API 同源：要是有人直接在浏览器里打开预览地址，原型里的脚本就能调本机 API。
+# 加上 CSP sandbox，直接打开时它也跑在隔离的沙箱里（界面里本来就是用沙箱 iframe 载入的，不受影响）
+SANDBOX_CSP = {"Content-Security-Policy": "sandbox allow-scripts allow-forms allow-modals allow-popups"}
 
 
 class AnnotationIn(BaseModel):
@@ -243,7 +261,7 @@ def save_design_spec(body: SpecIn):
 async def extract_design_tokens(file: UploadFile = File(...)):
     """从一份现成页面里读出它定义的 CSS 变量，交给用户确认后再写进规范。"""
     raw = (await file.read())[:4_000_000].decode("utf-8", errors="replace")
-    found = token_values(raw)
+    found = await run_in_threadpool(token_values, raw)   # 解析几 MB 的页面别卡住其他请求（包括正在推进度的那条）
     tokens = {name: value.strip()[:40] for name, value in found.items() if len(name) <= 40}
     if not tokens:
         raise HTTPException(400, "这份文件里没有找到 :root 上的 CSS 变量定义")
@@ -380,9 +398,16 @@ def remove_skill(name: str):
 async def add_component(file: UploadFile = File(...), name: str = Form("")):
     source = (name or file.filename or "").strip()
     raw = await file.read()
+    # 解压、写文件放到线程里做：在事件循环里做会让所有请求（包括 AI 正在推的进度）一起卡住
+    return await run_in_threadpool(_add_component, source, raw)
+
+
+def _add_component(source: str, raw: bytes):
     try:
         if source.lower().endswith(".zip"):
-            data = raw[:components.MAX_ZIP_BYTES + 1]
+            if len(raw) > components.MAX_ZIP_BYTES:
+                raise HTTPException(400, f"压缩包太大（最多 {components.MAX_ZIP_BYTES // 1024 // 1024}MB）")
+            data = raw   # 以前截断压缩后的字节，zip 目录在文件末尾，超过上限的包一律报「损坏」
             try:
                 # 带 SKILL.md 的按 skill 收，保留整包结构；否则退回拆成零散组件。
                 return {"kind": "skill", **skills.import_archive(data)}
@@ -410,8 +435,8 @@ def remove_component(name: str):
 
 @app.post("/api/projects/new")
 def new_project(body: NewProjectIn):
+    html = (ROOT / "sample" / "starter.html").read_text('utf-8')   # 先读模板：读不到就别建出一个空项目
     project = storage.create_project(body.name.strip()[:80] or "未命名原型")
-    html = (ROOT / "sample" / "starter.html").read_text('utf-8')
     import html as html_lib
     html = html.replace('新原型', html_lib.escape(project['name']))
     (storage.project_dir(project['id']) / 'source' / 'index.html').write_text(html, 'utf-8')
@@ -424,12 +449,19 @@ def projects():
     return storage.list_projects()
 
 
+ZIP_MAX_TOTAL = 300 * 1024 * 1024   # 解压后最多这么大（防压缩炸弹把磁盘写满）
+ZIP_MAX_FILES = 3000
+
+
 def _safe_extract(zf: zipfile.ZipFile, target: Path):
-    for info in zf.infolist():
-        p = PurePosixPath(info.filename)
-        if p.is_absolute() or ".." in p.parts:
+    infos = [i for i in zf.infolist() if zip_member_ok(i.filename)]
+    if len(infos) > ZIP_MAX_FILES or sum(i.file_size for i in infos) > ZIP_MAX_TOTAL:
+        raise HTTPException(400, f"压缩包太大：最多 {ZIP_MAX_FILES} 个文件、解压后 {ZIP_MAX_TOTAL // 1024 // 1024}MB")
+    root = target.resolve()
+    for info in infos:
+        out = target.joinpath(*PurePosixPath(info.filename).parts)
+        if root not in out.resolve().parents and out.resolve() != root:
             continue
-        out = target.joinpath(*p.parts)
         if info.is_dir():
             out.mkdir(parents=True, exist_ok=True)
         else:
@@ -442,28 +474,39 @@ def _safe_extract(zf: zipfile.ZipFile, target: Path):
 async def upload_project(file: UploadFile = File(...), name: str = Form("")):
     filename = file.filename or "prototype.html"
     raw = await file.read()
-    project = storage.create_project(name or Path(filename).stem)
-    pdir = storage.project_dir(project["id"])
-    source = pdir / "source"
+    return await run_in_threadpool(_import_upload, filename, raw, name)
+
+
+def _import_upload(filename: str, raw: bytes, name: str):
     suffix = Path(filename).suffix.lower()
-    if suffix in {".html", ".htm"}:
-        target = source / Path(filename).name
-        target.write_bytes(raw)
-        storage.add_page(project["id"], target.name, Path(filename).stem)
-    elif suffix == ".zip":
+    # 先验文件、再建项目：以前传错文件（.txt、坏 zip、zip 里没有网页）会在列表里留下一个空项目
+    if suffix not in {".html", ".htm", ".zip"}:
+        raise HTTPException(400, "目前支持 HTML 页面或包含多页面的 ZIP")
+    archive = None
+    if suffix == ".zip":
         try:
-            with zipfile.ZipFile(io.BytesIO(raw)) as zf:
-                _safe_extract(zf, source)
+            archive = zipfile.ZipFile(io.BytesIO(raw))
         except zipfile.BadZipFile as exc:
             raise HTTPException(400, "ZIP 文件损坏") from exc
-        html_files = sorted([p for p in source.rglob("*") if p.suffix.lower() in {".html", ".htm"}])
-        if not html_files:
+        if not any(zip_member_ok(i.filename) and PurePosixPath(i.filename).suffix.lower() in {".html", ".htm"}
+                   for i in archive.infolist()):
             raise HTTPException(400, "ZIP 中没有 HTML 页面")
-        for p in html_files:
-            rel = str(p.relative_to(source)).replace("\\", "/")
-            storage.add_page(project["id"], rel, p.stem)
-    else:
-        raise HTTPException(400, "目前支持 HTML 页面或包含多页面的 ZIP")
+    project = storage.create_project(name or Path(filename).stem)
+    source = storage.project_dir(project["id"]) / "source"
+    try:
+        if archive is None:
+            target = source / Path(filename).name
+            target.write_bytes(to_utf8(raw))
+            storage.add_page(project["id"], target.name, Path(filename).stem)
+        else:
+            with archive:
+                _safe_extract(archive, source)
+            for p in sorted(p for p in source.rglob("*") if p.suffix.lower() in {".html", ".htm"}):
+                p.write_bytes(to_utf8(p.read_bytes()))
+                storage.add_page(project["id"], str(p.relative_to(source)).replace("\\", "/"), p.stem)
+    except BaseException:
+        shutil.rmtree(storage.project_dir(project["id"]), ignore_errors=True)
+        raise
     return storage.load_meta(project["id"])
 
 
@@ -791,7 +834,8 @@ def preview_asset(project_id: str, asset_path: str):
     if any(p.get('deleted_at') and (root / p['path']).resolve() == path for p in meta['pages']):
         raise HTTPException(404, "页面已移入回收站")
     media = mimetypes.guess_type(str(path))[0] or "application/octet-stream"
-    return FileResponse(path, media_type=media)
+    risky = media in {"text/html", "image/svg+xml", "application/xhtml+xml", "text/xml", "application/xml"}
+    return FileResponse(path, media_type=media, headers=SANDBOX_CSP if risky else None)
 
 
 @app.get("/preview/{project_id}/{page_id}", response_class=HTMLResponse)
@@ -822,7 +866,7 @@ def preview_html(project_id, page_id, page, html):
         html = html[:idx] + bridge + html[idx:]
     else:
         html += bridge
-    return HTMLResponse(html, headers={"Cache-Control":"no-store"})
+    return HTMLResponse(html, headers={"Cache-Control":"no-store", **SANDBOX_CSP})
 
 
 @app.get('/api/projects/{project_id}/pages/{page_id}/source')

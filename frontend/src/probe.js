@@ -4,6 +4,16 @@
 
 const MAX_TRIES = 120, MAX_DEPTH = 4, BUDGET_MS = 240_000
 const plain = value => JSON.parse(JSON.stringify(value ?? null))
+// 进度最多每 400ms 报一次：每报一次都要把所有节点的 HTML 深拷贝一遍、整棵树重建、每张卡片重算，
+// 60 个节点的同步光拷贝就占掉一秒多主线程。最后一次总会报出去
+function throttle(fn, ms = 400) {
+  let last = 0, timer = null, pending = null
+  const fire = () => { timer = null; last = Date.now(); const args = pending; pending = null; fn(...args) }
+  const call = (...args) => { pending = args; if (timer) return; const wait = ms - (Date.now() - last); if (wait <= 0) fire(); else timer = setTimeout(fire, wait) }
+  call.flush = () => { if (timer) { clearTimeout(timer); fire() } }
+  call.cancel = () => { if (timer) clearTimeout(timer); timer = null; pending = null }
+  return call
+}
 // 页面上第一层的按钮和页签（去掉「表格行 · 」，同类按钮每行都有，只认名字）
 const bareLabel = t => String(t || '').replace(/^表格行 · /, '').replace(/^页签 · /, '')
 export function topLabels(init) {
@@ -88,7 +98,7 @@ export async function probePage({ doc, width = 1150, height = 800, routes = [], 
   // jumps：这一页上点了会跳到别的业务页面的按钮。它们不进树（那一页有自己的树），只在页面卡下面列出来
   // links：点了切到同一页另一个页签的（整改跟踪 → 异常跟踪）；dead：展示类按钮点了没任何反应，待补
   const result = { title: '', styles: null, page: '', width, height, nodes: [], jumps: [], links: [], dead: [], tried: 0, total: 0, cancelled: false, coverage }
-  const report = current => onUpdate(plain({ ...result, current }))
+  const report = throttle(current => onUpdate(plain({ ...result, current })))
   try {
     await hold()
     const { init, base } = await begin(probe, width, height)
@@ -175,7 +185,7 @@ export async function probePage({ doc, width = 1150, height = 800, routes = [], 
     coverage.ms = Date.now() - started - waited
     coverage.reloads = probe.reloads
     return plain(result)
-  } finally { probe.dispose() }
+  } finally { report.cancel(); probe.dispose() }   // 结果已经返回了，别让还没发出的进度晚到、盖掉最终结果
 }
 
 // 改完之后同步：已经知道每张卡怎么点开，直接按路径重新点一遍拍新快照，
@@ -186,7 +196,7 @@ export async function syncNodes({ doc, pause = null, nodes = [], jumps = [], lin
   const result = { title: '', styles: null, page: '', width, height, nodes: plain(nodes).map(n => ({ ...n, pending: true })), jumps: plain(jumps), links: plain(links), dead: plain(dead), coverage: plain(coverage), done: 0, total: nodes.length, stale: 0 }
   // 重拍时取不到标题（子页面常常只有整站标题）就留着原来的，免得卡片标题变空
   const keepTitle = (node, title, pageTitle) => (!title || (node.kind === 'subpage' && title === pageTitle) ? node.title : title)
-  const report = () => onUpdate(plain(result))
+  const report = throttle(() => onUpdate(plain(result)))
   try {
     if (pause) await pause()
     const { init, base } = await begin(probe, width, height)
@@ -213,7 +223,7 @@ export async function syncNodes({ doc, pause = null, nodes = [], jumps = [], lin
     }
     result.nodes = result.nodes.map(n => ({ ...n, pending: false }))   // 中途取消的也别一直挂着「更新中」
     return plain(result)
-  } finally { probe.dispose() }
+  } finally { report.cancel(); probe.dispose() }
 }
 
 // 这个原型里有哪些页面（导航里的 #路由）

@@ -23,7 +23,7 @@ class StreamUnsupported(DeepSeekError):
     """端点不接受 stream + tools —— 可以退回一次性请求重试。"""
 
 
-def _curl_request(api_key: str, payload: dict[str, Any], api_url: str) -> dict[str, Any]:
+def _curl_request(api_key: str, payload: dict[str, Any], api_url: str, should_stop=None) -> dict[str, Any]:
     curl = shutil.which("curl")
     if not curl:
         raise DeepSeekError("系统未找到 curl")
@@ -37,23 +37,38 @@ def _curl_request(api_key: str, payload: dict[str, Any], api_url: str) -> dict[s
             'header = "Content-Type: application/json"\n'
             f'data-binary = "@{payload_path}"\n'
             'connect-timeout = 30\n'
-            'max-time = 180\n'
+            'max-time = 600\n'
         )
-        try:
-            result = subprocess.run(
+        # 一次性返回要等模型整段写完：以前 180 秒就掐断，长输出必然超时，还被当成「网络抖动」重试三次——
+        # 四次都是付了费又扔掉的生成。现在和流式一样等 10 分钟，超时不重试；等的时候也看停止按钮
+        process = subprocess.Popen(
             [curl, "--silent", "--show-error", "--fail-with-body", "--http1.1", "--config", "-"],
-            input=config,
-            text=True,
-            capture_output=True,
-            timeout=200,
-            )
-        except subprocess.TimeoutExpired as exc:
-            raise DeepSeekError('模型请求超时', 'network') from exc
-        if result.returncode != 0:
-            detail = ((result.stderr or "") + " " + (result.stdout or "")).strip() or "curl 调用失败"
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        out = err = ""
+        try:
+            deadline, feed = time.time() + 620, config
+            while True:
+                try:
+                    out, err = process.communicate(input=feed, timeout=0.5)
+                    break
+                except subprocess.TimeoutExpired:
+                    feed = None   # 配置已经送进去了，之后只等输出
+                    if should_stop and should_stop():
+                        process.kill(); process.communicate()
+                        raise DeepSeekError('已停止', 'stopped')
+                    if time.time() > deadline:
+                        process.kill(); process.communicate()
+                        raise DeepSeekError('模型 10 分钟没有回完，已放弃这次请求', 'timeout')
+        finally:
+            if process.poll() is None:
+                process.kill()
+        if process.returncode == 28:
+            raise DeepSeekError('模型 10 分钟没有回完，已放弃这次请求', 'timeout')
+        if process.returncode != 0:
+            detail = ((err or "") + " " + (out or "")).strip() or "curl 调用失败"
             raise DeepSeekError(detail[:2000])
         try:
-            return json.loads(result.stdout)
+            return json.loads(out)
         except json.JSONDecodeError as exc:
             raise DeepSeekError("模型返回了无法解析的 JSON", 'invalid_arguments') from exc
 
@@ -222,9 +237,24 @@ def _curl_stream(api_key, payload, api_url, on_delta, should_stop=None):
             raise (StreamUnsupported if _looks_like_stream_refusal(detail) else DeepSeekError)(detail[:2000])
         if not events:
             return _fallback_response(body)
-        if not result['choices'][0]['finish_reason'] and not result['choices'][0]['message'].get('tool_calls'):
-            raise DeepSeekError('模型流式响应中断，本次未做修改', 'network')
+        _check_complete(result)
         return result
+
+
+def _check_complete(result):
+    """流式中途断了：没有结束标记。带着工具调用的也要查——半截的工具参数不是完整 JSON，
+    以前会被当成「模型参数写错了」计入失败次数，其实只是网络断了，应该重试"""
+    choice = result['choices'][0]
+    if choice.get('finish_reason'):
+        return
+    calls = choice['message'].get('tool_calls') or []
+    if not calls:
+        raise DeepSeekError('模型流式响应中断，本次未做修改', 'network')
+    for call in calls:
+        try:
+            json.loads((call.get('function') or {}).get('arguments') or '{}')
+        except ValueError:
+            raise DeepSeekError('模型流式响应中断（工具参数只收到一半），本次未做修改', 'network') from None
 
 
 def _urllib_stream(api_key, payload, api_url, on_delta):
@@ -242,6 +272,8 @@ def _urllib_stream(api_key, payload, api_url, on_delta):
                     yield text
 
             result = _assemble(_iter_events(lines(), events), on_delta)
+            if events:
+                _check_complete(result)
             return result if events else _fallback_response(''.join(seen))
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode('utf-8', errors='replace')[:1600]
@@ -262,7 +294,8 @@ _FATAL = re.compile(r'\b(400|401|402|403|404|413|422)\b|insufficient|balance|余
 
 def retryable(exc: Exception) -> bool:
     text = str(exc)
-    if getattr(exc, 'code', '') == 'stopped' or _FATAL.search(text):
+    # timeout：等满 10 分钟都没回完，再来一次也一样，只是再付一次钱
+    if getattr(exc, 'code', '') in ('stopped', 'timeout') or _FATAL.search(text):
         return False
     return getattr(exc, 'code', '') == 'network' or bool(_RETRYABLE.search(text))
 
@@ -310,5 +343,5 @@ def _chat_once(api_key, model, messages, tools, base_url, max_tokens, on_delta, 
             # 接口不接受 stream + tools：本轮退回一次性返回，不逐字显示，但不失败。
             pass
     if shutil.which("curl"):
-        return _curl_request(api_key, payload, api_url)
+        return _curl_request(api_key, payload, api_url, should_stop)
     return _urllib_request(api_key, payload, api_url)

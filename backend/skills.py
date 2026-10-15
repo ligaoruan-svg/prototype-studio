@@ -154,7 +154,8 @@ def import_archive(raw: bytes) -> dict:
     staged, skipped, total = {}, [], 0
     for info in entries:
         path = PurePosixPath(info.filename)
-        if any(p.startswith(("__MACOSX", ".")) for p in path.parts) or path.is_absolute() or ".." in path.parts:
+        if "\\" in info.filename or re.match(r"^[A-Za-z]:", info.filename) or \
+                any(p.startswith(("__MACOSX", ".")) for p in path.parts) or path.is_absolute() or ".." in path.parts:
             continue
         if base.parts and base not in path.parents:
             continue
@@ -166,13 +167,22 @@ def import_archive(raw: bytes) -> dict:
         staged[relative] = archive.read(info).decode("utf-8", errors="replace")
         total += info.file_size
 
+    if PurePosixPath("SKILL.md") not in staged:
+        raise ValueError("SKILL.md 超过大小上限，没法装；原来的同名 skill 保持不变")
+    # 先写到临时文件夹、写完整了再换上去：以前先删旧的再写新的，新包有问题就两头落空
     folder = ROOT / name
-    if folder.exists():
-        shutil.rmtree(folder)
+    temp = ROOT / f".{name}.installing"
+    shutil.rmtree(temp, ignore_errors=True)
     for relative, text in staged.items():
-        target = folder.joinpath(*relative.parts)
+        target = temp.joinpath(*relative.parts)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(text, "utf-8")
+    old = ROOT / f".{name}.old"
+    shutil.rmtree(old, ignore_errors=True)
+    if folder.exists():
+        folder.rename(old)
+    temp.rename(folder)
+    shutil.rmtree(old, ignore_errors=True)
     item = _entry(folder)
     return {"name": name, "description": item["description"] if item else "",
             "files": sorted(str(r) for r in staged), "skipped": skipped[:12], "skipped_count": len(skipped)}

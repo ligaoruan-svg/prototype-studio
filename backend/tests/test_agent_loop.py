@@ -32,8 +32,8 @@ class SliceHonesty(unittest.TestCase):
     def test_读取预算跟着上下文预算走(self):
         """窗口大就一次多给点，但绝不让一次读取吃掉超过四分之一的上下文。"""
         self.assertEqual(read_budget(40_000), 12_000, "窗口小也要保底能读一段")
-        self.assertEqual(read_budget(200_000), 50_000)
-        self.assertEqual(read_budget(800_000), 200_000)
+        self.assertEqual(read_budget(200_000), 20_000, "一次最多读两万字，读进来的每步都要重发")
+        self.assertEqual(read_budget(800_000), 20_000)
         for ctx in (40_000, 200_000, 800_000):
             self.assertLessEqual(read_budget(ctx), max(12_000, ctx // 4))
 
@@ -87,7 +87,7 @@ class IdleGuard(unittest.TestCase):
     def test_空转到阈值时会催它二选一(self):
         text = (ROOT / "backend" / "agent.py").read_text("utf-8")
         self.assertIn("idle_rounds", text)
-        block = text.split("idle_rounds == IDLE_LIMIT")[1][:700]
+        block = text.split("idle_rounds >= IDLE_LIMIT")[1][:700]
         self.assertIn("report_result", block)
         self.assertIn("CSS", block)
 

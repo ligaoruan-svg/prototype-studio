@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .deepseek_client import chat, DeepSeekError
-from .patcher import apply_operations, verify_source, PatchError, regions, outline
+from .patcher import apply_operations, verify_source, PatchError, regions, outline, new_issues
 from . import storage
 from .transactions import stage
 from .errors import WorkError, error_payload
@@ -192,7 +192,7 @@ def expand_components(ops: list[dict]) -> list[dict]:
     它只写名字，内容由这里填。
     """
     slots = {"before": "insert_before", "after": "insert_after",
-             "inside": "set_html", "replace": "replace_outer_html"}
+             "inside": "append_html", "replace": "replace_outer_html"}
     for op in ops:
         if op.get("action") != "insert_component":
             continue
@@ -207,13 +207,22 @@ def expand_components(ops: list[dict]) -> list[dict]:
     return ops
 
 
+def _num(value, default: int) -> int:
+    """模型给的行号可能是 null、"12"、12.0，取不到就用默认值，不能让一个参数把整轮工作抛成内部错误"""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def read_budget(context_budget: int) -> int:
     """一次读取最多给多少字符。
 
     跟上下文预算挂钩：窗口大就一次多给点，省得来回分段读；
     但永远不超过预算的四分之一——一次读掉一半上下文，剩下的不够干活。
     """
-    return max(12_000, context_budget // 4)
+    return min(READ_CAP, max(12_000, context_budget // 4))
+READ_CAP = 20_000           # 一次读最多这么多字：读进来的每一字之后每一步都要重发，要多看就接着读下一段
 SKILL_READ_LIMIT = 8000     # skill 附带文件一次最多给这么多字；整份读大文件只给目录
 SHELL_MAX_EXISTING = 8000   # 页面比这还大就算「已有内容」，不许整页换成外壳
 STALE_ROUNDS = 2            # 规范、组件库、读过的源码，用过这么多轮后收成一句话（不等攒满上下文预算）
@@ -444,8 +453,12 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
     changed, final_text = False, ""
     # 只读工具的调用指纹，用来识别"同一段又读一遍"；以及连续多少轮只看不动。
     read_seen, idle_rounds = set(), 0
+    nudged = text_nudges = 0   # 「只读不改」的提醒发过几次；只说不调工具被催过几次
+    # 页面原来就有的问题：之后的检查只拦新冒出来的，不能因为页面本来就有个坏脚本，任何修改都被拒
+    baseline = verify_source(source)
     wrapup_round = None   # 从第几轮起进入收尾（只能提问或汇报）
-    reads = []            # (消息下标, 工具名, 第几轮)：读规范、组件库、源码的结果，用过两轮就收起来
+    reads = []            # (消息下标, 工具名, 第几轮, 读取指纹)：读规范、组件库、源码的结果，用过两轮就收起来
+    writes = []           # (助手消息下标, 第几轮)：带大段修改参数的那条，用过两轮也收起来
     remembered = []       # 这一轮新记住的约定：结果卡片上要让用户看见，记错了能当场撤销
     budget = read_budget(context_budget)
     # 同一个工具被同一个理由连续拒绝多少次。failures 只管补丁失败，
@@ -460,15 +473,19 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
             break
         # 用过的大段读取结果（规范、组件库、源码片段）过两轮就收成一句话：不等攒满上下文预算才收，
         # 否则它们会跟着后面每一步重发——一页生成 50 多万输入 tokens 大半是这么来的
-        collapsed = 0
-        for at, name, when in reads:
+        for at, name, when, fingerprint in reads:
             content = messages[at].get("content")
             if round_no - when >= STALE_ROUNDS and isinstance(content, str) and len(content) > 1500 and '"collapsed": true' not in content:
-                messages[at]["content"] = json.dumps({"collapsed": True, "tool": name,
+                # 说清收起的是哪一段（读的参数），它真要再看才知道读哪；只放开这一段的「读过了」拦截，别的照拦
+                messages[at]["content"] = json.dumps({"collapsed": True, "tool": name, "args": json.loads(fingerprint[1]),
                     "summary": "这段读取结果前面用过了，已收起；还需要原文就按行号再读那一小段。"}, ensure_ascii=False)
-                collapsed += 1
-        if collapsed:
-            read_seen.clear()
+                read_seen.discard(fingerprint)
+        # 已经应用的大段修改：参数原文（整页 HTML、几百行新代码）留在助手消息里会跟着每一步重发，改完过两轮收成一句话
+        for at, when in writes:
+            for c in messages[at].get("tool_calls") or []:
+                fnc = c.get("function") or {}
+                if round_no - when >= STALE_ROUNDS and len(fnc.get("arguments") or "") > 1500:
+                    fnc["arguments"] = json.dumps({"collapsed": True, "note": "这次修改已经应用到页面上，参数原文省略；要看现在的样子就读源码"}, ensure_ascii=False)
         size_before = sum(len(str(m.get("content") or "")) for m in messages)
         compact_messages(messages, context_budget)
         if sum(len(str(m.get("content") or "")) for m in messages) < size_before:
@@ -505,6 +522,9 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
             # 而不是让一次超长直接毁掉整轮工作。
             truncations += 1
             if truncations > 2:
+                if changed:   # 前面已经改好、通过检查的部分留着，交给检查和保存
+                    incomplete = ("output_limit", "连续三次输出超长，后面的没能继续")
+                    break
                 raise WorkError("output_limit","连续三次输出超长。请把需求拆成几次说，或在设置里提高输出上限。")
             emit({"type":"step_error","id":f"trunc{truncations}","label":"这一步写得太长，正在拆小重来",
                   "error":{"message":f"输出超长，已丢弃（第 {truncations} 次），换成分次修改"}})
@@ -519,6 +539,8 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
         calls = msg.get("tool_calls") or []
         if calls: assistant["tool_calls"] = calls
         messages.append(assistant)
+        if any(len(((c.get("function") or {}).get("arguments") or "")) > 1500 for c in calls):
+            writes.append((len(messages) - 1, round_no))
         if not calls:
             final_text = str(msg.get("content") or "")
             if read_only:
@@ -533,8 +555,15 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
             if not saved_annotations and not re.search(r"改|新增|删除|调整|替换|增加|优化", user_message):
                 report = result_report({"summary":final_text}, saved_annotations, False)
                 break
+            text_nudges += 1
+            if text_nudges > 2 and final_text.strip():
+                # 催了两次还是只用文字回：把这段话当结论，别再整份上下文重发烧轮次
+                report = result_report({"summary":final_text}, saved_annotations, False)
+                break
             messages.append({"role":"user","content":"需要修改时请实际执行；需要确认时调用 ask_user；无法处理则用 report_result 说明原因，不要声称已修改。"})
             continue
+        offered = {t["function"]["name"] for t in round_tools}
+        apply_failed = False   # 这条消息里有没有修改没成功：之后同一条里的 report_result 不能说「已改好」
         for call in calls:
             if stopped():
                 incomplete = ("stopped", "你停止了这次处理")
@@ -552,14 +581,20 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
                 tool_log.append({"tool":fn,"args":{},"output":output})
                 messages.append({"role":"tool","tool_call_id":call.get("id"),"content":json.dumps(output,ensure_ascii=False)})
                 if argument_failures >= 3:
+                    if changed:
+                        incomplete = ("invalid_arguments", "模型连续返回无效的工具参数")
+                        break
                     raise WorkError("invalid_arguments",output["error"]) from exc
                 continue
-            label = tool_label(fn,args)
+            try:
+                label = tool_label(fn,args)
+            except Exception:   # 参数形状不对（operations: null 之类）也只是标签取不到，不能把整轮抛掉
+                label = str(fn or "工具")
             emit({"type":"step_start","id":step_id,"label":label,"tool":fn})
             # 同一段源码重复读没有任何新信息，却要再烧一遍上下文和时间。
             # 直接告诉它读过了，把额度留给真正的修改。
+            fingerprint = (fn, json.dumps(args, ensure_ascii=False, sort_keys=True))
             if fn in READ_ONLY_TOOLS:
-                fingerprint = (fn, json.dumps(args, ensure_ascii=False, sort_keys=True))
                 if fingerprint in read_seen:
                     output = {"ok":False,"code":"already_read",
                               "error":"这一段你本轮已经读过了，内容没有变化。不要重复读——"
@@ -572,7 +607,10 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
                     continue
                 read_seen.add(fingerprint)
             try:
-                if read_only and fn in {'apply_operations', 'report_result', 'update_plan'}:
+                if fn not in offered:
+                    # 这一步没给它这个工具（只讨论模式没有修改工具、收尾轮只能提问或汇报），它照抄了也不能执行
+                    raise PatchError(f"现在不能用 {fn}；只能用这些：{'、'.join(sorted(offered))}")
+                if read_only and fn in {'apply_operations', 'report_result', 'update_plan', 'start_from_shell'}:
                     output = {'ok':False,'code':'read_only','error':'当前只讨论设计，不允许修改或汇报已修改。请用 answer_user 回答并给出待确认建议。'}
                 elif fn == "inspect_page":
                     from bs4 import BeautifulSoup
@@ -581,7 +619,9 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
                     for a in anns:
                         try: node = soup.select_one(a["selector"])
                         except Exception: node = None
-                        targets.append({**a,"found":bool(node),"html":str(node)[:2200] if node else a.get("outer_html","")[:2200],
+                        # 只给定位要用的字段：以前把整条标注（outer_html 5000 字、样式、坐标…）原样塞进来，16 个目标就超过 10 万字
+                        brief = {k: a[k] for k in ("id", "selector", "note", "name", "tag", "text", "kind", "in_modal", "modal_trail", "in_subpage") if a.get(k)}
+                        targets.append({**brief,"found":bool(node),"html":str(node)[:2200] if node else str(a.get("outer_html",""))[:2200],
                                         "source_lines":locate_lines(working_source, a)})
                     for node in soup(['script','style']): node.decompose()
                     output = {"title":page.get("title"),"chars":len(working_source),"annotations":targets,"regions":outline(working_source),
@@ -605,8 +645,8 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
                                                "按下面的行号带上 start / end 只读那一节，或用 search_skill_file 搜组件名。"),
                                       "outline": skill_digest.outline(whole)}
                         else:
-                            a = max(1, int(args.get("start", 1)))
-                            b = min(len(lines), int(args.get("end", a + 200)))
+                            a = max(1, _num(args.get("start"), 1))
+                            b = min(len(lines), _num(args.get("end"), a + 200))
                             output = {"name": args.get("name"), "path": args.get("path"),
                                       **_slice_lines(lines, a, b, min(budget, SKILL_READ_LIMIT))}
                     except (ValueError, FileNotFoundError) as exc:
@@ -623,7 +663,7 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
                     if not check["ok"]:
                         raise PatchError("页面外壳本身没通过检查：" + "；".join(check["issues"]))
                     working_source = shell; changed = working_source != source
-                    read_seen.clear()
+                    read_seen.clear(); read_regions.clear()
                     all_operations.append({"action": "start_from_shell", "skill": skill_name, "path": rel})
                     output = {"ok": True, "chars": len(shell),
                               "note": ("外壳已经放进页面（样式、布局、菜单、路由、弹窗、Toast 都在）。接下来只写这三处，"
@@ -679,7 +719,7 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
                     output = {"query":args.get("query",""),**_search_source(working_source,str(args.get("query","")))}
                 elif fn == "read_source_slice":
                     lines = working_source.splitlines()
-                    a = max(1,int(args.get("start",1))); b = min(len(lines),int(args.get("end",a+80)))
+                    a = max(1,_num(args.get("start"),1)); b = min(len(lines),_num(args.get("end"),a+80))
                     output = _slice_lines(lines, a, b, budget)
                 elif fn == "apply_operations":
                     ops = args.get("operations")
@@ -698,19 +738,26 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
                                 raise PatchError(f"要整块替换必须先用 read_region 工具读取「{name}」的原文（read_source_slice 不算），再尝试精确补丁")
                             if failures<1:
                                 raise PatchError("先用精确补丁试一次；失败后才可以整块替换该区域")
-                        if op.get("action")=="replace_source_text" and len(op.get("old",""))>24000:
+                        if op.get("action")=="replace_source_text" and len(str(op.get("old") or ""))>24000:
                             raise PatchError("替换范围过大，请缩小到具体位置")
                     new_source, logs = apply_operations(working_source,ops)
                     check = verify_source(new_source)
-                    if not check['ok']: raise PatchError('修改检查失败：'+'；'.join(check['issues']))
+                    fresh = new_issues(baseline, check) if not check['ok'] else []
+                    if fresh: raise PatchError('修改检查失败：'+'；'.join(fresh))
                     if new_source==working_source: raise PatchError("这次操作没有产生实际改动")
                     working_source = new_source; changed = working_source != source
-                    read_seen.clear()   # 源码变了，之前读过的段落已经不是现在的样子，允许重新读
+                    # 源码变了，之前读过的段落、读过的区域都不是现在的样子：允许重读，
+                    # 也不能再拿改动前读到的区域原文去整块替换（会把刚才的修改冲掉）
+                    read_seen.clear(); read_regions.clear()
                     all_operations.extend(ops); failures = 0
-                    output = {"ok":True,"logs":logs}
+                    output = {"ok":True,"logs":logs,"verified":True,
+                              "note":"已通过结构和脚本检查，不用再调 verify_page；全部改完就直接 report_result"}
                 elif fn=="verify_page":
                     output = verify_source(working_source,args.get("assertions") or [])
                 elif fn=="report_result":
+                    if apply_failed:
+                        raise PatchError("这条消息里前面的修改没有成功，不能按「已改好」汇报。先重试那处修改；"
+                                         "确实改不了，就在下一步的 report_result 里如实说没改成、为什么")
                     report = result_report(args,saved_annotations,changed)
                     output = {"ok":True,"report":report}
                 elif fn=='answer_user':
@@ -738,24 +785,33 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
                     raise PatchError("未知工具，请使用提供的工具")
             except PatchError as exc:
                 output = {"ok":False,"error":str(exc),"code":"patch_target"}
-                if fn=="apply_operations": failures += 1
+                if fn=="apply_operations": failures += 1; apply_failed = True
             except ValueError as exc:
                 output = {"ok":False,"error":f"参数无效：{exc}","code":"invalid_arguments"}
                 argument_failures += 1
             except Exception as exc:
                 logger.exception("Unexpected agent tool failure: %s",fn)
                 emit({"type":"step_error","id":step_id,"label":label,"tool":fn,"error":error_payload(WorkError("internal","内部工具错误"))})
+                if changed:   # 已经改好、通过检查的部分不白丢
+                    incomplete = ("internal", "工具内部异常，详情已写入本地服务日志")
+                    break
                 raise WorkError("internal","工具内部异常，详情已写入本地服务日志") from exc
             tool_log.append({"tool":fn,"args":args,"output":output})
             messages.append({"role":"tool","tool_call_id":call.get("id"),"content":json.dumps(output,ensure_ascii=False)})
             if fn in READ_ONLY_TOOLS:
-                reads.append((len(messages) - 1, fn, round_no))
+                reads.append((len(messages) - 1, fn, round_no, fingerprint))
             failed = output.get("ok") is False
+            if failed and fn == "apply_operations": apply_failed = True
+            try:
+                detail = step_detail(fn,args,output)
+            except Exception:
+                detail = ""
             emit({"type":"step_error" if failed else "step_done","id":step_id,"label":label,"tool":fn,
-                  "detail":step_detail(fn,args,output),
+                  "detail":detail,
                   **({"error":{"message":output.get('error') or '检查未通过',"detail":"；".join(output.get('issues',[]))}} if failed else {})})
             if failed:
-                key = (fn, str(output.get("code") or output.get("error") or "")[:80])
+                # 「同一个理由」按错误内容算：patch_target 是所有补丁失败共用的代码，按代码算会把三次不同的失败当成同一堵墙
+                key = (fn, re.sub(r"[「“\"].*", "", str(output.get("error") or output.get("code") or ""))[:60])
                 rejects[key] = rejects.get(key, 0) + 1
                 if rejects[key] >= REJECT_LIMIT:
                     incomplete = ("tool_rejected", f"{label}连续{REJECT_LIMIT}次被拒绝，没能继续")
@@ -769,8 +825,10 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
         # 空转守卫：这一轮只读不改也不汇报，就累计一次。
         # 读来读去不下手是最常见的烧额度方式——它自己感觉不到已经转了几圈，
         # 到了阈值就明确要求它二选一：动手，或者说清没什么要改的。
-        if any(c.get("function",{}).get("name") in READ_ONLY_TOOLS for c in calls):
-            idle_rounds = idle_rounds + 1 if not changed else 0
+        if changed:
+            idle_rounds = 0
+        elif any(c.get("function",{}).get("name") in READ_ONLY_TOOLS for c in calls):
+            idle_rounds += 1
         if wrapup_round is not None and round_no >= wrapup_round:
             # 收尾轮也没给出提问或结论（参数不对之类）：这时才算真的卡住
             incomplete = ("stalled", f"连续 {idle_rounds} 轮都在读源码、没有做出任何改动，已经停下")
@@ -783,7 +841,8 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
             messages.append({"role":"user","content":WRAPUP_PROMPT if not read_only else
                 "别再读源码了。根据已经读到的内容直接用文字回答用户：说你看到了什么、结论是什么；"
                 "拿不准对方指的是哪一处，就用 ask_user 列出 2–3 个可能的位置让他选。"})
-        elif idle_rounds == IDLE_LIMIT:
+        elif idle_rounds >= IDLE_LIMIT and not nudged and not changed:
+            nudged = 1
             messages.append({"role":"user","content":
                 f"提醒：已经连续 {IDLE_LIMIT} 轮只在读源码，一处都还没改。"
                 "现在只能三选一——要么基于已经读到的内容立刻改一处；"

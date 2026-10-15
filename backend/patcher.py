@@ -1,6 +1,8 @@
 """Source-preserving edits: parsers locate nodes; only original ranges change."""
 from __future__ import annotations
 
+import functools
+
 import difflib
 import hashlib
 import html
@@ -277,6 +279,11 @@ def apply_operations(source: str, operations: list[dict]) -> tuple[str, list[str
                 value = html.escape(value, quote=False) if action == "set_text" else value
             elif action == "remove":
                 value = ""
+            elif action == "append_html":
+                # 放进容器里、排在原有内容后面（insert_component inside 用），不清掉原来的子元素
+                if span.tag in VOID:
+                    raise PatchError("该元素不能放子内容")
+                a = b = span.close_start
             elif action == "insert_before":
                 b = a
             elif action == "insert_after":
@@ -311,6 +318,40 @@ def apply_operations(source: str, operations: list[dict]) -> tuple[str, list[str
 
 
 
+@functools.lru_cache(maxsize=256)
+def _script_issue(kind: str, code: str) -> str | None:
+    """一段脚本的语法检查结果。同一段脚本只起一次 node：每次改动都要整页检查，20 段脚本就是 20 个进程"""
+    node = shutil.which("node")
+    if not node:
+        return None
+    try:
+        result = subprocess.run([node, "--check", "--input-type=" + ("module" if kind == "module" else "commonjs")], input=code, text=True, capture_output=True, timeout=8)
+    except (OSError, subprocess.TimeoutExpired):
+        return "unchecked"
+    return result.stderr[:900] if result.returncode else ""
+
+
+def issue_kind(issue: str) -> str:
+    """问题的种类：「脚本 3 语法错误：…」和「脚本 4 语法错误：…」是同一种（脚本序号会随前面的增删变化）"""
+    return re.sub(r"\d+", "N", issue.split("：", 1)[0])
+
+
+def new_issues(before: dict, after: dict) -> list[str]:
+    """改动后新冒出来的问题。页面原来就有的问题（比如本来就有重复的 data-pid、某段脚本本来就报错）
+    不该算到这次改动头上——否则这种页面上的任何修改都会被拒，任务必然失败"""
+    have: dict[str, int] = {}
+    for issue in before.get("issues", []):
+        have[issue_kind(issue)] = have.get(issue_kind(issue), 0) + 1
+    out = []
+    for issue in after.get("issues", []):
+        k = issue_kind(issue)
+        if have.get(k, 0) > 0:
+            have[k] -= 1
+        else:
+            out.append(issue)
+    return out
+
+
 def verify_source(source: str, assertions: list[dict] | None = None) -> dict:
     soup, issues = BeautifulSoup(source, "html.parser"), []
     if not soup.html or not soup.body or not soup.head:
@@ -322,20 +363,18 @@ def verify_source(source: str, assertions: list[dict] | None = None) -> dict:
     pids = [n["data-pid"] for n in soup.select("[data-pid]")]
     if len(set(pids)) != len(pids):
         issues.append("data-pid 不能重复")
-    node = shutil.which("node")
-    syntax_checked = bool(node)
+    syntax_checked = bool(shutil.which("node"))
     for i, tag in enumerate(soup.find_all("script"), 1):
         kind = tag.get("type", "").lower()
         if tag.get("src") or kind not in {"", "text/javascript", "application/javascript", "module"}:
             continue
-        if node and tag.string:
-            try:
-                result = subprocess.run([node, "--check", "--input-type=" + ("module" if kind == "module" else "commonjs")], input=tag.string, text=True, capture_output=True, timeout=8)
-                if result.returncode:
-                    issues.append(f"脚本 {i} 语法错误：{result.stderr[:900]}")
-            except (OSError, subprocess.TimeoutExpired):
+        if syntax_checked and tag.string:
+            problem = _script_issue(kind, str(tag.string))
+            if problem == "unchecked":
                 syntax_checked = False
                 issues.append(f"脚本 {i} 语法检查未完成")
+            elif problem:
+                issues.append(f"脚本 {i} 语法错误：{problem}")
     for item in assertions or []:
         try:
             matches = soup.select(item.get("selector", ""))

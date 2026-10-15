@@ -6,7 +6,7 @@ import uuid
 
 from . import storage
 from .atomicio import write_atomic
-from .patcher import PatchError, verify_source
+from .patcher import PatchError, verify_source, new_issues
 from .experience import diff_source
 
 LOCK = storage.META_LOCK   # 和改 project.json 的其他操作共用一把，免得互相覆盖
@@ -38,8 +38,10 @@ def undo_entries(page):
 
 def stage(project_id, page_id, before, after, reason, kind="manual", **extra):
     check = verify_source(after)
-    if not check["ok"]:
-        raise PatchError("修改检查未通过，已保留上一版："+"；".join(check["issues"]))
+    # 只拦这次改动新带进来的问题；页面原来就有的（重复 data-pid、某段脚本本来就报错）不算
+    fresh = new_issues(verify_source(before), check) if not check["ok"] else []
+    if fresh:
+        raise PatchError("修改检查未通过，已保留上一版："+"；".join(fresh))
     if after==before:
         return {"changed":False,"validation":check}
     with LOCK:
@@ -105,6 +107,7 @@ def commit(token, runtime_errors, runtime_checked):
             record['undo_of'] = item['undo_id']
         page['undo_stack'] = stack[-100:]
         page['edit_history'] = (history+[record])[-300:]
+        prune_before_files(pid, page_id, page)
         # Only explicitly completed annotations are consumed.
         for ann in meta.get('annotations',[]):
             if ann['id'] in item.get('annotation_ids',[]):
@@ -113,12 +116,24 @@ def commit(token, runtime_errors, runtime_checked):
         if item.get('message'):
             storage.append_chat(pid,"assistant",item['message'],{
                 "page_id":page_id,"changed":True,"usage":item.get("usage",{}),"report":item.get('report'),
-                "change_id":edit_id,"diff":item['diff'],"targets":item.get('targets',[]),
+                "change_id":edit_id,"diff":storage.compact_diff(item['diff']),"targets":item.get('targets',[]),
                 "change_count":item.get('operation_count',len(item['diff']['hunks']))})
         del PENDING[token]
         return {"ok":True,"version":page['version'],"hash":digest(item['after']),"change_id":edit_id,
                 "undo_count":len(stack),"last_undo_id":stack[-1]['id'] if stack else ''}
 
+
+
+def prune_before_files(project_id, page_id, page):
+    """撤销栈只留最近 100 步，掉出去的那些「改之前」的整页副本没人会再用，删掉（以前只增不删）"""
+    keep = {str(r.get('before_file', '')).replace('\\', '/') for r in page.get('undo_stack', [])}
+    keep |= {str(m.get('file', '')).replace('\\', '/') for m in page.get('manual_edits', [])}
+    folder = storage.project_dir(project_id) / 'changes' / page_id
+    if not folder.is_dir(): return
+    for path in folder.glob('*-before.html'):
+        if str(path.relative_to(storage.project_dir(project_id))).replace('\\', '/') not in keep:
+            try: path.unlink()
+            except OSError: pass
 
 
 def undo(project_id, page_id, expected_id=""):

@@ -80,7 +80,8 @@ def compact_messages(messages, budget=60000):
     def size(content):
         if isinstance(content, str): return len(content)
         return sum(len(x.get('text', '')) for x in content or [] if isinstance(x, dict))
-    total = sum(size(m.get('content')) for m in messages)
+    # 助手消息里的工具参数（整页 HTML 之类）也会重发，也要算进预算
+    total = sum(size(m.get('content')) + sum(len((c.get('function') or {}).get('arguments') or '') for c in m.get('tool_calls') or []) for m in messages)
     tools = [m for m in messages if m.get('role') == 'tool']
     for message in tools[:-3]:
         if total <= budget: break

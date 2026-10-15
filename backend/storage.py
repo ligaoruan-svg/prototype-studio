@@ -39,6 +39,9 @@ def safe_id(prefix: str) -> str:
     return f"{prefix}_{uuid.uuid4().hex[:10]}"
 
 
+KEEP_VERSIONS = 100
+
+
 def project_dir(project_id: str) -> Path:
     if not re.fullmatch(r"p_[a-f0-9]{10}", project_id):
         raise ValueError("无效项目 ID")
@@ -199,7 +202,7 @@ def purge_item(project_id: str, page_id: str = "") -> None:
     save_meta(meta)
     if not re.fullmatch(r"page_[\w-]+", page_id):
         return
-    for folder in (pdir / "versions" / page_id, pdir / "expand" / page_id):
+    for folder in (pdir / "versions" / page_id, pdir / "expand" / page_id, pdir / "changes" / page_id):
         shutil.rmtree(folder, ignore_errors=True)
     # 源码副本：别的页面没在用同一个文件才删（资源图片、样式随项目留着）
     path = str(page.get("path") or "")
@@ -279,6 +282,15 @@ def snapshot_version(project_id: str, page_id: str, reason: str) -> dict[str, An
     versions = page.setdefault("versions", [])
     versions[:] = [v for v in versions if v.get("version") != vnum]
     versions.append(entry)
+    # 历史版本保留第一版 + 最近 KEEP_VERSIONS 版：每版是一整页副本，以前只增不删
+    if len(versions) > KEEP_VERSIONS + 1:
+        drop = versions[1:len(versions) - KEEP_VERSIONS]
+        versions[:] = versions[:1] + versions[len(versions) - KEEP_VERSIONS:]
+        for old in drop:
+            try:
+                (project_dir(project_id) / old["file"]).unlink()
+            except (OSError, KeyError):
+                pass
     meta["updated_at"] = now_iso()
     save_meta(meta)
     return entry
@@ -327,7 +339,23 @@ def delete_annotation(project_id: str, ann_id: str) -> None:
 
 
 
-@_locked
+CHAT_DIFF_LINES = 80
+
+
+def compact_diff(diff):
+    """存进对话记录的改动只留前 80 行、每行 240 字。以前整份 diff（最多 400 行 × 1600 字）跟着对话存进
+    project.json 保留 40 条，文件能涨到几十 MB，而项目列表、每张预览图片都要整份读它"""
+    hunks, left = [], CHAT_DIFF_LINES
+    for hunk in diff.get('hunks', []):
+        if left <= 0: break
+        lines = [{**line, 'text': str(line.get('text', ''))[:240]} for line in hunk.get('lines', [])[:left]]
+        left -= len(lines)
+        hunks.append({**hunk, 'lines': lines})
+    shown = sum(len(h['lines']) for h in hunks)
+    total = sum(len(h.get('lines', [])) for h in diff.get('hunks', []))
+    return {**diff, 'hunks': hunks, 'truncated': bool(diff.get('truncated')) or shown < total}
+
+
 @_locked
 def append_chat(project_id: str, role: str, content: str, extra: dict[str, Any] | None = None) -> None:
     meta = load_meta(project_id)
@@ -338,6 +366,9 @@ def append_chat(project_id: str, role: str, content: str, extra: dict[str, Any] 
         entry.update(extra)
     meta.setdefault("chat", []).append(entry)
     meta["chat"] = meta["chat"][-40:]
+    for item in meta["chat"]:   # 旧版本存进来的整份 diff 顺手瘦身
+        if isinstance(item.get("diff"), dict) and sum(len(h.get("lines", [])) for h in item["diff"].get("hunks", [])) > CHAT_DIFF_LINES:
+            item["diff"] = compact_diff(item["diff"])
     meta["updated_at"] = now_iso()
     save_meta(meta)
     # 完整的对话另外按行追加一份：40 条之前的也能被「查以前的对话」找到
