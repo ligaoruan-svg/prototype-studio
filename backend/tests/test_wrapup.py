@@ -69,3 +69,24 @@ class 收尾而不是报错(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class 选中目标先对好行号(unittest.TestCase):
+    SRC = "\n".join([
+        "<script>",
+        "const NAV=[{title:'碳配额管理',items:[['quota','企业碳配额总览'],['compliance','履约跟踪与预警']]}];",
+        *["// 填充"] * 30,
+        "function abatement(){return `<button class=\"btn\" data-action=\"measure-library\">节能减碳措施库</button>`}",
+        *["// 填充"] * 30,
+        "document.addEventListener('click',e=>{if(e.target.dataset.action==='measure-library')openLib()})",
+        "</script>"])
+
+    def test_脚本拼的按钮_按文字和data属性对到行(self):
+        hints = agent.locate_lines(self.SRC, {'selector': 'div > button:nth-of-type(1)', 'text': '节能减碳措施库',
+                                              'outer_html': '<button class="btn" data-action="measure-library">节能减碳措施库</button>'})
+        self.assertEqual(hints[0]['line'], 33)
+        self.assertIn('measure-library', hints[0]['matched'])
+        self.assertIn(64, [h['line'] for h in hints], '处理点击的那一行也给出来')
+
+    def test_对不上就不乱给(self):
+        self.assertEqual(agent.locate_lines(self.SRC, {'selector': 'p', 'text': '完全不存在的字', 'outer_html': '<p>完全不存在的字</p>'}), [])

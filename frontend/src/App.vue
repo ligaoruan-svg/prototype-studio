@@ -576,7 +576,17 @@ async function editAndResend(message) {
   await toAI()
   composer.value?.setSelectionRange(input.value.length, input.value.length)
 }
-async function smallerRequest(run) { input.value = selected.value ? '只修改当前选中的位置：' + run.request : '先只修改一个位置：' + run.request; await toAI() }
+// 「拆小一点」：以前是在原话前面加「先只修改一个位置：」就直接再发一遍，AI 拿到的信息和上次一模一样，照样找不到。
+// 现在把原话放回输入框，由你删成一小步再发
+async function smallerRequest(run) { input.value = run.request; leftOpen.value = true; await nextTick(); composer.value?.focus(); toast('要求放回输入框了，删成一小步再发，比如先只改一处') }
+// 「指给它看」：找不到通常是没指位置。点了没反应这类先切到交互把问题点一遍（AI 能看到你点了什么），别的切到点选点一下
+async function pointAt(run) {
+  if (selected.value) { input.value = '只修改当前选中的位置：' + run.request; await toAI(); return }
+  input.value = run.request; leftOpen.value = true
+  const clicky = /没反应|点击|点了|点不|报错|跳转|打不开|切换|不动/.test(run.request)
+  setMode(clicky ? 'interact' : 'select')
+  toast(clicky ? '先在预览里把出问题的操作点一遍，再按发送：AI 能看到你点了什么、有没有报错' : '在页面上点一下要改的地方，再按发送')
+}
 
 
 async function openDialog(type) {
@@ -752,7 +762,7 @@ onUnmounted(() => { window.removeEventListener('message', onMessage); window.rem
             <div v-if="!messages.length && !pendingUser && showGuide" class="conversation-empty compact-guide"><h2>先聊清楚，再动手。</h2><p>可以一起评价设计、比较方案；确定方向后，只改需要调整的位置。</p><button v-for="suggestion in ['现在的设计怎么样？', '有哪些地方值得优化？', selected ? '调整选中区域的对齐' : '检查一下交互有没有漏的']" :key="suggestion" class="prompt-suggestion" :disabled="!page" @click="input = suggestion; toAI()">{{ suggestion }}<ChevronRight :size="14" /></button><button class="text-button dismiss-guide" @click="hideGuide">不再显示</button></div>
             <article v-for="message in messages" :key="message.id" class="message" :class="message.role"><div class="message-author"><span>{{ message.role === 'user' ? '你' : '设计助手' }}</span><time>{{ formatTime(message.created_at) }}</time></div><ResultCard v-if="message.role === 'assistant' && (message.report || message.clarification || message.discussion || message.changed)" :result="message" :locked="locked" :can-undo="page?.last_undo_id === message.change_id" @undo="undo" @choose="chooseAnswer" @apply="applySuggestion" @discuss="discussSuggestion" @rephrase="useRephrase" /><p v-else>{{ message.content }}</p><div class="message-tools"><button class="icon-button" aria-label="复制这条内容" title="复制" @click="copyMessage(message.report?.summary || message.discussion?.answer || message.content)"><Copy :size="13" /></button><button v-if="message.role === 'user'" class="icon-button" aria-label="编辑后重新发送" title="编辑后重发" :disabled="locked" @click="editAndResend(message)"><Pencil :size="13" /></button></div></article>
             <article v-if="pendingUser && !messages.some(m => m.role === 'user' && m.content === pendingUser && m === messages[messages.length - 1])" class="message user"><div class="message-author">你</div><p>{{ pendingUser }}</p><img v-if="pendingRef" class="message-shot" :src="pendingRef.data_url" :alt="pendingRef.name"></article>
-                        <ExecutionCard v-for="run in currentRuns" :key="run.id" :run="run" :locked="locked" @retry="runAgent(run.request, '', run.options)" @repair="runAgent(run.request, run.error.detail, run.options)" @settings="openDialog('settings')" @select="setMode('select')" @fill="smallerRequest(run)" @dismiss="run.status = 'dismissed'" @stop="stopAgent" />
+                        <ExecutionCard v-for="run in currentRuns" :key="run.id" :run="run" :locked="locked" @retry="runAgent(run.request, '', run.options)" @repair="runAgent(run.request, run.error.detail, run.options)" @settings="openDialog('settings')" @select="setMode('select')" @fill="smallerRequest(run)" @point="pointAt(run)" @dismiss="run.status = 'dismissed'" @stop="stopAgent" />
 
           </div>
           <div class="composer-area">

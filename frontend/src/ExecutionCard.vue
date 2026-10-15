@@ -3,7 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { Check, AlertCircle, LoaderCircle, ChevronDown } from 'lucide-vue-next'
 import ResultCard from './ResultCard.vue'
 const props = defineProps({ run: Object, locked: Boolean })
-defineEmits(['retry', 'settings', 'select', 'repair', 'dismiss', 'fill', 'stop'])
+defineEmits(['retry', 'settings', 'select', 'repair', 'dismiss', 'fill', 'stop', 'point'])
 const now = ref(Date.now()); let timer
 onMounted(() => { timer = setInterval(() => now.value = Date.now(), 1000) })
 onUnmounted(() => clearInterval(timer))
@@ -33,7 +33,7 @@ const heading = computed(() => {
     <p v-if="run.streamText && !run.result" class="stream-text">{{ run.streamText }}<span class="caret"></span></p>
     <p v-else-if="busy && !run.steps.some(s => s.state === 'running')" class="model-wait">{{ run.label || '理解需求中' }}</p>
     <ResultCard v-if="run.status === 'checking' && run.result" :result="run.result" checking />
-    <div v-if="run.error" class="run-error"><p>{{ run.error.message }}</p><details v-if="run.error.detail && run.error.detail !== run.error.message"><summary>查看详情</summary><p>{{ run.error.detail }}</p></details><div class="run-error-actions"><button v-if="run.error.code === 'model_account'" class="outline" @click="$emit('settings')">打开设置</button><button v-else-if="run.error.code === 'validation'" class="outline" :disabled="locked" @click="$emit('repair')">让 AI 修复</button><button v-else-if="run.error.code === 'patch_target'" class="outline" :disabled="locked" @click="$emit('select')">重新点选后重试</button><button v-else-if="['output_limit','invalid_arguments','iterations','tool_rejected','stalled'].includes(run.error.code)" class="outline" :disabled="locked" @click="$emit('fill')">缩小范围重试</button><button v-else class="outline" :disabled="locked" @click="$emit('retry')">重试</button><button class="quiet" @click="$emit('dismiss')">{{ run.error.code === 'validation' ? '放弃' : '关闭' }}</button></div></div>
+    <div v-if="run.error" class="run-error"><p>{{ run.error.message }}</p><details v-if="run.error.detail && run.error.detail !== run.error.message"><summary>查看详情</summary><p>{{ run.error.detail }}</p></details><div class="run-error-actions"><button v-if="run.error.code === 'model_account'" class="outline" @click="$emit('settings')">打开设置</button><button v-else-if="run.error.code === 'validation'" class="outline" :disabled="locked" @click="$emit('repair')">让 AI 修复</button><button v-else-if="run.error.code === 'patch_target'" class="outline" :disabled="locked" @click="$emit('select')">重新点选后重试</button><button v-else-if="['tool_rejected','stalled'].includes(run.error.code)" class="outline" :disabled="locked" title="没指位置时 AI 只能在源码里猜：在页面上点一下要改的地方（点了没反应的，切到交互把它点一遍），再发送" @click="$emit('point')">指给它看</button><button v-else-if="['output_limit','invalid_arguments','iterations'].includes(run.error.code)" class="outline" :disabled="locked" title="一次要改的太多：把要求放回输入框，删成一小步再发" @click="$emit('fill')">拆小一点再发</button><button v-else class="outline" :disabled="locked" @click="$emit('retry')">重试</button><button class="quiet" @click="$emit('dismiss')">{{ run.error.code === 'validation' ? '放弃' : '关闭' }}</button></div></div>
   </section>
 </template>
 <style scoped>

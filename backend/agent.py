@@ -263,6 +263,66 @@ def _search_source(source: str, query: str) -> dict:
     return out
 
 
+GENERIC_CLASS = re.compile(r"^(btn|button|active|show|open|is-|has-|el-|ant-|col-|row|flex|grid|text-|mt-|mb-|ml-|mr-|p[xytblr]?-|m[xytblr]?-|w-|h-|d-)", re.I)
+
+
+def locate_lines(source: str, target: dict, limit: int = 3) -> list[dict]:
+    """选中的元素大概在源码哪几行。
+
+    原型多是脚本拼出来的，预览里的选择器（nth-of-type 之类）在源码里根本对不上，
+    以前 AI 只能拿着文字一段段翻。这里把元素身上能在源码里找到的东西——文字、id、data-pid、
+    data-action、onclick、不太通用的 class——拿去对行，几样同时挤在一小段里的位置最可能就是它。
+    """
+    lines = source.splitlines()
+    html = str(target.get("outer_html") or "")[:5000]
+    tokens: dict[str, int] = {}
+    def add(token: str, weight: int):
+        token = token.strip()
+        if 2 <= len(token) <= 60 and not token.isdigit():
+            tokens[token] = max(tokens.get(token, 0), weight)
+    for piece in re.split(r"\s*\n\s*|\s{2,}", str(target.get("text") or "")[:500]):
+        add(piece, 3)
+    for m in re.finditer(r"""(?:\sid|\sname|\sdata-[\w-]+|\shref=["']#)\s*=?\s*["']?([^"'\s>]{2,60})["']""", html):
+        add(m.group(1), 4)
+    m = re.search(r"""onclick\s*=\s*["']([A-Za-z_$][\w$.]*)\s*\(""", html)
+    if m:
+        add(m.group(1), 4)
+    for sel_id in re.findall(r"#([\w-]{3,})", str(target.get("selector") or "")):
+        add(sel_id, 4)
+    first = re.search(r"""class\s*=\s*["']([^"']+)["']""", html)
+    for cls in (first.group(1).split() if first else []):
+        if len(cls) >= 4 and not GENERIC_CLASS.match(cls) and "$" not in cls:
+            add(cls, 1)
+    if not tokens or not lines:
+        return []
+    picked = sorted(tokens.items(), key=lambda kv: -kv[1])[:12]
+    hits: dict[int, set] = {}
+    for token, _ in picked:
+        for i, line in enumerate(lines):
+            if token in line:
+                hits.setdefault(i, set()).add(token)
+    weight = dict(picked)
+    scored = []
+    for i in hits:
+        near = set().union(*(hits.get(j, set()) for j in range(i - 4, i + 5)))
+        scored.append((sum(weight[t] for t in near), -i, near))
+    out = []
+    for score, neg_i, near in sorted(scored, reverse=True):
+        i = -neg_i
+        if score < 3 or any(abs(i + 1 - o["line"]) <= 8 for o in out):
+            continue
+        out.append({"line": i + 1, "matched": sorted(near, key=lambda t: -weight[t])[:5], "snippet": lines[i].strip()[:160]})
+        if len(out) >= limit:
+            break
+    return out
+
+
+def lines_text(hints: list[dict]) -> str:
+    if not hints:
+        return ""
+    return " 源码里大概在：" + "；".join(f"第 {h['line']} 行（对上了 {'、'.join(h['matched'][:3])}）" for h in hints)
+
+
 CONTEXT_KEYS = ("in_modal", "in_subpage", "modal_trail", "view_route")
 
 
@@ -321,12 +381,15 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
     for ann in anns:
         ann['name'] = element_name(ann)
     source = working_source = storage.read_page(project_id, page_id)
+    # 点选 / 框选的目标先在源码里对好行号：AI 第一眼就知道去哪几行看，不用一段段翻
+    for ann in anns:
+        ann['source_lines'] = locate_lines(source, ann)
     if not runtime_feedback:
         storage.append_chat(project_id, "user", user_message, {"page_id":page_id,"annotation_count":len(saved_annotations),"intent":intent})
     history = history_context(meta.get('chat',[]), page_id)
     annotation_text = "\n".join(f"意见 {i+1} id={a['id']} name={element_name(a)} note={a.get('note','')!r}" + context_text(a)
                                for i,a in enumerate(saved_annotations)) or "（没有保存的修改意见）"
-    target_text = "\n".join(f"name={a['name']} selector={a['selector']} note={a.get('note','')!r}" + context_text(a) for a in anns)
+    target_text = "\n".join(f"name={a['name']} selector={a['selector']} note={a.get('note','')!r}" + context_text(a) + lines_text(a.get('source_lines') or []) for a in anns)
     # 背景资料和用户这轮说的话必须分开：以前一股脑灌进去，用户问「你能做什么」
     # 也会被页面骨架带着跑，答成一份页面状态报告。
     background = (f"当前项目：{meta.get('name')}\n当前页面：{page.get('title')} / v{page.get('version')}\n"
@@ -477,7 +540,8 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
                     for a in anns:
                         try: node = soup.select_one(a["selector"])
                         except Exception: node = None
-                        targets.append({**a,"found":bool(node),"html":str(node)[:2200] if node else a.get("outer_html","")[:2200]})
+                        targets.append({**a,"found":bool(node),"html":str(node)[:2200] if node else a.get("outer_html","")[:2200],
+                                        "source_lines":locate_lines(working_source, a)})
                     for node in soup(['script','style']): node.decompose()
                     output = {"title":page.get("title"),"chars":len(working_source),"annotations":targets,"regions":outline(working_source),
                               "page_text":(soup.body or soup).get_text(' ',strip=True)[:5000],
