@@ -13,7 +13,7 @@ from .transactions import stage
 from .errors import WorkError, error_payload
 from .experience import element_name, tool_label, compact_messages, changed_targets, result_report, scope_report, step_detail
 from .conversation import resolve_intent, discussion_result, history_context
-from . import components, memory, skills
+from . import components, memory, skills, skill_digest
 
 logger = logging.getLogger(__name__)
 
@@ -125,6 +125,12 @@ TOOL_SPECS.extend([
                    "start":{"type":"integer","description":"起始行，默认 1"},
                    "end":{"type":"integer","description":"结束行，默认 start+200"}},
                    "required":["name","path"]}}},
+    {"type":"function","function":{"name":"start_from_shell",
+     "description":("页面还是空白骨架、要从零做一整页时，先调它：程序把 skill 里的「页面外壳」整份放进页面——"
+                    "样式、顶栏、左侧菜单、hash 路由、弹窗 / 抽屉 / Toast 等组件函数都现成，不花你的输出额度。"
+                    "之后你只写三处：/*PA:NAV*/ 菜单配置、/*PA:PAGES*/ 每页内容、/*PA:BIND*/ 交互绑定。"
+                    "页面已经有内容时不能用。"),
+     "parameters":{"type":"object","properties":{}}}},
     {"type":"function","function":{"name":"search_skill_file",
      "description":("在 skill 的附带文件里搜关键词，只拿回命中处附近的内容。要用组件库里的某个组件"
                     "（表格、Modal、分页…）时用这个，比整份读快得多，也不会把额度耗光。"),
@@ -208,6 +214,9 @@ def read_budget(context_budget: int) -> int:
     但永远不超过预算的四分之一——一次读掉一半上下文，剩下的不够干活。
     """
     return max(12_000, context_budget // 4)
+SKILL_READ_LIMIT = 8000     # skill 附带文件一次最多给这么多字；整份读大文件只给目录
+SHELL_MAX_EXISTING = 8000   # 页面比这还大就算「已有内容」，不许整页换成外壳
+STALE_ROUNDS = 2            # 规范、组件库、读过的源码，用过这么多轮后收成一句话（不等攒满上下文预算）
 IDLE_LIMIT = 4       # 连续这么多轮只读不改，就催它下手或收工
 WRAPUP_AFTER = 6     # 催过还在读：只留「提问 / 汇报」两个工具，让它把找到的线索交出来，而不是报错收场
 WRAPUP_TOOLS = {"ask_user", "report_result"}
@@ -379,7 +388,9 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
     emit = on_event or (lambda event: None)
     intent = resolve_intent(user_message, intent)
     read_only = intent == 'discuss'
-    tools = [spec for spec in TOOL_SPECS if not (read_only and spec['function']['name'] in {'apply_operations', 'report_result', 'update_plan'})]
+    tools = [spec for spec in TOOL_SPECS if not (read_only and spec['function']['name'] in {'apply_operations', 'report_result', 'update_plan', 'start_from_shell'})]
+    if not skill_digest.find_shell():   # 没装带外壳的 skill，就别让它看见这个工具
+        tools = [spec for spec in tools if spec['function']['name'] != 'start_from_shell']
     emit({'type':'intent','intent':intent,'label':'正在分析设计，不会修改文件' if read_only else '正在理解修改需求'})
     meta = storage.load_meta(project_id)
     page = storage.get_page(meta, page_id)
@@ -434,6 +445,7 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
     # 只读工具的调用指纹，用来识别"同一段又读一遍"；以及连续多少轮只看不动。
     read_seen, idle_rounds = set(), 0
     wrapup_round = None   # 从第几轮起进入收尾（只能提问或汇报）
+    reads = []            # (消息下标, 工具名, 第几轮)：读规范、组件库、源码的结果，用过两轮就收起来
     remembered = []       # 这一轮新记住的约定：结果卡片上要让用户看见，记错了能当场撤销
     budget = read_budget(context_budget)
     # 同一个工具被同一个理由连续拒绝多少次。failures 只管补丁失败，
@@ -446,6 +458,17 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
         if stopped():
             incomplete = ("stopped", "你停止了这次处理")
             break
+        # 用过的大段读取结果（规范、组件库、源码片段）过两轮就收成一句话：不等攒满上下文预算才收，
+        # 否则它们会跟着后面每一步重发——一页生成 50 多万输入 tokens 大半是这么来的
+        collapsed = 0
+        for at, name, when in reads:
+            content = messages[at].get("content")
+            if round_no - when >= STALE_ROUNDS and isinstance(content, str) and len(content) > 1500 and '"collapsed": true' not in content:
+                messages[at]["content"] = json.dumps({"collapsed": True, "tool": name,
+                    "summary": "这段读取结果前面用过了，已收起；还需要原文就按行号再读那一小段。"}, ensure_ascii=False)
+                collapsed += 1
+        if collapsed:
+            read_seen.clear()
         size_before = sum(len(str(m.get("content") or "")) for m in messages)
         compact_messages(messages, context_budget)
         if sum(len(str(m.get("content") or "")) for m in messages) < size_before:
@@ -574,13 +597,44 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
                     try:
                         whole = skills.read_file(str(args.get("name","")), str(args.get("path","")))
                         lines = whole.splitlines()
-                        a = max(1, int(args.get("start", 1)))
-                        b = min(len(lines), int(args.get("end", a + 200)))
-                        output = {"name": args.get("name"), "path": args.get("path"),
-                                  **_slice_lines(lines, a, b, budget)}
+                        if "start" not in args and len(whole) > SKILL_READ_LIMIT:
+                            # 想整份读一个大文件：要点已经在系统提示里了，这里只给目录，让它按行号读需要的那一节
+                            output = {"name": args.get("name"), "path": args.get("path"), "whole_file_refused": True,
+                                      "note": (f"这个文件有 {len(whole)} 字，整份读进来以后每一步都要重发，不给整份。"
+                                               "它的要点（目录、硬约束、组件签名）已经在系统提示里。确实要看原文，"
+                                               "按下面的行号带上 start / end 只读那一节，或用 search_skill_file 搜组件名。"),
+                                      "outline": skill_digest.outline(whole)}
+                        else:
+                            a = max(1, int(args.get("start", 1)))
+                            b = min(len(lines), int(args.get("end", a + 200)))
+                            output = {"name": args.get("name"), "path": args.get("path"),
+                                      **_slice_lines(lines, a, b, min(budget, SKILL_READ_LIMIT))}
                     except (ValueError, FileNotFoundError) as exc:
                         raise PatchError(f"skill「{args.get('name')}」里没有 {args.get('path')}；"
                                          f"先用 read_skill 看正文里写的是哪个路径") from exc
+                elif fn == "start_from_shell":
+                    found = skill_digest.find_shell()
+                    if not found:
+                        raise PatchError("装了的 skill 里没有页面外壳，照常用 apply_operations 写")
+                    if len(working_source) > SHELL_MAX_EXISTING:
+                        raise PatchError("页面已经有内容了，不能整页换成外壳；用 apply_operations 局部修改")
+                    skill_name, rel, shell = found
+                    check = verify_source(shell)
+                    if not check["ok"]:
+                        raise PatchError("页面外壳本身没通过检查：" + "；".join(check["issues"]))
+                    working_source = shell; changed = working_source != source
+                    read_seen.clear()
+                    all_operations.append({"action": "start_from_shell", "skill": skill_name, "path": rel})
+                    output = {"ok": True, "chars": len(shell),
+                              "note": ("外壳已经放进页面（样式、布局、菜单、路由、弹窗、Toast 都在）。接下来只写这三处，"
+                                       "用 replace_source_text 替换占位：\n"
+                                       "1. /*PA:NAV*/ 后面那行菜单配置 → 这次要的一级分组和二级页面（key 就是 URL hash）\n"
+                                       "2. /*PA:PAGES*/ 后面的 home(){...} → 每个二级页面一个方法，返回 pageShell(标题, 说明, 内容HTML, 右上按钮HTML)\n"
+                                       "3. /*PA:BIND*/ 函数体 → 按 page 绑定这一页的按钮、筛选、行操作\n"
+                                       "组件直接用 ZeroUI.Button / Tag / Field / Pager / Empty / Toast / Modal / ConfirmModal / Drawer / openModal / openDrawer 和 Card()，"
+                                       "签名见系统提示里的要点。样式类沿用外壳里的（card、metric-grid、data-table、lnk、tw 等），不要另写一套 CSS。"
+                                       "尽量一两次 apply_operations 把整页内容写完，不要拆成十几次小改。"),
+                              "placeholders": [m for m in ("/*PA:NAV*/", "/*PA:PAGES*/", "/*PA:BIND*/") if m in shell]}
                 elif fn == "search_skill_file":
                     try:
                         whole = skills.read_file(str(args.get("name","")), str(args.get("path","")))
@@ -694,6 +748,8 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
                 raise WorkError("internal","工具内部异常，详情已写入本地服务日志") from exc
             tool_log.append({"tool":fn,"args":args,"output":output})
             messages.append({"role":"tool","tool_call_id":call.get("id"),"content":json.dumps(output,ensure_ascii=False)})
+            if fn in READ_ONLY_TOOLS:
+                reads.append((len(messages) - 1, fn, round_no))
             failed = output.get("ok") is False
             emit({"type":"step_error" if failed else "step_done","id":step_id,"label":label,"tool":fn,
                   "detail":step_detail(fn,args,output),

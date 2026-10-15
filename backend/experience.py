@@ -55,6 +55,8 @@ def step_detail(name: str, args: dict, output) -> str:
         return f"取到 {len(str(output.get('content') or output.get('preview') or ''))} 字符"
     if name == "update_plan":
         return "；".join(s.get("title", "") for s in output.get("steps", []))[:300]
+    if name == "start_from_shell":
+        return f"外壳 {output.get('chars', 0)} 字已放进页面，接下来只写菜单、页面内容和交互" if output.get("ok") else str(output.get("error") or "")[:200]
     if name == "search_chats":
         return f"找到 {output.get('hits', 0)} 条" if output.get("hits") else "以前的对话里没提过"
     if name in {"remember", "forget"}:
@@ -70,7 +72,7 @@ def tool_label(name, args):
         'read_source_slice': '读取相关代码', 'read_region': f'读取{REGION_NAMES.get(args.get("name"), "选定区域")}',
         'apply_operations': f'应用 {len(args.get("operations", []))} 处修改', 'verify_page': '检查修改结果',
         'report_result': '整理修改结果', 'ask_user': '确认你的想法', 'answer_user': '整理分析和建议',
-        'update_plan': '整理修改计划', 'read_component': '取用现成组件', 'read_skill': '查阅 skill', 'read_skill_file': '查规范细则', 'search_skill_file': '找现成组件', 'remember': '记住这条约定', 'forget': '忘掉那条约定', 'search_chats': f'查以前的对话「{str(args.get("query", ""))[:16]}」',
+        'update_plan': '整理修改计划', 'read_component': '取用现成组件', 'read_skill': '查阅 skill', 'read_skill_file': '查规范细则', 'search_skill_file': '找现成组件', 'start_from_shell': '从规范的页面外壳起步', 'remember': '记住这条约定', 'forget': '忘掉那条约定', 'search_chats': f'查以前的对话「{str(args.get("query", ""))[:16]}」',
     }.get(name, '处理修改')
 
 

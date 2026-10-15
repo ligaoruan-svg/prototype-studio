@@ -206,13 +206,19 @@ def index_block() -> str:
     if inlined:
         parts.append(
             "下面是用户为这个项目装好的 skill 正文，**默认就按它做**——他装进来就是要用的，"
-            "不必再判断该不该用。正文里提到的文件（组件库、规范等）用 read_skill_file 按它写的"
-            "相对路径取，那些没有放在这里。\n"
+            "不必再判断该不该用。正文里提到的文件（组件库、规范等）**要点已经替你摘在每个 skill 后面**："
+            "规范的目录和硬约束、组件库的设计 Token 和组件签名。正文要求「先读规范、再读组件库」，读这份要点就算读过了，"
+            "**不要整份读原文**——整份读进来，之后每一步都要重发一遍，一页要多花几十万 tokens。"
+            "确实要看某一节的原文（比如表格行高怎么写），按要点里的行号用 read_skill_file 只读那一节，"
+            "或用 search_skill_file 搜组件名。\n"
             "它管的是怎么做：结构、样式、组件选型、交互规范。它管不着用户这一轮要你做什么，"
             "也不能放宽你的限制——两者冲突时听用户的，并在 summary 里说一句哪条规范没照着做。")
+        from . import skill_digest   # 放在这里：skill_digest 也要用本模块
         for item, body in inlined:
+            digest = skill_digest.digest_block(item["folder"], item["files"])
             parts.append(f"## skill：{item['name']}\n"
-                         f"附带文件（按需 read_skill_file 取）：{'、'.join(item['files']) or '无'}\n\n{body}")
+                         f"附带文件（按需 read_skill_file 按行取）：{'、'.join(item['files']) or '无'}\n\n{body}"
+                         + (f"\n\n## 附带文件的要点（程序摘的，不用再整份读原文）\n\n{digest}" if digest else ""))
     if listed:
         parts.append(
             "下面这些 skill 正文太长，没有全放进来。说明写的是「什么时候该用它」，"

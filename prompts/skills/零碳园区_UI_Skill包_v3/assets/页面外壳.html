@@ -1,0 +1,298 @@
+<!doctype html>
+<!-- 页面外壳：由原型工坊从「零碳园区_UI组件库.html」自动整理（样式、布局、菜单、路由、弹窗、抽屉、Toast 都在这里）。
+     新页面从这里起步，只需要写 /*PA:NAV*/ 菜单、/*PA:PAGES*/ 页面内容、/*PA:BIND*/ 交互绑定三处。 -->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>零碳园区管理平台</title>
+<style>
+:root{
+  --bg:#F3F5F7;
+  --card:#FFFFFF;
+  --line:#E7E9EE;
+  --line-strong:#D8DCE3;
+  --text-1:#1F2329;
+  --text-2:#4E5969;
+  --text-3:#86909C;
+  --primary:#1D5BFF;
+  --primary-hover:#1651E8;
+  --primary-weak:#EAF1FF;
+  --danger:#F53F3F;
+  --danger-hover:#E12F2F;
+  --del-hover:#FFECEC;
+  --head-bg:#FAFBFC;
+  --row-hover:#F7F9FC;
+  --menu-hover:#F5F7FA;
+  --sel-bg:#E6F2FF;
+  --service-bg:#EAF1FF;
+  --service-text:#1D5BFF;
+  --event-bg:#E8F8EE;
+  --event-text:#12A35C;
+  --other-bg:#FFF4E8;
+  --other-text:#E07B1F;
+  --mask:rgba(31,35,41,.45);
+  --toast:rgba(31,35,41,.92);
+  --toast-error:rgba(214,48,49,.95);
+  --empty-line:#C9CDD4;
+  --avatar-bg:#EEF1F5;
+  --avatar-ico:#A0A7B3;
+  --card-radius:8px;
+  --control-radius:6px;
+  --modal-radius:10px;
+  --card-shadow:0 1px 2px rgba(31,35,41,.04),0 4px 16px rgba(31,35,41,.05);
+  --modal-shadow:0 12px 40px rgba(31,35,41,.18);
+  --font-sans:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Helvetica Neue",Arial,sans-serif;
+  --font-mono:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text-1);font-family:var(--font-sans);font-size:12px;line-height:1.5;-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit}
+button{font-size:12px}
+a{color:inherit;text-decoration:none}
+svg{display:block}
+.app{min-height:100vh;display:flex;flex-direction:column}
+.topbar{height:56px;flex:0 0 56px;position:sticky;top:0;z-index:50;background:var(--card);border-bottom:1px solid var(--line);padding:0 22px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+.brand{display:flex;align-items:center;gap:10px;min-width:0}
+.brand-mark{width:28px;height:28px;border-radius:7px;background:var(--primary);display:grid;place-items:center;color:#fff;flex:0 0 auto}
+.brand-name{font-size:16px;font-weight:700;letter-spacing:1px;white-space:nowrap}
+.top-actions{display:flex;align-items:center;gap:8px}
+.shell{display:flex;align-items:flex-start;min-height:calc(100vh - 56px)}
+.sidebar{width:172px;flex:0 0 172px;position:sticky;top:56px;max-height:calc(100vh - 56px);overflow-y:auto;background:var(--card);border-right:1px solid var(--line);align-self:flex-start}
+.nav{padding:8px 0 18px}
+.nav-group{border-bottom:1px solid rgba(231,233,238,.65)}
+.nav-gh{width:100%;min-height:34px;padding:7px 16px;border:0;background:transparent;color:var(--text-2);display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;text-align:left;font-size:12.5px;font-weight:500}
+.nav-gh:hover{background:var(--menu-hover)}
+.nav-gh .nav-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chev{width:12px;height:12px;transition:transform .22s ease;flex:0 0 auto}
+.nav-gh.open .chev{transform:rotate(90deg)}
+.nav-kids{max-height:0;overflow:hidden;transition:max-height .22s ease}
+.nav-kids.open{max-height:360px}
+.nav-i{display:flex;align-items:center;gap:8px;position:relative;min-height:30px;padding:6px 16px 6px 38px;color:var(--text-2);font-size:12px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nav-i:hover{background:var(--menu-hover)}
+.nav-i.on{color:var(--primary);font-weight:500;background:var(--primary-weak)}
+.nav-i.on::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--primary)}
+.main{flex:1;min-width:0}
+.content{padding:12px 18px 20px;min-width:0}
+.breadcrumb{font-size:12px;color:var(--text-3);margin-bottom:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.page-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:14px}
+.page-head h1{margin:0;font-size:15px;line-height:1.4;font-weight:600;color:var(--text-1)}
+.page-head p{margin:5px 0 0;font-size:12px;color:var(--text-3)}
+.page-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--card-radius);box-shadow:var(--card-shadow);overflow:hidden}
+.card+.card{margin-top:14px}
+.card-hd{min-height:42px;padding:0 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px}
+.card-title{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;color:var(--text-1)}
+.card-title::before{content:"";width:3px;height:14px;border-radius:1px;background:var(--primary)}
+.card-desc{color:var(--text-3);font-size:11px}
+.card-bd{padding:14px}
+.grid{display:grid;gap:12px}
+.grid.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+.grid.three{grid-template-columns:repeat(3,minmax(0,1fr))}
+.grid.four{grid-template-columns:repeat(4,minmax(0,1fr))}
+.demo{border:1px solid var(--line);border-radius:var(--card-radius);background:var(--card);overflow:hidden}
+.demo-stage{min-height:76px;padding:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.demo-code{border-top:1px solid var(--line);padding:10px 12px;background:var(--head-bg);color:var(--text-2);font:11.5px/1.65 var(--font-mono);white-space:pre-wrap;word-break:break-word}
+.section{margin-bottom:14px}
+.section:last-child{margin-bottom:0}
+.section-hd{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 8px}
+.section-hd h2{font-size:14px;line-height:1.4;margin:0;font-weight:600}
+.section-hd code{font:11.5px var(--font-mono);color:var(--text-3)}
+.btn{height:30px;border:1px solid var(--line-strong);border-radius:var(--control-radius);background:#fff;color:var(--text-2);padding:0 12px;display:inline-flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;white-space:nowrap;transition:border-color .12s,color .12s,background .12s,transform .06s}
+.btn:hover{border-color:var(--primary);color:var(--primary)}
+.btn:active{transform:translateY(1px)}
+.btn.primary{background:var(--primary);border-color:var(--primary);color:#fff;font-weight:500}
+.btn.primary:hover{background:var(--primary-hover);border-color:var(--primary-hover);color:#fff}
+.btn.danger{color:var(--danger);border-color:var(--line-strong);background:#fff}
+.btn.danger:hover{color:var(--danger-hover);border-color:var(--danger)}
+.btn.danger-solid{background:var(--danger);border-color:var(--danger);color:#fff;font-weight:500}
+.btn.danger-solid:hover{background:var(--danger-hover);border-color:var(--danger-hover);color:#fff}
+.btn.loading{pointer-events:none;position:relative}
+.btn.loading .btn-spinner{width:12px;height:12px;border:1.5px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .7s linear infinite}
+.btn[disabled]{color:var(--text-3);background:var(--head-bg);border-color:var(--line);cursor:not-allowed;transform:none}
+.btn-ico{width:14px;height:14px;flex:0 0 auto}
+.icon-btn{width:30px;height:30px;border:1px solid var(--line-strong);border-radius:var(--control-radius);background:#fff;color:var(--text-2);display:grid;place-items:center;cursor:pointer}
+.icon-btn:hover{border-color:var(--primary);color:var(--primary)}
+.icon-btn svg{width:16px;height:16px}
+.btn:focus-visible,.icon-btn:focus-visible,input:focus,select:focus,textarea:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 2px rgba(29,91,255,.12)}
+.lnk{height:18px;line-height:16px;padding:1px 6px;border:0;border-radius:4px;background:transparent;color:var(--primary);font-size:12px;cursor:pointer;white-space:nowrap}
+.lnk:hover{background:var(--primary-weak)}
+.lnk.danger{color:var(--danger)}
+.lnk.danger:hover{background:var(--del-hover)}
+.lnk[disabled]{color:var(--text-3);cursor:not-allowed;background:transparent}
+.ops{height:19px;display:flex;align-items:flex-start;gap:6px;white-space:nowrap}
+.field{min-width:0}
+.field label{display:block;color:var(--text-2);font-size:12px;margin-bottom:6px}
+.req{color:var(--danger);margin-left:2px}
+.field input,.field select,.field textarea{width:100%;height:30px;border:1px solid var(--line-strong);border-radius:var(--control-radius);background:#fff;color:var(--text-2);padding:0 12px}
+.field select{padding-right:26px;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%2386909C' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m8 10 4 4 4-4'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 6px center;background-size:14px}
+.field textarea{min-height:64px;height:76px;padding:8px 12px;resize:vertical}
+.field input::placeholder,.field textarea::placeholder{color:var(--text-3)}
+.field .hint{font-size:11px;color:var(--text-3);margin-top:5px}
+.field .error{font-size:11px;color:var(--danger);margin-top:5px}
+.field.invalid input,.field.invalid select,.field.invalid textarea{border-color:var(--danger)}
+.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 12px}
+.field.full{grid-column:1/-1}
+.filter{display:grid;grid-template-columns:repeat(4,minmax(130px,1fr));gap:10px;align-items:end}
+.filter-actions{display:flex;align-items:center;gap:8px}
+.tag{display:inline-block;line-height:16px;padding:1px 7px;border-radius:999px;font-size:11px;white-space:nowrap}
+.tag.service{background:var(--service-bg);color:var(--service-text)}
+.tag.event{background:var(--event-bg);color:var(--event-text)}
+.tag.other{background:var(--other-bg);color:var(--other-text)}
+.tag.neutral{background:var(--head-bg);color:var(--text-2);border:1px solid var(--line)}
+.switch{width:34px;height:18px;border-radius:999px;border:0;background:var(--line-strong);position:relative;cursor:pointer;padding:0;display:inline-block}
+.switch::after{content:"";position:absolute;width:14px;height:14px;border-radius:50%;background:#fff;left:2px;top:2px;box-shadow:0 1px 3px rgba(31,35,41,.18);transition:left .15s}
+.switch.on{background:var(--primary)}
+.switch.on::after{left:18px}
+.badge{min-width:18px;height:18px;line-height:18px;padding:0 5px;border-radius:9px;background:var(--danger);color:#fff;font-size:11px;text-align:center;display:inline-block}
+.tw{width:100%;overflow-x:auto}
+table.data-table{width:100%;min-width:1010px;border-collapse:collapse;table-layout:fixed;background:#fff}
+.data-table th,.data-table td{padding-left:12px;padding-right:12px;border-bottom:1px solid var(--line);text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.data-table th{height:31px;padding-top:7px;padding-bottom:7px;line-height:16px;color:var(--text-3);font-weight:400;background:var(--head-bg)}
+.data-table td{height:36px;padding-top:8px;padding-bottom:8px;line-height:18px;color:var(--text-2)}
+.data-table tbody tr{height:36px;transition:background .12s}
+.data-table tbody tr:hover td{background:var(--row-hover)}
+.data-table td.t1{color:var(--text-1);font-weight:500}
+.code{font-family:var(--font-mono);font-size:11.5px;font-weight:400}
+.data-table .op-col{white-space:nowrap;overflow:visible}
+.pagination{border-top:1px solid var(--line);padding:10px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;color:var(--text-3)}
+.pager-left{white-space:nowrap}
+.pager-right{display:flex;align-items:center;gap:6px}
+.page-btn{min-width:30px;height:30px;border:1px solid var(--line-strong);border-radius:var(--control-radius);background:#fff;color:var(--text-2);padding:0 8px;cursor:pointer}
+.page-btn:hover{border-color:var(--primary);color:var(--primary)}
+.page-btn.on{background:var(--primary);border-color:var(--primary);color:#fff}
+.page-btn[disabled]{background:var(--head-bg);color:var(--text-3);border-color:var(--line);cursor:not-allowed}
+.empty{padding:34px 18px;text-align:center}
+.empty-icon{width:36px;height:36px;margin:0 auto 10px;color:var(--empty-line)}
+.empty h3{margin:0;font-size:14px;font-weight:600}
+.empty p{margin:5px 0 12px;color:var(--text-3)}
+.token-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.token{border:1px solid var(--line);border-radius:var(--card-radius);overflow:hidden;background:#fff}
+.swatch{height:54px;border-bottom:1px solid var(--line)}
+.token-info{padding:9px 10px}
+.token-info b{display:block;font-size:12px;font-weight:500;margin-bottom:3px}
+.token-info code{font:11.5px var(--font-mono);color:var(--text-3)}
+.metric-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.metric{border:1px solid var(--line);border-radius:var(--card-radius);padding:12px;background:#fff}
+.metric-label{color:var(--text-3);font-size:11px}
+.metric-value{font:600 22px/1.25 var(--font-mono);margin:7px 0 4px;color:var(--text-1)}
+.metric-foot{font-size:11px;color:var(--text-3)}
+.rule-list{display:grid;gap:8px}
+.rule{display:grid;grid-template-columns:26px minmax(0,1fr);gap:8px;align-items:start;padding:9px 10px;border:1px solid var(--line);border-radius:6px;background:#fff}
+.rule-no{width:20px;height:20px;border-radius:4px;background:var(--primary-weak);color:var(--primary);display:grid;place-items:center;font:600 11px var(--font-mono)}
+.rule b{display:block;font-size:12px;margin-bottom:2px}
+.rule span{color:var(--text-3);font-size:11px}
+.modal-mask{position:fixed;inset:0;z-index:100;background:var(--mask);display:flex;align-items:center;justify-content:center;padding:20px;animation:fadeIn .15s ease}
+.modal{width:440px;max-width:100%;max-height:calc(100vh - 40px);background:#fff;border-radius:var(--modal-radius);box-shadow:var(--modal-shadow);overflow:hidden;animation:popIn .18s ease;display:flex;flex-direction:column}
+.modal.wide{width:640px}
+.modal-hd{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px}
+.modal-hd b{font-size:14px;font-weight:600}
+.modal-bd{padding:20px;overflow:auto}
+.modal-ft{padding:14px 20px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:10px}
+.confirm-copy{display:grid;grid-template-columns:36px minmax(0,1fr);gap:12px;align-items:start}
+.confirm-ico{width:36px;height:36px;border-radius:50%;background:var(--del-hover);color:var(--danger);display:grid;place-items:center}
+.confirm-ico svg{width:18px;height:18px}
+.confirm-copy h3{margin:0 0 5px;font-size:14px;font-weight:600;color:var(--text-1)}
+.confirm-copy p{margin:0;color:var(--text-2);line-height:1.7}
+.drawer-mask{position:fixed;inset:0;z-index:110;background:var(--mask);animation:fadeIn .15s ease}
+.drawer-panel{position:absolute;top:0;right:0;width:min(560px,92vw);height:100%;background:#fff;box-shadow:-12px 0 36px rgba(31,35,41,.18);display:flex;flex-direction:column;animation:drawerIn .2s ease}
+.drawer-hd{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px}
+.drawer-hd b{font-size:14px;font-weight:600}
+.drawer-bd{padding:20px;overflow:auto;flex:1}
+.drawer-ft{padding:14px 20px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:10px}
+.toast-host{position:fixed;left:50%;top:70px;transform:translateX(-50%);z-index:160;pointer-events:none}
+.toast{background:var(--toast);color:#fff;padding:9px 18px;border-radius:6px;font-size:12px;white-space:nowrap;box-shadow:var(--card-shadow);animation:fadeIn .15s ease}
+.toast.error{background:var(--toast-error)}
+.size-demo{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.size-card{border:1px solid var(--line);border-radius:8px;padding:12px;background:#fff}
+.measure{height:30px;border:1px dashed var(--line-strong);border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--text-3);font-family:var(--font-mono);margin-top:8px}
+.status-line{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.kv{display:grid;grid-template-columns:120px minmax(0,1fr);row-gap:10px;column-gap:12px}
+.kv dt{color:var(--text-3)}
+.kv dd{margin:0;color:var(--text-2)}
+.mobile-menu{display:none}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes drawerIn{from{transform:translateX(24px);opacity:.5}to{transform:translateX(0);opacity:1}}
+@keyframes popIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
+@media(max-width:1100px){.grid.four,.token-grid,.metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.filter{grid-template-columns:repeat(2,minmax(130px,1fr))}}
+@media(max-width:960px){.drawer-panel{width:100vw}.shell{flex-direction:column}.sidebar{position:sticky;top:56px;width:100%;flex:0 0 auto;max-height:none;border-right:0;border-bottom:1px solid var(--line);overflow-x:auto;overflow-y:hidden}.nav{display:flex;padding:0 8px;min-width:max-content}.nav-group{border-bottom:0;border-right:1px solid var(--line)}.nav-gh{min-width:140px}.nav-group{display:flex;align-items:stretch}.nav-gh{min-width:104px;width:auto;justify-content:center}.nav-gh .chev{display:none}.nav-kids,.nav-kids.open{position:static;visibility:visible;pointer-events:auto;max-height:none;display:flex;overflow:visible}.nav-i{padding:6px 12px;min-height:34px}.nav-i.on::before{left:8px;right:8px;top:auto;bottom:0;width:auto;height:2px}.content{padding:12px 14px 20px}.top-actions .top-copy{display:none}.grid.two,.grid.three,.grid.four,.token-grid,.metric-grid,.size-demo,.form-grid,.filter{grid-template-columns:1fr}.page-head{flex-direction:column}.page-actions{justify-content:flex-start}.mobile-menu{display:grid}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="layerHost"></div>
+<div id="toastHost" class="toast-host"></div>
+<script>
+const SVG={
+  leaf:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 4c-7 0-12 3-14.5 8.5C4 16 6 20 10 20c5.5 0 9-6 10-16Z"/><path d="M5 19c2-5 6-8 11-10"/></svg>`,
+  chevron:`<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>`,
+  plus:`<svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>`,
+  search:`<svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>`,
+  reset:`<svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>`,
+  close:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 6 12 12M18 6 6 18"/></svg>`,
+  prev:`<svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>`,
+  next:`<svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>`,
+  empty:`<svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16v12H4z"/><path d="m8 11 3 3 5-5"/></svg>`,
+  alert:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2.8 19h18.4L12 3Z"/><path d="M12 9v4"/><path d="M12 16h.01"/></svg>`
+};
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const code=s=>`<div class="demo-code">${esc(s)}</div>`;
+
+const ZeroUI={
+  Button:({label,kind='',icon='',id='',disabled=false,loading=false})=>`<button type="button" class="btn ${kind} ${loading?'loading':''}" ${id?`id="${esc(id)}"`:''} ${(disabled||loading)?'disabled':''}>${loading?'<span class="btn-spinner" aria-hidden="true"></span>':(icon||'')}${esc(label)}</button>`,
+  IconButton:({icon,title,id=''})=>`<button type="button" class="icon-btn" title="${esc(title)}" aria-label="${esc(title)}" ${id?`id="${esc(id)}"`:''}>${icon}</button>`,
+  Tag:({text,kind='service'})=>`<span class="tag ${kind}">${esc(text)}</span>`,
+  Field:({label,type='text',placeholder='',value='',options=[],required=false,hint='',invalid='',full=false,id='',disabled=false,readonly=false})=>`<div class="field ${full?'full':''} ${invalid?'invalid':''}"><label ${id?`for="${esc(id)}"`:''}>${esc(label)}${required?'<span class="req">*</span>':''}</label>${type==='select'?`<select ${id?`id="${esc(id)}"`:''} ${disabled?'disabled':''}>${options.map(x=>`<option ${x===value?'selected':''}>${esc(x)}</option>`).join('')}</select>`:type==='textarea'?`<textarea ${id?`id="${esc(id)}"`:''} placeholder="${esc(placeholder)}" ${disabled?'disabled':''} ${readonly?'readonly':''}>${esc(value)}</textarea>`:`<input ${id?`id="${esc(id)}"`:''} type="${esc(type)}" value="${esc(value)}" placeholder="${esc(placeholder)}" ${disabled?'disabled':''} ${readonly?'readonly':''}>`}${invalid?`<div class="error">${esc(invalid)}</div>`:hint?`<div class="hint">${esc(hint)}</div>`:''}</div>`,
+  Pager:({total=26,page=1,pageSize=10})=>{const pages=Math.max(1,Math.ceil(total/pageSize));return `<div class="pagination" data-pager data-page="${page}" data-pages="${pages}"><div class="pager-left">共 ${total} 条，每页 ${pageSize} 条</div><div class="pager-right"><button type="button" class="page-btn" data-page-go="${page-1}" ${page<=1?'disabled':''}>${SVG.prev}</button><button type="button" class="page-btn on">${page}</button>${page<pages?`<button type="button" class="page-btn" data-page-go="${page+1}">${page+1}</button>`:''}<button type="button" class="page-btn" data-page-go="${page+1}" ${page>=pages?'disabled':''}>${SVG.next}</button></div></div>`},
+  Empty:({title='暂无数据',text='当前还没有可展示的数据。',action='立即新增'})=>`<div class="empty">${SVG.empty}<h3>${esc(title)}</h3><p>${esc(text)}</p>${ZeroUI.Button({label:action,kind:'primary',icon:SVG.plus,id:'emptyAction'})}</div>`,
+  Toast:(message,type='')=>{const host=document.getElementById('toastHost');if(!host)return;clearTimeout(ZeroUI._toastTimer);host.innerHTML=`<div class="toast ${type==='error'?'error':''}" role="status">${esc(message)}</div>`;ZeroUI._toastTimer=setTimeout(()=>host.innerHTML='',2200)},
+  Modal:({title='新增配置',wide=false,body='',confirm='确定',cancel='取消',footer='double',confirmKind='primary'})=>`<div class="modal-mask" id="activeModal"><section class="modal ${wide?'wide':''}" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="modal-hd"><b>${esc(title)}</b>${ZeroUI.IconButton({icon:SVG.close,title:'关闭',id:'modalClose'})}</div><div class="modal-bd">${body}</div>${footer==='none'?'':`<div class="modal-ft">${footer==='double'?ZeroUI.Button({label:cancel,id:'modalCancel'}):''}${ZeroUI.Button({label:confirm,kind:confirmKind,id:'modalConfirm'})}</div>`}</section></div>`,
+  ConfirmModal:({title='确认操作',message='此操作执行后将立即生效。',confirm='确定',danger=false})=>ZeroUI.Modal({title,body:`<div class="confirm-copy"><div class="confirm-ico">${SVG.alert}</div><div><h3>${esc(title)}</h3><p>${esc(message)}</p></div></div>`,confirm,cancel:'取消',footer:'double',confirmKind:danger?'danger-solid':'primary'}),
+  Drawer:({title='详情',body='',confirm='保存',cancel='取消',footer='double'})=>`<div class="drawer-mask" id="activeDrawer"><section class="drawer-panel" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="drawer-hd"><b>${esc(title)}</b>${ZeroUI.IconButton({icon:SVG.close,title:'关闭',id:'drawerClose'})}</div><div class="drawer-bd">${body}</div>${footer==='none'?'':`<div class="drawer-ft">${footer==='double'?ZeroUI.Button({label:cancel,id:'drawerCancel'}):''}${ZeroUI.Button({label:confirm,kind:'primary',id:'drawerConfirm'})}</div>`}</section></div>`,
+  _lockLayer(trigger){ZeroUI._lastTrigger=trigger||document.activeElement;ZeroUI._prevOverflow=document.body.style.overflow;document.body.style.overflow='hidden'},
+  _unlockLayer(){document.body.style.overflow=ZeroUI._prevOverflow||'';const t=ZeroUI._lastTrigger;ZeroUI._lastTrigger=null;if(t&&typeof t.focus==='function')setTimeout(()=>t.focus(),0)},
+  openModal:(html,onConfirm,trigger)=>{const host=document.getElementById('layerHost');ZeroUI._lockLayer(trigger);host.innerHTML=html;const mask=document.getElementById('activeModal');const close=()=>{host.innerHTML='';document.removeEventListener('keydown',escClose);ZeroUI._unlockLayer()};const escClose=e=>{if(e.key==='Escape')close()};const closeBtn=document.getElementById('modalClose');if(closeBtn)closeBtn.onclick=close;const cancelBtn=document.getElementById('modalCancel');if(cancelBtn)cancelBtn.onclick=close;mask.addEventListener('click',e=>{if(e.target===mask)close()});const confirmBtn=document.getElementById('modalConfirm');if(confirmBtn)confirmBtn.onclick=()=>{if(onConfirm)onConfirm(close,confirmBtn);else close()};document.addEventListener('keydown',escClose);setTimeout(()=>{const target=mask.querySelector('input:not([disabled]),select:not([disabled]),textarea:not([disabled]),button');if(target)target.focus()},0)},
+  openDrawer:(html,onConfirm,trigger)=>{const host=document.getElementById('layerHost');ZeroUI._lockLayer(trigger);host.innerHTML=html;const mask=document.getElementById('activeDrawer');const close=()=>{host.innerHTML='';document.removeEventListener('keydown',escClose);ZeroUI._unlockLayer()};const escClose=e=>{if(e.key==='Escape')close()};document.getElementById('drawerClose').onclick=close;const cancelBtn=document.getElementById('drawerCancel');if(cancelBtn)cancelBtn.onclick=close;mask.addEventListener('click',e=>{if(e.target===mask)close()});const confirmBtn=document.getElementById('drawerConfirm');if(confirmBtn)confirmBtn.onclick=()=>{if(onConfirm)onConfirm(close,confirmBtn);else close()};document.addEventListener('keydown',escClose)}
+};
+
+// ===== 业务菜单：只在这里配置（单一来源）。一级分组 + 二级页面，key 就是 URL hash =====
+const NAV=[/*PA:NAV*/
+  {key:'biz',label:'业务模块',items:[{key:'home',label:'首页'}]}
+];
+const navState={open:{}};
+const moduleDesc='零碳园区管理平台';
+NAV.forEach(g=>navState.open[g.key]=false);
+
+const Demo=({children,source})=>`<div class="demo"><div class="demo-stage">${children}</div>${code(source)}</div>`;
+const Section=({title,name,body})=>`<section class="section"><div class="section-hd"><h2>${esc(title)}</h2><code>${esc(name)}</code></div>${body}</section>`;
+const Card=({title,desc='',body='',extra=''})=>`<section class="card"><div class="card-hd"><div><div class="card-title">${esc(title)}</div>${desc?`<div class="card-desc">${esc(desc)}</div>`:''}</div>${extra}</div><div class="card-bd">${body}</div></section>`;
+
+// ===== 业务页面：每个二级菜单一项，返回这一页的 HTML（用 pageShell 包一层）=====
+const Pages={/*PA:PAGES*/
+  home(){return pageShell('首页','',`${Card({title:'内容',body:'在这里写这一页的内容'})}`)}
+};
+function pageShell(title,desc,body,actions=''){
+  const meta=NAV.flatMap(g=>g.items.map(i=>({...i,group:g.label}))).find(i=>i.key===Router.current());
+  return `<div class="breadcrumb">${esc(meta?meta.group:'')} / ${esc(title)}</div><div class="page-head"><div><h1>${esc(title)}</h1>${desc?`<p>${esc(desc)}</p>`:''}</div><div class="page-actions">${actions}</div></div>${body}`;
+}
+const Router={
+  current(){const key=location.hash.replace(/^#/,'');return NAV.flatMap(x=>x.items).some(x=>x.key===key)?key:NAV[0].items[0].key},
+  syncOpen(page){const group=NAV.find(g=>g.items.some(i=>i.key===page));if(group)navState.open[group.key]=true},
+  render(){const page=this.current();this.syncOpen(page);renderNav(page);const meta=NAV.flatMap(g=>g.items.map(i=>({...i,group:g.label}))).find(i=>i.key===page);document.getElementById('crumbTop').textContent=`${meta.group} / ${meta.label}`;document.getElementById('content').innerHTML=(Pages[page]||(()=>pageShell(meta.label,'',ZeroUI.Empty({title:'建设中',text:'这一页还没有内容。',action:'返回首页'}))))();bindPage(page)}
+};
+function renderNav(page){document.getElementById('nav').innerHTML=NAV.map(g=>{const open=!!navState.open[g.key];return `<div class="nav-group"><button type="button" class="nav-gh ${open?'open':''}" data-group="${g.key}"><span class="nav-label">${esc(g.label)}</span>${SVG.chevron}</button><div class="nav-kids ${open?'open':''}">${g.items.map(i=>`<a href="#${i.key}" class="nav-i ${i.key===page?'on':''}">${esc(i.label)}</a>`).join('')}</div></div>`}).join('');document.querySelectorAll('[data-group]').forEach(el=>el.onclick=()=>{const key=el.dataset.group;navState.open[key]=!navState.open[key];renderNav(Router.current())})}
+
+// ===== 每页的交互绑定：页面渲染完会调用一次，按 page 分开写 =====
+function bindPage(page){/*PA:BIND*/
+  const empty=document.getElementById('emptyAction');if(empty)empty.onclick=()=>{location.hash='#'+NAV[0].items[0].key};
+}
+function renderLayout(){document.getElementById('app').innerHTML=`<div class="app"><header class="topbar"><div class="brand"><div class="brand-mark">${SVG.leaf}</div><div class="brand-name">零碳园区管理平台</div></div><div class="top-actions"><span class="top-copy" id="crumbTop" style="color:var(--text-3)"></span></div></header><div class="shell"><aside class="sidebar"><nav class="nav" id="nav"></nav></aside><main class="main"><section class="content" id="content"></section></main></div></div>`;}
+renderLayout();
+window.addEventListener('hashchange',()=>Router.render());
+if(!location.hash)location.hash='#'+NAV[0].items[0].key;
+Router.render();
+</script>
+</body>
+</html>
