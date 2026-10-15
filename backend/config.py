@@ -20,12 +20,40 @@ def load():
     return {**DEFAULT, **(json.loads(CONFIG_FILE.read_text("utf-8")) if CONFIG_FILE.exists() else {})}
 
 
+# 存过的模型：每保存一次配置就记下这一套（接口地址 + 模型 + 密钥 + 能力），之后在输入框下面一点就能切换。
+# 密钥只存在本机配置里，接口返回时永远不带
+PROFILE_KEYS = ("base_url", "model", "api_key", "supports_vision", "max_tokens", "stream", "context_budget", "max_rounds")
+MAX_PROFILES = 12
+
+
+def _profile_id(base_url: str, model: str) -> str:
+    import hashlib
+    return hashlib.sha1(f"{base_url}|{model}".encode("utf-8")).hexdigest()[:8]
+
+
+def _profiles(data: dict) -> list[dict]:
+    """没存过的老配置：把当前这一套当成唯一一个。"""
+    items = [p for p in data.get("profiles", []) if p.get("model") and p.get("base_url")]
+    if not any(p["base_url"] == data["base_url"] and p["model"] == data["model"] for p in items):
+        items.append({k: data[k] for k in PROFILE_KEYS})
+    return items
+
+
+def _remember_profile(data: dict) -> None:
+    items = [p for p in _profiles(data) if not (p["base_url"] == data["base_url"] and p["model"] == data["model"])]
+    data["profiles"] = (items + [{k: data[k] for k in PROFILE_KEYS}])[-MAX_PROFILES:]
+
+
 def public():
     data = load()
     return {"version": VERSION, "started_at": STARTED_AT,
             "base_url": data["base_url"], "model": data["model"], "has_key": bool(data["api_key"]),
             "supports_vision": data["supports_vision"], "max_tokens": data['max_tokens'], "stream": data['stream'],
-            "context_budget": data['context_budget'], "max_rounds": data['max_rounds']}
+            "context_budget": data['context_budget'], "max_rounds": data['max_rounds'],
+            "profiles": [{"id": _profile_id(p["base_url"], p["model"]), "model": p["model"],
+                          "host": urlparse(p["base_url"]).netloc, "supports_vision": bool(p.get("supports_vision")),
+                          "has_key": bool(p.get("api_key")),
+                          "active": p["base_url"] == data["base_url"] and p["model"] == data["model"]} for p in _profiles(data)]}
 
 
 def save(values):
@@ -64,5 +92,31 @@ def save(values):
         if any(c in key for c in '\r\n"'):
             raise ValueError("密钥格式无效")
         data["api_key"] = key
+    _remember_profile(data)
+    write_atomic(CONFIG_FILE, json.dumps(data, ensure_ascii=False, indent=2), mode=0o600)
+    return public()
+
+
+def switch(profile_id: str):
+    """切到存过的那一套：地址、模型、密钥、能力一起换，不用重填"""
+    data = load()
+    for p in _profiles(data):
+        if _profile_id(p["base_url"], p["model"]) == profile_id:
+            data["profiles"] = _profiles(data)
+            data.update({k: p[k] for k in PROFILE_KEYS if k in p})
+            write_atomic(CONFIG_FILE, json.dumps(data, ensure_ascii=False, indent=2), mode=0o600)
+            return public()
+    raise ValueError("没有这个模型，可能已经删掉了")
+
+
+def forget_profile(profile_id: str):
+    data = load()
+    items = _profiles(data)
+    target = next((p for p in items if _profile_id(p["base_url"], p["model"]) == profile_id), None)
+    if not target:
+        raise ValueError("没有这个模型")
+    if target["base_url"] == data["base_url"] and target["model"] == data["model"]:
+        raise ValueError("正在用的模型不能删，先切到别的")
+    data["profiles"] = [p for p in items if p is not target]
     write_atomic(CONFIG_FILE, json.dumps(data, ensure_ascii=False, indent=2), mode=0o600)
     return public()

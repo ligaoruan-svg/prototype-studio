@@ -136,6 +136,26 @@ def save_config(body: ConfigIn):
         raise HTTPException(400, str(exc))
 
 
+class SwitchIn(BaseModel):
+    id: str
+
+
+@app.post("/api/config/switch")
+def switch_model(body: SwitchIn):
+    try:
+        return config.switch(body.id)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.delete("/api/config/profiles/{profile_id}")
+def delete_profile(profile_id: str):
+    try:
+        return config.forget_profile(profile_id)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
 @app.post("/api/config/test")
 def test_config():
     settings = config.load()

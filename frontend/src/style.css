@@ -460,3 +460,18 @@ input[type=color]::-webkit-color-swatch { border: none; border-radius: 2px; }
 
 .memory-status { display: inline-flex; align-items: center; gap: 4px; margin-right: 8px; }
 .memory-status svg { color: var(--primary); }
+
+.model-switch { display: inline-block; }
+.composer-area { position: relative; }
+.model-menu { position: absolute; left: 14px; right: 14px; bottom: 34px; z-index: 30; padding: 6px; border: 1px solid var(--line); border-radius: 12px; background: #fff; box-shadow: 0 10px 30px #2b201a1f; }
+.model-menu > p { margin: 2px 6px 6px; font-size: 11px; color: var(--muted); }
+.model-menu button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 8px; border-radius: 8px; text-align: left; font-size: 12px; }
+.model-menu button:hover:not(:disabled) { background: var(--quiet); }
+.model-menu button i { width: 13px; flex-shrink: 0; }
+.model-menu button svg { color: var(--primary); flex-shrink: 0; }
+.model-menu button span { flex: 1; min-width: 0; }
+.model-menu button b { display: block; font-weight: 500; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.model-menu button small { display: block; font-size: 10.5px; color: var(--subtle); }
+.model-menu button em { font-style: normal; font-size: 10.5px; padding: 0 6px; border-radius: 10px; background: #eef3fb; color: #4c6a8a; }
+.model-menu .manage { margin-top: 4px; border-top: 1px solid var(--line); border-radius: 0 0 8px 8px; color: var(--muted); }
+.model-menu .menu-note { display: block; margin: 4px 8px; font-size: 11px; color: var(--muted); }
