@@ -5,6 +5,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -49,7 +50,7 @@ def _curl_request(api_key: str, payload: dict[str, Any], api_url: str) -> dict[s
         except subprocess.TimeoutExpired as exc:
             raise DeepSeekError('模型请求超时', 'network') from exc
         if result.returncode != 0:
-            detail = (result.stdout or result.stderr or "curl 调用失败").strip()
+            detail = ((result.stderr or "") + " " + (result.stdout or "")).strip() or "curl 调用失败"
             raise DeepSeekError(detail[:2000])
         try:
             return json.loads(result.stdout)
@@ -182,7 +183,7 @@ def _fallback_response(body: str):
     return data
 
 
-def _curl_stream(api_key, payload, api_url, on_delta):
+def _curl_stream(api_key, payload, api_url, on_delta, should_stop=None):
     curl = shutil.which("curl")
     with tempfile.TemporaryDirectory(prefix="prototype-agent-") as td:
         payload_path = Path(td) / "payload.json"
@@ -205,6 +206,10 @@ def _curl_stream(api_key, payload, api_url, on_delta):
 
         def lines():
             for line in process.stdout:
+                # 用户点了停止：直接掐断这次请求，不等模型把这一轮说完
+                if should_stop and should_stop():
+                    process.kill()
+                    raise DeepSeekError('已停止', 'stopped')
                 seen.append(line)
                 yield line
 
@@ -213,7 +218,7 @@ def _curl_stream(api_key, payload, api_url, on_delta):
         process.wait(timeout=30)
         body = ''.join(seen)
         if process.returncode != 0:
-            detail = (body or process.stderr.read() or 'curl 调用失败').strip()
+            detail = ((process.stderr.read() or '') + ' ' + body).strip() or 'curl 调用失败'
             raise (StreamUnsupported if _looks_like_stream_refusal(detail) else DeepSeekError)(detail[:2000])
         if not events:
             return _fallback_response(body)
@@ -246,7 +251,43 @@ def _urllib_stream(api_key, payload, api_url, on_delta):
         raise DeepSeekError(f"模型网络错误: {exc}", 'network') from exc
 
 
-def chat(api_key: str, model: str, messages: list[dict], tools: list[dict] | None = None, base_url: str = "https://api.deepseek.com", max_tokens: int = 16000, on_delta=None) -> dict[str, Any]:
+# ---- 自动重试：模型服务忙（限流、5xx）、网络抖一下、流式中途断了，等一会儿再来，不直接判失败 ----
+# 密钥、余额、请求本身有问题（4xx、上下文太长）重试也没用，立刻报出来。
+RETRY_DELAYS = (2, 5, 12)
+_RETRYABLE = re.compile(r'\b(408|409|425|429|500|502|503|504|520|522|524|529)\b|rate.?limit|too many requests|overload|busy|server error|bad gateway|'
+                        r'service unavailable|gateway time|timed? ?out|timeout|connection (reset|refused|closed)|reset by peer|'
+                        r'could not resolve|temporar|empty reply|EOF|流式响应中断|超时|网络错误', re.I)
+_FATAL = re.compile(r'\b(400|401|402|403|404|413|422)\b|insufficient|balance|余额|api.?key|unauthori|context length|maximum context|too long', re.I)
+
+
+def retryable(exc: Exception) -> bool:
+    text = str(exc)
+    if getattr(exc, 'code', '') == 'stopped' or _FATAL.search(text):
+        return False
+    return getattr(exc, 'code', '') == 'network' or bool(_RETRYABLE.search(text))
+
+
+def chat(api_key: str, model: str, messages: list[dict], tools: list[dict] | None = None, base_url: str = "https://api.deepseek.com",
+         max_tokens: int = 16000, on_delta=None, on_retry=None, should_stop=None) -> dict[str, Any]:
+    for attempt in range(len(RETRY_DELAYS) + 1):
+        try:
+            return _chat_once(api_key, model, messages, tools, base_url, max_tokens, on_delta, should_stop)
+        except DeepSeekError as exc:
+            if not retryable(exc):
+                raise
+            if attempt >= len(RETRY_DELAYS):
+                raise DeepSeekError(f'模型服务暂时不可用，已自动重试 {attempt} 次仍未成功：{str(exc)[:300]}', 'busy') from exc
+            wait = RETRY_DELAYS[attempt]
+            if on_retry:
+                on_retry(attempt + 1, wait, exc)
+            end = time.time() + wait
+            while time.time() < end:
+                if should_stop and should_stop():
+                    raise DeepSeekError('已停止', 'stopped')
+                time.sleep(0.2)
+
+
+def _chat_once(api_key, model, messages, tools, base_url, max_tokens, on_delta, should_stop) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "model": model or "deepseek-flash",
         "messages": messages,
@@ -263,7 +304,7 @@ def chat(api_key: str, model: str, messages: list[dict], tools: list[dict] | Non
         streamed = dict(payload, stream=True, stream_options={"include_usage": True})
         try:
             if shutil.which("curl"):
-                return _curl_stream(api_key, streamed, api_url, on_delta)
+                return _curl_stream(api_key, streamed, api_url, on_delta, should_stop)
             return _urllib_stream(api_key, streamed, api_url, on_delta)
         except StreamUnsupported:
             # 接口不接受 stream + tools：本轮退回一次性返回，不逐字显示，但不失败。

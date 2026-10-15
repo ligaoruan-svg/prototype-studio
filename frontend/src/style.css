@@ -448,3 +448,5 @@ input[type=color]::-webkit-color-swatch { border: none; border-radius: 2px; }
   .brand strong { display: none; }
   .header-right { gap: 4px; }
 }
+/* AI 跑着的时候，发送按钮换成停止 */
+.stop-run { margin-left: auto; min-height: 30px; gap: 5px; padding: 5px 12px; font-size: 12px; border-radius: 999px; color: var(--ink); }

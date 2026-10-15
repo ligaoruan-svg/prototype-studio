@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from .deepseek_client import chat
+from .deepseek_client import chat, DeepSeekError
 from .patcher import apply_operations, verify_source, PatchError, regions, outline
 from . import storage
 from .transactions import stage
@@ -267,7 +267,7 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
               runtime_feedback: str = "", reference: dict | None = None,
               max_tokens: int = 32000, context_budget: int = 200_000, max_rounds: int = 24,
               on_event=None, intent: str = 'auto', include_annotations: bool = True,
-              stream: bool = True) -> dict[str, Any]:
+              stream: bool = True, should_stop=None) -> dict[str, Any]:
     emit = on_event or (lambda event: None)
     intent = resolve_intent(user_message, intent)
     read_only = intent == 'discuss'
@@ -324,7 +324,12 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
     # 别的拒绝（只讨论模式下调修改工具、区域太大、参数越界）原来一次都不计，
     # 模型可以一直撞同一堵墙直到轮次烧光。
     rejects: dict[tuple[str, str], int] = {}
+    stopped = should_stop or (lambda: False)
     for round_no in range(max_rounds):
+        # 用户点了停止：在两轮之间停下。已经改好的部分照常走检查和保存，可以一键撤销
+        if stopped():
+            incomplete = ("stopped", "你停止了这次处理")
+            break
         size_before = sum(len(str(m.get("content") or "")) for m in messages)
         compact_messages(messages, context_budget)
         if sum(len(str(m.get("content") or "")) for m in messages) < size_before:
@@ -335,7 +340,20 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
         # 两者混在一起的话，旁白会被当成结论显示，结论又会被下一轮擦掉。
         on_delta = ((lambda text, kind="result": emit({"type": "note_delta" if kind == "note" else "text_delta", "text": text}))
                     if (stream and on_event) else None)
-        resp = chat(api_key, model, messages, tools, base_url=base_url, max_tokens=max_tokens, on_delta=on_delta)
+        try:
+            resp = chat(api_key, model, messages, tools, base_url=base_url, max_tokens=max_tokens, on_delta=on_delta,
+                        on_retry=lambda n, wait, exc: emit({"type":"model_retry","round":round_no+1,"attempt":n,
+                                                            "label":f"模型服务忙，{wait} 秒后自动重试（第 {n} 次）"}),
+                        should_stop=stopped)
+        except DeepSeekError as exc:
+            if exc.code == 'stopped':
+                incomplete = ("stopped", "你停止了这次处理")
+                break
+            # 模型中途出错（重试也没救回来）：前面已经改好、通过校验的部分不能白丢，照常交给检查和保存
+            if changed:
+                incomplete = (exc.code or 'network', f"模型服务中途出错（{str(exc)[:120]}）")
+                break
+            raise
         for key in usage:
             usage[key] += (resp.get("usage") or {}).get(key,0) or 0
         choices = resp.get("choices") or []
@@ -376,6 +394,9 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
             messages.append({"role":"user","content":"需要修改时请实际执行；需要确认时调用 ask_user；无法处理则用 report_result 说明原因，不要声称已修改。"})
             continue
         for call in calls:
+            if stopped():
+                incomplete = ("stopped", "你停止了这次处理")
+                break
             fn = (call.get("function") or {}).get("name")
             step_id = str(len(tool_log)+1)
             try:
@@ -581,7 +602,7 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
     if incomplete and not report:
         # 改动已经通过结构与脚本校验，丢掉等于白干一轮；交给两阶段提交继续把关，
         # 用户能在结果卡片里看到差异并一键撤销。
-        emit({"type":"step_error","id":"incomplete","label":"没能整理完结果",
+        emit({"type":"step_error","id":"incomplete","label":"已停止" if incomplete[0] == "stopped" else "没能整理完结果",
               "error":{"message":incomplete[1] + "；已经改好的部分保留下来，请检查"}})
         report = result_report({"summary":incomplete[1] + "，但已经做出的改动保留在这次修改里，请检查是否符合预期。"},
                                saved_annotations, changed)

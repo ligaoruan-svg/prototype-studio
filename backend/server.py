@@ -8,6 +8,7 @@ import shutil
 import zipfile
 import queue
 import threading
+import uuid
 import logging
 from pathlib import Path, PurePosixPath
 
@@ -440,10 +441,29 @@ def agent_settings(body, supplied_key=None):
     return settings, key
 
 
+# 正在跑的 AI 修改：run_id → 停止信号。点「停止」或关掉页面（连接断开）都会置位，
+# agent 在两轮之间 / 两步之间看到就停下；已改好的部分照常走检查和保存。
+RUNS: dict[str, threading.Event] = {}
+
+
+class StopIn(BaseModel):
+    run_id: str
+
+
+@app.post('/api/projects/{project_id}/agent/stop')
+def agent_stop(project_id: str, body: StopIn):
+    flag = RUNS.get(body.run_id)
+    if flag:
+        flag.set()
+    return {'ok': bool(flag)}
+
+
 @app.post('/api/projects/{project_id}/agent/stream')
 def agent_stream(project_id: str, body: AgentIn):
     settings, key = agent_settings(body)
     events = queue.Queue()
+    run_id = uuid.uuid4().hex[:12]
+    stop = RUNS[run_id] = threading.Event()
     def work():
         try:
             result = run_agent(project_id, body.page_id, body.message, key, body.model or settings['model'],
@@ -451,7 +471,7 @@ def agent_stream(project_id: str, body: AgentIn):
                                settings['max_tokens'], settings.get('context_budget', 200_000),
                                settings.get('max_rounds', 24),
                                on_event=events.put, intent=body.intent, include_annotations=body.include_annotations,
-                               stream=settings.get('stream', True))
+                               stream=settings.get('stream', True), should_stop=stop.is_set)
             events.put({'type':'complete','result':result})
         except Exception as exc:
             if not isinstance(exc, (WorkError, PatchError)):
@@ -462,16 +482,25 @@ def agent_stream(project_id: str, body: AgentIn):
             events.put({'type':'error','error':payload})
         finally:
             events.put(None)
+            RUNS.pop(run_id, None)
     def generate():
-        yield 'data: ' + json.dumps({'type':'started','label':'正在理解你的需求'}, ensure_ascii=False) + '\n\n'
-        threading.Thread(target=work, daemon=True).start()
-        while True:
-            try: event = events.get(timeout=2)
-            except queue.Empty:
-                yield ': heartbeat\n\n'
-                continue
-            if event is None: break
-            yield 'data: ' + json.dumps(event, ensure_ascii=False) + '\n\n'
+        finished = False
+        try:
+            yield 'data: ' + json.dumps({'type':'started','label':'正在理解你的需求','run_id':run_id}, ensure_ascii=False) + '\n\n'
+            threading.Thread(target=work, daemon=True).start()
+            while True:
+                try: event = events.get(timeout=2)
+                except queue.Empty:
+                    yield ': heartbeat\n\n'
+                    continue
+                if event is None:
+                    finished = True
+                    break
+                yield 'data: ' + json.dumps(event, ensure_ascii=False) + '\n\n'
+        finally:
+            # 页面关了 / 刷新了，连接断开：别让后台继续花钱调模型
+            if not finished:
+                stop.set()
     return StreamingResponse(generate(), media_type='text/event-stream', headers={'Cache-Control':'no-cache','X-Accel-Buffering':'no'})
 
 

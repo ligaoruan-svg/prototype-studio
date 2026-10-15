@@ -1,5 +1,7 @@
 export function responseError(data, fallback = '请求未完成，请重试') {
-  const detail = data?.detail ?? data
+  // 两种形状：HTTP 错误是 { detail: { code, message, detail } }；流里的 error 事件直接就是 { code, message, detail }。
+  // 以前一律先取 .detail，流里的错误码就丢了（全变成 network），「让 AI 修复」这类按钮永远不出现
+  const detail = data && typeof data === 'object' && 'code' in data && 'message' in data ? data : (data?.detail ?? data)
   const error = new Error(typeof detail === 'string' ? detail : detail?.message || fallback)
   error.code = detail?.code || 'network'
   error.detail = detail?.detail || error.message

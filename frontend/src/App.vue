@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { PanelsTopLeft, Plus, Upload, History, Download, Settings2, ChevronDown, ChevronRight, X, MessageSquare, MousePointer2, Hand, Code2, Monitor, Tablet, Smartphone, Undo2, ArrowUp, Check, CheckCheck, LoaderCircle, SlidersHorizontal, SquareMousePointer, Palette, AlertCircle, ShieldCheck, Braces, FileCode2, CircleHelp, PanelLeftClose, PanelRightClose, Copy, Pencil, Ruler, Sparkles } from 'lucide-vue-next'
+import { PanelsTopLeft, Plus, Upload, History, Download, Settings2, ChevronDown, ChevronRight, X, MessageSquare, Square, MousePointer2, Hand, Code2, Monitor, Tablet, Smartphone, Undo2, ArrowUp, Check, CheckCheck, LoaderCircle, SlidersHorizontal, SquareMousePointer, Palette, AlertCircle, ShieldCheck, Braces, FileCode2, CircleHelp, PanelLeftClose, PanelRightClose, Copy, Pencil, Ruler, Sparkles } from 'lucide-vue-next'
 import { Scan, ImagePlus, Image as ImageIcon, FolderOpen, Layers, Maximize2, MoreHorizontal } from 'lucide-vue-next'
 import ExpandBoard from './ExpandBoard.vue'
 import { adoptPresync, bindExpand, dropPresync, presync, setFocusRoute, expand, expandAll, isFresh } from './expandStore.js'
@@ -414,6 +414,9 @@ async function runAgent(text = '', runtimeFeedback = '', options = {}) {
   try {
     const response = await fetch('/api/projects/' + project.value.id + '/agent/stream', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ page_id: pageId.value, message, selection: target, runtime_feedback: runtimeFeedback, reference: reference.value, intent, include_annotations: options.includeAnnotations !== false }) })
     const result = await consumeAgentStream(response, event => {
+      if (event.type === 'started' && event.run_id) current.runId = event.run_id
+      // 模型服务忙：后台自动等几秒重试，这里只记一笔，让人知道不是卡住了
+      if (event.type === 'model_retry') current.steps.push({ id: `retry-${event.round}-${event.attempt}`, label: event.label, state: 'done' })
       if (event.type === 'intent') { current.intent = event.intent; current.options.intent = event.intent; status.value = event.intent === 'discuss' ? '讨论中 · 不会修改文件' : '正在看代码' }
       if (event.type === 'plan') current.plan = event.steps
       if (event.type === 'model_wait') { current.streamText = ''; current.round = event.round }
@@ -444,6 +447,12 @@ async function runAgent(text = '', runtimeFeedback = '', options = {}) {
     await refresh(false); projects.value = await api('/api/projects')
     current.status = 'complete'
   } catch (e) {
+    if (e.code === 'stopped') {   // 自己点的停止、而且还没改动：不是失败，原需求放回输入框
+      current.status = 'stopped'; current.error = { code: 'stopped', message: '已停止，当前文件没有改动' }
+      current.steps.filter(s => s.state === 'running').forEach(s => { s.state = 'done' })
+      if (!input.value.trim()) input.value = message
+      status.value = '已停止 · 页面没有改动'; return
+    }
     if (current.committed) {   // 已经存进去了，只是刷新预览没成功：不能报「未保存」，否则重试会再改一遍
       current.status = 'complete'; lastResult.value = current.result
       status.value = '已保存 · 预览刷新失败'; toast('修改已保存，但预览刷新失败，可以刷新页面')
@@ -459,6 +468,14 @@ async function runAgent(text = '', runtimeFeedback = '', options = {}) {
     current.finished = Date.now(); busy.value = false; pendingUser.value = ''
     await nextTick(); if (chatBox.value) chatBox.value.scrollTop = chatBox.value.scrollHeight
   }
+}
+// 停止：告诉后台在下一步之前停下。已经改好的部分照常检查、保存，可以一键撤销；还没改就什么都不动
+const activeRun = computed(() => [...runs.value].reverse().find(r => r.status === 'running') || null)
+async function stopAgent() {
+  const run = activeRun.value
+  if (!run?.runId || run.stopping || !project.value) return
+  run.stopping = true; run.label = '正在停止…已经改好的部分会保留并检查'
+  try { await post(`/api/projects/${project.value.id}/agent/stop`, { run_id: run.runId }) } catch { run.stopping = false }
 }
 async function chooseAnswer({ option, clarification }) {
   await runAgent('原需求：' + clarification.request + '\n你的问题：' + clarification.question + '\n我的选择：' + option, '', { intent: clarification.intent || 'discuss' })
@@ -690,7 +707,7 @@ onUnmounted(() => { window.removeEventListener('message', onMessage); window.rem
             <div v-if="!messages.length && !pendingUser && showGuide" class="conversation-empty compact-guide"><h2>先聊清楚，再动手。</h2><p>可以一起评价设计、比较方案；确定方向后，只改需要调整的位置。</p><button v-for="suggestion in ['现在的设计怎么样？', '有哪些地方值得优化？', '调整选中区域的对齐']" :key="suggestion" class="prompt-suggestion" :disabled="!page" @click="input = suggestion; toAI()">{{ suggestion }}<ChevronRight :size="14" /></button><button class="text-button dismiss-guide" @click="hideGuide">不再显示</button></div>
             <article v-for="message in messages" :key="message.id" class="message" :class="message.role"><div class="message-author"><span>{{ message.role === 'user' ? '你' : '设计助手' }}</span><time>{{ formatTime(message.created_at) }}</time></div><ResultCard v-if="message.role === 'assistant' && (message.report || message.clarification || message.discussion || message.changed)" :result="message" :locked="locked" :can-undo="page?.last_undo_id === message.change_id" @undo="undo" @choose="chooseAnswer" @apply="applySuggestion" @discuss="discussSuggestion" @rephrase="useRephrase" /><p v-else>{{ message.content }}</p><div class="message-tools"><button class="icon-button" aria-label="复制这条内容" title="复制" @click="copyMessage(message.report?.summary || message.discussion?.answer || message.content)"><Copy :size="13" /></button><button v-if="message.role === 'user'" class="icon-button" aria-label="编辑后重新发送" title="编辑后重发" :disabled="locked" @click="editAndResend(message)"><Pencil :size="13" /></button></div></article>
             <article v-if="pendingUser && !messages.some(m => m.role === 'user' && m.content === pendingUser && m === messages[messages.length - 1])" class="message user"><div class="message-author">你</div><p>{{ pendingUser }}</p></article>
-                        <ExecutionCard v-for="run in currentRuns" :key="run.id" :run="run" :locked="locked" @retry="runAgent(run.request, '', run.options)" @repair="runAgent(run.request, run.error.detail, run.options)" @settings="openDialog('settings')" @select="setMode('select')" @fill="smallerRequest(run)" @dismiss="run.status = 'dismissed'" />
+                        <ExecutionCard v-for="run in currentRuns" :key="run.id" :run="run" :locked="locked" @retry="runAgent(run.request, '', run.options)" @repair="runAgent(run.request, run.error.detail, run.options)" @settings="openDialog('settings')" @select="setMode('select')" @fill="smallerRequest(run)" @dismiss="run.status = 'dismissed'" @stop="stopAgent" />
 
           </div>
           <div class="composer-area">
@@ -698,7 +715,7 @@ onUnmounted(() => { window.removeEventListener('message', onMessage); window.rem
             <button v-if="annotations.length" class="annotation-count batch-action" :disabled="locked" @click="runAgent('请逐条处理已记下的修改意见，保留其他区域。', '', { intent: 'edit' })"><CheckCheck :size="14" />已记下 {{ annotations.length }} 条，一起修改<ArrowUp :size="14" /></button>
             <div v-if="reference" class="reference-attachment"><button class="reference-open" @click="openDialog('image')"><img :src="reference.data_url" alt="参考截图缩略图"><span>{{ reference.name }}<small>{{ reference.regions.length ? reference.regions.length + ' 个框选区域' : '参考整张图' }}</small></span></button><button class="icon-button" aria-label="移除参考截图" :disabled="locked" @click="reference = null"><X :size="13" /></button></div>
             <div class="composer-mode" role="group" aria-label="对话方式"><div class="mode-switch"><button v-for="option in [{ value: 'auto', label: '自动' }, { value: 'discuss', label: '只讨论' }, { value: 'edit', label: '直接改' }]" :key="option.value" type="button" :class="{ active: composerIntent === option.value }" :aria-pressed="composerIntent === option.value" :disabled="busy" @click="composerIntent = option.value">{{ option.label }}</button></div><span>{{ composerIntent === 'discuss' ? '不改代码' : composerIntent === 'edit' ? '局部修改' : '提问先聊，指令再改' }}</span></div>
-            <div class="composer"><textarea ref="composer" v-model="input" aria-label="对话内容" :placeholder="busy ? '可以先写好下一条消息…' : selected ? '聊聊这个位置，或者告诉我怎么改…' : '这个设计怎么样？或者，告诉我想怎么改…'"></textarea><div class="composer-actions"><button class="icon-button" :title="model.supports_vision ? '上传参考截图' : '当前模型不支持图片，可在设置中更换'" aria-label="上传参考截图" :disabled="locked || !model.supports_vision" @click="imageInput.click()"><ImagePlus :size="18" /></button><span v-if="!selected">⌘ / Ctrl ↵</span><span v-else class="composer-spacer"></span><button v-if="selected" class="quiet" :disabled="locked || !input.trim()" @click="saveNote">先记下</button><button class="primary direct-modify" :disabled="locked || (!input.trim() && !annotations.length) || !page" :aria-label="composerIntent === 'edit' ? '执行修改' : '发送消息'" @click="runAgent()"><LoaderCircle v-if="busy" :size="15" class="spin" /><ArrowUp v-else :size="15" />{{ composerIntent === 'edit' ? '执行修改' : '发送' }}</button></div></div>
+            <div class="composer"><textarea ref="composer" v-model="input" aria-label="对话内容" :placeholder="busy ? '可以先写好下一条消息…' : selected ? '聊聊这个位置，或者告诉我怎么改…' : '这个设计怎么样？或者，告诉我想怎么改…'"></textarea><div class="composer-actions"><button class="icon-button" :title="model.supports_vision ? '上传参考截图' : '当前模型不支持图片，可在设置中更换'" aria-label="上传参考截图" :disabled="locked || !model.supports_vision" @click="imageInput.click()"><ImagePlus :size="18" /></button><span v-if="!selected">⌘ / Ctrl ↵</span><span v-else class="composer-spacer"></span><button v-if="selected" class="quiet" :disabled="locked || !input.trim()" @click="saveNote">先记下</button><button v-if="activeRun" type="button" class="outline stop-run" :disabled="!activeRun.runId || activeRun.stopping" title="停在下一步之前；已经改好的部分会保留并检查，可以撤销" @click="stopAgent"><Square :size="12" />{{ activeRun.stopping ? '正在停止…' : '停止' }}</button><button v-else class="primary direct-modify" :disabled="locked || (!input.trim() && !annotations.length) || !page" :aria-label="composerIntent === 'edit' ? '执行修改' : '发送消息'" @click="runAgent()"><LoaderCircle v-if="busy" :size="15" class="spin" /><ArrowUp v-else :size="15" />{{ composerIntent === 'edit' ? '执行修改' : '发送' }}</button></div></div>
             <button class="model-status" @click="openDialog('settings')"><span class="status-dot" :class="{ connected: model.has_key }"></span>{{ model.has_key ? model.model : '连接模型' }}<span v-if="lastResult?.usage?.total_tokens"> · {{ lastResult.usage.total_tokens.toLocaleString() }} tokens</span><ChevronDown :size="12" /></button>
           </div>
       </aside>

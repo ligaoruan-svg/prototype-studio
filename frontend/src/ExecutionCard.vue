@@ -3,7 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { Check, AlertCircle, LoaderCircle, ChevronDown } from 'lucide-vue-next'
 import ResultCard from './ResultCard.vue'
 const props = defineProps({ run: Object, locked: Boolean })
-defineEmits(['retry', 'settings', 'select', 'repair', 'dismiss', 'fill'])
+defineEmits(['retry', 'settings', 'select', 'repair', 'dismiss', 'fill', 'stop'])
 const now = ref(Date.now()); let timer
 onMounted(() => { timer = setInterval(() => now.value = Date.now(), 1000) })
 onUnmounted(() => clearInterval(timer))
@@ -18,6 +18,7 @@ const discussing = computed(() => props.run.intent === 'discuss')
 // 以前不管干什么都写"修改中"：问一句"这里美观吗"也是修改中，还在读代码也是修改中。
 // 标题按当下实际在做的事说话——讨论就说在看，动过文件才叫修改。
 const heading = computed(() => {
+  if (props.run.status === 'stopped') return '已停止'
   if (props.run.status === 'checking') return '检查中'
   if (!busy.value) return discussing.value ? '这次回复未完成' : '这次修改未完成'
   if (discussing.value) return props.run.steps.length ? '正在看这个页面' : '思考中'
@@ -26,7 +27,7 @@ const heading = computed(() => {
 </script>
 <template>
   <section class="execution-card" :class="{ failed: run.status === 'failed' }" :aria-label="discussing ? '本次回复进度' : '本次修改进度'">
-    <header><LoaderCircle v-if="busy" :size="14" class="spin" /><AlertCircle v-else :size="14" /><strong>{{ heading }}</strong><time>{{ clock }}</time></header>
+    <header><LoaderCircle v-if="busy" :size="14" class="spin" /><AlertCircle v-else :size="14" /><strong>{{ heading }}</strong><button v-if="run.status === 'running' && run.runId" type="button" class="stop-mini" :disabled="run.stopping" title="停在下一步之前；已经改好的部分会保留并检查" @click="$emit('stop')">{{ run.stopping ? '停止中…' : '停止' }}</button><time>{{ clock }}</time></header>
     <ol v-if="run.plan?.length" class="plan-list" :aria-label="discussing ? '分析步骤' : '修改计划'"><li v-for="(step, i) in run.plan" :key="i" :class="step.status"><Check v-if="step.status === 'done'" :size="12" /><LoaderCircle v-else-if="step.status === 'active'" :size="12" class="spin" /><i v-else></i>{{ step.title }}</li></ol>
     <ol aria-live="polite"><li v-for="step in run.steps" :key="step.id" :class="[step.kind === 'note' ? 'note' : step.state, { foldable: step.kind !== 'note' && step.detail }]"><template v-if="step.kind !== 'note'"><Check v-if="step.state === 'done'" :size="13" /><AlertCircle v-else-if="step.state === 'error'" :size="13" /><LoaderCircle v-else :size="13" class="spin" /></template><div><button v-if="step.kind !== 'note' && step.detail" type="button" class="step-head" :aria-expanded="opened.has(step.id)" @click="toggle(step.id)">{{ step.label }}<ChevronDown :size="12" :class="{ open: opened.has(step.id) }" /></button><span v-else>{{ step.label }}</span><small v-if="step.error">{{ step.error }}</small><small v-else-if="step.detail && opened.has(step.id)" class="step-detail">{{ step.detail }}</small></div></li></ol>
     <p v-if="run.streamText && !run.result" class="stream-text">{{ run.streamText }}<span class="caret"></span></p>
@@ -36,6 +37,7 @@ const heading = computed(() => {
   </section>
 </template>
 <style scoped>
+.stop-mini{margin-left:auto;margin-right:6px;padding:1px 8px;border:1px solid var(--line);border-radius:7px;background:#fff;font-size:11px;color:var(--ink)}.stop-mini:hover:not(:disabled){border-color:#c9c1b4}.stop-mini+time{margin-left:0}
 .execution-card{border:1px solid var(--line);background:transparent;padding:12px 13px;border-radius:12px;margin:12px 0 18px;font-size:12px;line-height:1.65}.execution-card.failed{border-color:#e8cfc6;background:#fffcfb}.execution-card header{display:flex;gap:7px;align-items:center;color:var(--primary)}.execution-card.failed header{color:#a24b37}.execution-card strong{font-size:12px;font-weight:600}.execution-card time{margin-left:auto;color:var(--muted);font-variant-numeric:tabular-nums}
 .execution-card ol{list-style:none;margin:11px 0 0;padding:0;display:flex;flex-direction:column;gap:7px}.execution-card li{display:flex;gap:7px;color:#706159}.execution-card li svg{margin-top:3px}.execution-card li small{display:block;font-size:11px;color:#a24b37;overflow-wrap:anywhere}
 .execution-card li small.step-detail{color:var(--muted);margin-top:3px;line-height:1.7}

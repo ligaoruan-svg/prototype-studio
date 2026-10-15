@@ -22,3 +22,7 @@ test('preview and candidate share an opaque sandbox with identical permissions',
   assert.equal(PREVIEW_SANDBOX, 'allow-scripts allow-modals allow-forms')
   assert.ok(!PREVIEW_SANDBOX.includes('allow-same-origin'))
 })
+test('SSE error with a detail field (what the backend really sends) still keeps its category', async () => {
+  await assert.rejects(consumeAgentStream(response('data: {"type":"error","error":{"code":"validation","message":"改完页面报错了","detail":"Uncaught TypeError"}}\n\n'), () => {}), e => e.code === 'validation' && e.detail === 'Uncaught TypeError')
+  await assert.rejects(consumeAgentStream(response('data: {"type":"error","error":{"code":"stopped","message":"已停止","detail":""}}\n\n'), () => {}), e => e.code === 'stopped')
+})
