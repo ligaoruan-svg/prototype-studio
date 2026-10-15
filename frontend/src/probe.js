@@ -26,7 +26,9 @@ function probeFrame(doc, width, height, routes = []) {
   // 不给 allow-modals / allow-popups：副本里就算有人调 alert、window.open，也弹不到用户面前
   frame.setAttribute('sandbox', 'allow-scripts allow-forms')
   frame.setAttribute('aria-hidden', 'true'); frame.tabIndex = -1; frame.title = '后台展开'
-  Object.assign(frame.style, { position: 'fixed', left: '-30000px', top: '0', width: width + 'px', height: height + 'px', border: '0' })
+  // 不能放到屏幕外（left:-30000px）：浏览器会把屏幕外的跨域 iframe 的定时器压到每秒一次、动画冻住，
+  // 每试一个按钮从 0.3 秒拖到 3 秒，等待超时就成了「没反应」。放在屏幕里、完全透明、点不到、垫在最底层
+  Object.assign(frame.style, { position: 'fixed', left: '0', top: '0', width: width + 'px', height: height + 'px', border: '0', opacity: '0', pointerEvents: 'none', zIndex: '-1' })
   let seq = 0, onLoaded = null
   const waiters = new Map()
   const listener = event => {
