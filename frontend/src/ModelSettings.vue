@@ -17,7 +17,12 @@ const PROVIDERS = [
   { name: 'OpenAI', url: 'https://api.openai.com/v1' },
 ]
 const blank = () => ({ id: '', name: '', base_url: 'https://api.deepseek.com', model: '', api_key: '', supports_vision: false, stream: true, max_tokens: 16384, context_budget: 200000, max_rounds: 24 })
-const form = ref(null), busy = ref(''), error = ref(''), done = ref('')
+const form = ref(null), busy = ref(''), error = ref(''), done = ref(''), warn = ref('')
+// 测试结果说人话：能连上 + 会调用工具 = 生成和修改都能用；只能连上 = 只能聊天
+function tested(name, r) {
+  if (r.tools) { done.value = `「${name}」测试通过：能连上，也会调用工具，生成和修改页面都能用`; return }
+  warn.value = `「${name}」能连上，但没有按要求调用工具（${r.tool_error || '原因不明'}）。只能聊天讨论，生成和修改页面会失败——换一个支持工具调用（function calling）的模型；如果开着「逐字显示」，也可以关掉再测一次`
+}
 const host = url => { try { return new URL(url).host } catch { return '' } }
 const provider = computed(() => PROVIDERS.find(p => form.value && host(p.url) === host(form.value.base_url)))
 const sameHost = computed(() => form.value && profiles.value.find(p => p.host === host(form.value.base_url) && p.has_key && p.id !== form.value.id))
@@ -43,7 +48,7 @@ async function call(url, method = 'POST', body) {
 }
 async function act(kind, fn) {
   if (busy.value) return
-  busy.value = kind; error.value = ''; done.value = ''
+  busy.value = kind; error.value = ''; done.value = ''; warn.value = ''
   try { await fn() } catch (e) { error.value = e.message } finally { busy.value = '' }
 }
 // 保存（可选：顺便用它 / 顺便测一下连接）
@@ -52,7 +57,7 @@ function save({ use = false, test = false } = {}) {
     const out = await call('/api/config/profiles', 'POST', { ...form.value, activate: use })
     emit('saved', out)
     const name = form.value.name || form.value.model
-    if (test) { await call('/api/config/test', 'POST', { id: out.saved_id }); done.value = `「${name}」连接成功` }
+    if (test) tested(name, await call('/api/config/test', 'POST', { id: out.saved_id }))
     else done.value = use ? `已保存，正在用「${name}」` : `已保存「${name}」，在输入框下面可以切换过去`
     form.value = null
   })
@@ -62,7 +67,7 @@ function remove(p) {
   if (!window.confirm(`解绑「${p.name || p.model}」？它的密钥也会从本机删掉。`)) return
   act('del' + p.id, async () => { emit('saved', await call(`/api/config/profiles/${p.id}`, 'DELETE')); done.value = '已解绑' })
 }
-function testOne(p) { act('test' + p.id, async () => { await call('/api/config/test', 'POST', { id: p.id }); done.value = `「${p.name || p.model}」连接成功` }) }
+function testOne(p) { act('test' + p.id, async () => tested(p.name || p.model, await call('/api/config/test', 'POST', { id: p.id }))) }
 </script>
 <template>
   <div class="models">
@@ -74,7 +79,7 @@ function testOne(p) { act('test' + p.id, async () => { await call('/api/config/t
         <span v-if="p.supports_vision" class="tag" title="能看截图"><Eye :size="11" />看图</span>
         <span v-if="p.active" class="tag on"><Check :size="11" />正在用</span>
         <button v-else type="button" class="outline small" :disabled="!!busy || !p.has_key" @click="use(p)">用它</button>
-        <button type="button" class="icon-button" title="测试连接（会发一条短消息）" :disabled="!!busy || !p.has_key" @click="testOne(p)"><LoaderCircle v-if="busy === 'test' + p.id" :size="13" class="spin" /><PlugZap v-else :size="13" /></button>
+        <button type="button" class="icon-button" title="测试：能不能连上、会不会调用工具（发两条短消息，可能有少量费用）" :disabled="!!busy || !p.has_key" @click="testOne(p)"><LoaderCircle v-if="busy === 'test' + p.id" :size="13" class="spin" /><PlugZap v-else :size="13" /></button>
         <button type="button" class="icon-button" title="修改" :disabled="!!busy" @click="edit(p)"><Pencil :size="13" /></button>
         <button type="button" class="icon-button" :title="p.active ? '正在用的不能解绑，先切到别的' : '解绑'" :disabled="!!busy || p.active" @click="remove(p)"><Trash2 :size="13" /></button>
       </li>
@@ -92,9 +97,10 @@ function testOne(p) { act('test' + p.id, async () => { await call('/api/config/t
       <p class="field-hint">按模型的真实能力填，填大了接口会报错。上下文预算要大于你的组件库，否则读进来就被折叠掉。</p>
       <label class="vision-option"><input type="checkbox" v-model="form.supports_vision">这个模型能看图片（截图理解）</label>
       <label class="vision-option"><input type="checkbox" v-model="form.stream">逐字显示回复（接口不支持流式时关掉）</label>
-      <div class="dialog-actions"><button type="button" class="quiet" :disabled="!!busy" @click="form = null">取消</button><button type="button" class="outline" :disabled="!!busy" @click="save({ test: true })"><LoaderCircle v-if="busy === 'test'" :size="13" class="spin" />保存并测试</button><button class="primary" :disabled="!!busy">{{ form.id ? '保存' : '保存并使用' }}</button></div>
+      <div class="dialog-actions"><button type="button" class="quiet" :disabled="!!busy" @click="form = null">取消</button><button type="button" class="outline" :disabled="!!busy" @click="save({ test: true })"><LoaderCircle v-if="busy === 'test'" :size="13" class="spin" />{{ busy === 'test' ? '测试中…' : '保存并测试' }}</button><button class="primary" :disabled="!!busy">{{ form.id ? '保存' : '保存并使用' }}</button></div>
     </form>
     <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+    <p v-else-if="warn" class="model-warn">{{ warn }}</p>
     <p v-else-if="done" class="model-done"><Check :size="12" />{{ done }}</p>
     <label class="vision-option pref"><input type="checkbox" :checked="keepInspector" @change="emit('update:keepInspector', $event.target.checked)">始终展开属性面板</label>
     <div class="settings-note"><ShieldCheck :size="17" /><p>密钥只保存在本机服务配置里，不写进浏览器或原型文件。截图理解要用勾了「能看图片」的模型。测试连接会发一条短消息，可能产生少量费用。</p></div>
@@ -129,6 +135,7 @@ function testOne(p) { act('test' + p.id, async () => { await call('/api/config/t
 .pref{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:550}
 .pref input{width:14px;height:14px;margin:0;accent-color:var(--primary)}
 .model-done{display:flex;align-items:center;gap:5px;color:var(--success);font-size:12px;margin:8px 0}
+.model-warn{margin:8px 0;padding:9px 12px;border:1px solid #edd6a6;border-radius:10px;background:#fffaf0;color:#7a4f0b;font-size:12px;line-height:1.7}
 .pref{margin-top:12px}
 @media (max-width:640px){.two{grid-template-columns:1fr}}
 </style>

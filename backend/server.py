@@ -189,6 +189,10 @@ def delete_profile(profile_id: str):
         raise HTTPException(400, str(exc))
 
 
+PING_TOOL = {"type": "function", "function": {"name": "ping", "description": "连接测试用：被调用就说明支持工具调用。",
+             "parameters": {"type": "object", "properties": {"ok": {"type": "boolean"}}, "required": ["ok"]}}}
+
+
 @app.post("/api/config/test")
 def test_config(body: TestIn | None = None):
     try:
@@ -197,11 +201,25 @@ def test_config(body: TestIn | None = None):
         raise HTTPException(400, str(exc))
     if not settings['api_key']:
         raise HTTPException(400, "请先保存 API 密钥")
+    key = settings['api_key']
     try:
-        result = chat(settings['api_key'], settings['model'], [{"role":"user","content":"Reply OK only."}], base_url=settings['base_url'], max_tokens=settings['max_tokens'])
-        return {"ok": bool(result.get('choices')), "usage": result.get('usage', {})}
+        result = chat(key, settings['model'], [{"role":"user","content":"Reply OK only."}], base_url=settings['base_url'], max_tokens=min(512, settings['max_tokens']))
     except Exception as exc:
-        raise HTTPException(400, str(exc).replace(settings['api_key'], '[密钥]'))
+        raise HTTPException(400, str(exc).replace(key, '[密钥]'))
+    # 能连上不等于能干活：生成和修改页面全靠「调用工具」。用一个小工具试一下它会不会按要求调用，
+    # 并且按真正干活时的方式发（开了逐字显示就走流式），这样测通了就是真能用
+    tools, tool_error = False, ""
+    try:
+        probe = chat(key, settings['model'],
+                     [{"role": "user", "content": "这是连接测试。请调用 ping 工具，参数 ok 填 true。只调用工具，不要输出别的文字。"}],
+                     [PING_TOOL], base_url=settings['base_url'], max_tokens=min(512, settings['max_tokens']),
+                     on_delta=(lambda *a, **k: None) if settings.get('stream', True) else None)
+        tools = bool(((probe.get('choices') or [{}])[0].get('message') or {}).get('tool_calls'))
+        if not tools:
+            tool_error = "模型回了文字，没有调用工具"
+    except Exception as exc:
+        tool_error = str(exc).replace(key, '[密钥]')[:300]
+    return {"ok": bool(result.get('choices')), "usage": result.get('usage', {}), "tools": tools, "tool_error": tool_error}
 
 
 SPEC_PATH = ROOT / "prompts" / "design-spec.md"
