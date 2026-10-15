@@ -140,6 +140,26 @@ class SwitchIn(BaseModel):
     id: str
 
 
+class ProfileIn(ConfigIn):
+    id: str = ""
+    name: str = Field(default="", max_length=30)
+    activate: bool = False
+
+
+class TestIn(BaseModel):
+    id: str = ""
+
+
+@app.post("/api/config/profiles")
+def save_profile(body: ProfileIn):
+    """新增或修改一个绑定的模型（不一定马上用它）"""
+    try:
+        values = body.model_dump()
+        return config.save_profile(values, values.pop("id"), values.pop("activate"))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
 @app.post("/api/config/switch")
 def switch_model(body: SwitchIn):
     try:
@@ -157,8 +177,11 @@ def delete_profile(profile_id: str):
 
 
 @app.post("/api/config/test")
-def test_config():
-    settings = config.load()
+def test_config(body: TestIn | None = None):
+    try:
+        settings = config.profile_settings(body.id if body else "")
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
     if not settings['api_key']:
         raise HTTPException(400, "请先保存 API 密钥")
     try:
