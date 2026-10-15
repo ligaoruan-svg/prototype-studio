@@ -265,22 +265,35 @@ _TEMPLATE = r'''
     return false;
   }
   const bare=el=>(el.innerText||el.value||'').replace(/\s+/g,' ').trim().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu,'');
-  function triggersIn(scope,inLayer,skip){
+  // skips：没试的按钮按原因记一笔（只记页面这一层），展开完能看到「跳过了哪些、为什么」，漏了一眼就知道
+  // 关闭按钮：「×」这种字会被 bare() 去掉，只看字认不出来；再看提示文字、id 和常见的 dismiss 标记
+  function isCloser(el){
+    const t=(el.innerText||el.value||'').trim(),a=(el.getAttribute('aria-label')||el.getAttribute('title')||'').trim();
+    return /^[×✕✖╳xX]$/.test(t)||/^(关闭|取消|返回|close)$/i.test(a)||/(^|[-_])close([-_A-Z]|$)|Close([-_A-Z]|$)/.test(el.id||'')||el.matches('[data-dismiss],[data-bs-dismiss],[data-layer-close]');
+  }
+  function inTabBar(el){for(let p=el.parentElement;p&&p!==document.body;p=p.parentElement)if(TAB_BAR.test(String(p.className)))return true;return false;}
+  function triggersIn(scope,inLayer,skip,skips){
     const seen=new Set(),groups={},out=[],open=inLayer?[]:layers();
+    const note=(reason,el,name)=>{if(!skips)return;const r=skips[reason]||(skips[reason]={n:0,labels:[]});r.n++;const t=(name||bare(el)||labelOf(el)).slice(0,16);if(t&&r.labels.length<12&&!r.labels.includes(t))r.labels.push(t)};
     for(const el of scope.querySelectorAll(CLICKABLE)){
-      if(out.length>=40)break;
       if(!vis(el)||el.disabled||el.closest('[data-pa-overlay]'))continue;
-      if(!inLayer&&(inSkipZone(el)||inChrome(el)||open.some(l=>l.contains(el))))continue;
+      if(!inLayer&&open.some(l=>l.contains(el)))continue;
+      // 菜单（业务页面另算）、页签（tabsIn 另算）不记；分页条算「查询 / 翻页这类」；别的（面包屑等）记成菜单
+      if(!inLayer&&inSkipZone(el)){if(el.closest('[class*=pag],[class*=Pag]'))note('noise',el,'翻页');else if(!(navBox()&&navBox().contains(el))&&!el.closest('[role=tab],[role=tablist]')&&!inTabBar(el))note('nav',el);continue;}
+      if(!inLayer&&inChrome(el)){note('chrome',el);continue;}
       const outer=el.parentElement?.closest(CLICKABLE);if(outer&&scope.contains(outer))continue;
       const raw=bare(el);
-      if(CLOSE_TEXT.test(raw)||COMMIT_TEXT.test(raw)||NOISE_TEXT.test(raw))continue;
+      if(CLOSE_TEXT.test(raw)||isCloser(el))continue;
+      if(COMMIT_TEXT.test(raw)){note('commit',el);continue;}
+      if(NOISE_TEXT.test(raw)){note('noise',el);continue;}
+      if(out.length>=40){note('limit',el);continue;}
       if(el.matches('[class*=close]')||(skip&&skip.includes(el)))continue;
       const href=el.getAttribute('href')||'';
       if(el.tagName==='A'&&!el.matches('[data-action],[data-cx],[onclick]')&&(href.startsWith('#')||/\.html?(?:[?#].*)?$/i.test(href)||/^(?:https?:)?\/\//i.test(href)))continue;
       const t=targetOf(el);if(!t.text)continue;
       const group=t.attr?t.attr+'='+t.value.replace(/\d+/g,'#'):t.tag+'|'+t.text,key=group+'|'+t.text;
       // 同一个动作挂在一排按钮上（行业列表、每一行的编辑）只试两个，试多了全是重复
-      if(seen.has(key)||(groups[group]||0)>=2)continue;
+      if(seen.has(key)||(groups[group]||0)>=2){note('repeat',el);continue;}
       seen.add(key);groups[group]=(groups[group]||0)+1;out.push(t);
     }
     return out;
@@ -486,16 +499,23 @@ _TEMPLATE = r'''
     }
     return out;
   }
+  function stateSig(){
+    const t=(document.body&&document.body.innerText)||'';
+    const v=[...document.querySelectorAll('input,select,textarea')].slice(0,300).map(e=>e.type==='checkbox'||e.type==='radio'?(e.checked?1:0):String(e.value).slice(0,20)).join('\u0001');
+    return location.hash+'\u0002'+t+'\u0002'+v;
+  }
   let probeBase=null,probeSig='';
   async function probeInit(full){
     await sleep(50);probeBase=snapshot();probeSig=pageSig();
     if(!full)return {sig:probeSig};
     let page='';try{page=freeze(document.body).replace(/^<body[^>]*>|<\/body>$/g,'');}catch{}
     if(page.length>1500000)page='';
-    return {sig:probeSig,title:pageTitle(),styles:stylesOf(),page,width:innerWidth,height:innerHeight,triggers:triggersIn(document,false),tabs:tabsIn()};
+    const skipped={};
+    return {sig:probeSig,title:pageTitle(),styles:stylesOf(),page,width:innerWidth,height:innerHeight,triggers:triggersIn(document,false,null,skipped),tabs:tabsIn(),skipped};
   }
   async function probeTry(path,step){
     if(!await closeAll(probeBase)||pageSig()!==probeSig)return {needReload:true};
+    const textBefore=stateSig();
     for(const s of path){
       if(s.nav){const was=pageSig();if(!await press(s,probeBase))return {ok:false,reason:'replay'};if(!await waitChange(was,1500))return {ok:false,reason:'replay'};continue;}
       const before=snapshot();if(!await press(s,probeBase))return {ok:false,reason:'replay'};if(!await waitOpen(before,1200))return {ok:false,reason:'replay'};
@@ -512,7 +532,10 @@ _TEMPLATE = r'''
       const navNow=activeNav();
       // 跳去了别的业务页面：地址是清单里的另一页，或者左侧菜单的高亮换了。不挂进这一页的树，只记一条「能跳到哪」
       const jumped=(location.hash!==hashBefore&&known.includes(location.hash))||(navBefore&&navNow&&navNow!==navBefore);
-      if(jumped)out.jump={hash:location.hash,nav:navNow,title:navNow||pageTitle()};
+      // 用户纠正过：按用户说的来（这其实是别的业务页面 / 子页面 / 页签）
+      if(step.force==='jump')out.jump={hash:location.hash,nav:navNow,title:(navNow&&navNow!==navBefore?navNow:'')||pageTitle(),forced:true};
+      else if(step.force==='subpage'||step.force==='tab')out.subpage={...subpageOf(),...(step.force==='tab'?{title:step.target.text,tab:true}:{})};
+      else if(jumped)out.jump={hash:location.hash,nav:navNow,title:navNow||pageTitle()};
       // 页签：点了就是这一页的另一个视图
       else if(step.tab){out.subpage={...subpageOf(),title:step.target.text,tab:true};}
       // 真换了一页（地址变了，或内容区的标题换了一套）才算子页面；只是筛选、切个开关、表格换了几行，不算一层
@@ -521,7 +544,7 @@ _TEMPLATE = r'''
       else{const now=activeTabs(),was=tabsBefore.split('|');const moved=now.find(t=>!was.includes(t));if(moved)out.tablink={tab:moved};}
     }
     // 什么都没发生：展示类的按钮记成「待补」（删除、查询这类本来就不试）
-    if(!L&&!out.jump&&!out.subpage&&!out.tablink&&raw.length>=2&&DISPLAY_TEXT.test(raw)&&!ACTION_HEAD.test(raw)&&!CLOSE_TEXT.test(raw)){
+    if(!L&&!out.jump&&!out.subpage&&!out.tablink&&raw.length>=2&&DISPLAY_TEXT.test(raw)&&!ACTION_HEAD.test(raw)&&!CLOSE_TEXT.test(raw)&&!(pressed&&isCloser(pressed))){
       await sleep(150);
       if(pageSig()===sigBefore&&feedback()===fbBefore&&!topOpen(before))out.dead=true;
     }
@@ -532,6 +555,8 @@ _TEMPLATE = r'''
     }
     const closed=await closeAll(probeBase);
     out.pageChanged=!closed||pageSig()!==probeSig;
+    // 页面上的字、勾选、输入有没有被这一下改掉：没改就不用重载副本，省下一次加载（展开慢主要慢在这）
+    out.dirty=!out.pageChanged&&stateSig()!==textBefore;
     return out;
   }
   async function replay(path){

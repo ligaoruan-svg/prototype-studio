@@ -7,7 +7,7 @@ import BoardBranch from './BoardBranch.vue'
 // 一条按钮链：「新增因子 →」弹窗卡片，后面接着它里面再点开的弹窗。
 // 后续默认收起，只展开当前路径（选中的、搜到的、正在编辑的），不然越往右越宽
 defineProps({ node: Object, styles: Object, frame: Object, picked: Object, mode: String, open: Object, patch: Object, focus: [Number, null], route: String, focusWidth: Number })
-defineEmits(['pick', 'edit', 'play', 'refind', 'toggle', 'close', 'open', 'goto'])
+defineEmits(['pick', 'edit', 'play', 'refind', 'toggle', 'close', 'open', 'goto', 'fix'])
 </script>
 <template>
   <div class="branch">
@@ -15,7 +15,7 @@ defineEmits(['pick', 'edit', 'play', 'refind', 'toggle', 'close', 'open', 'goto'
     <!-- 正在编辑 / 试玩的那张：原地放大，不切屏 -->
     <InlineFocus v-if="focus === node.id" :node="node" :route="route" :styles="styles" :frame="frame" :picked="picked" :mode="mode" :patch="patch" :crumb="node.crumb" :width="focusWidth" @pick="$emit('pick', $event)" @edit="$emit('edit', $event)" @play="$emit('play', $event)" @close="$emit('close')" @open="$emit('open', $event)" @goto="$emit('goto', $event)" />
     <div v-else class="branch-card">
-      <SceneCard :node="node" :styles="styles" :frame="frame" :picked="picked" :mode="mode" :crumb="node.crumb" :notes="node.notes" :width="336" :patch="patch" compact @pick="$emit('pick', $event)" @edit="$emit('edit', $event)" @play="$emit('play', $event)" @refind="$emit('refind')" />
+      <SceneCard :node="node" :styles="styles" :frame="frame" :picked="picked" :mode="mode" :crumb="node.crumb" :notes="node.notes" :width="336" :patch="patch" compact @pick="$emit('pick', $event)" @edit="$emit('edit', $event)" @play="$emit('play', $event)" @refind="$emit('refind')" @fix="$emit('fix', $event)" />
       <CardExtras :links="node.links" :dead="node.dead" @goto="$emit('goto', $event)" />
     </div>
     <!-- 收放只有一个开关，永远在卡片右边同一个位置：收着显示「后续 N ▸」，开着显示「▾ 收起」 -->
@@ -25,7 +25,7 @@ defineEmits(['pick', 'edit', 'play', 'refind', 'toggle', 'close', 'open', 'goto'
         <template v-else>后续 {{ node.children.length }} 个<ChevronRight :size="13" /></template>
       </button>
       <div v-if="open.has(node.id)" class="branch-children">
-        <BoardBranch v-for="child in node.children" :key="child.id" :node="child" :styles="styles" :frame="frame" :picked="picked" :mode="mode" :open="open" :patch="patch" :focus="focus" :route="route" :focus-width="focusWidth" @pick="$emit('pick', $event)" @edit="$emit('edit', $event)" @play="$emit('play', $event)" @refind="$emit('refind')" @toggle="$emit('toggle', $event)" @close="$emit('close')" @open="$emit('open', $event)" @goto="$emit('goto', $event)" />
+        <BoardBranch v-for="child in node.children" :key="child.id" :node="child" :styles="styles" :frame="frame" :picked="picked" :mode="mode" :open="open" :patch="patch" :focus="focus" :route="route" :focus-width="focusWidth" @pick="$emit('pick', $event)" @edit="$emit('edit', $event)" @play="$emit('play', $event)" @refind="$emit('refind')" @toggle="$emit('toggle', $event)" @close="$emit('close')" @open="$emit('open', $event)" @goto="$emit('goto', $event)" @fix="$emit('fix', $event)" />
       </div>
     </template>
   </div>

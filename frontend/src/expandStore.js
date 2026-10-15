@@ -18,7 +18,45 @@ export const expand = reactive({
   discovering: false,
   error: '',
   focusRoute: null,   // 展开视图正在看的那一页：改完同步时永远排第一
+  overrides: {},      // 用户纠正过的认法：路由 → { 按钮文字: 'jump' | 'subpage' | 'tab' }
+  avg: loadAvg(),     // 这台电脑上展开 / 同步一页平均要多久（毫秒），用来估「还要多久」
 })
+
+// ===== 空闲时再跑 =====
+// 正在看的那页（插队任务）全速跑；别的页面只在你停手 1.5 秒以后才接着点，
+// 你一动鼠标、敲键盘、滚动，后台就先停在两次点击之间，不跟你抢电脑
+const IDLE_MS = 1500
+let lastInput = 0
+let priorityRunning = 0
+if (typeof window !== 'undefined') for (const type of ['pointerdown', 'keydown', 'wheel'])
+  window.addEventListener(type, () => { lastInput = Date.now() }, { capture: true, passive: true })
+const userBusy = () => !(typeof document !== 'undefined' && document.hidden) && Date.now() - lastInput < IDLE_MS
+const sleep = ms => new Promise(r => setTimeout(r, ms))
+function loadAvg() {
+  try { const v = JSON.parse(localStorage.getItem('pa-expand-avg') || 'null'); if (v?.probe > 0 && v?.sync > 0) return v } catch { /* 读不到就用默认 */ }
+  return { probe: 45_000, sync: 8_000 }
+}
+function learn(kind, ms) {
+  if (!(ms > 500)) return
+  expand.avg = { ...expand.avg, [kind]: Math.round(expand.avg[kind] * 0.6 + ms * 0.4) }
+  try { localStorage.setItem('pa-expand-avg', JSON.stringify(expand.avg)) } catch { /* 存不了下次用默认 */ }
+}
+// 还要多久（毫秒）：正在跑的按进度估，排队的按平均时长，再按同时跑几页摊开。没有任务时是 null
+function jobLeft(job, now) {
+  const p = job.progress || {}, active = Math.max(0, now - job.started - (job.paused || 0) - (job.waiting ? now - job.waitSince : 0))
+  const done = job.kind === 'sync' ? p.done : p.tried, total = p.total
+  if (done >= 3 && total > done) return active * (total - done) / done
+  if (total && done >= total) return 2000
+  return Math.max(expand.avg[job.kind] - active, 3000)
+}
+export function routeEta(route, now = Date.now()) { const job = expand.jobs[route]; return job ? jobLeft(job, now) : null }
+export function estimate(now = Date.now()) {
+  const left = Object.values(expand.jobs).map(job => jobLeft(job, now))
+  for (const route of expand.queued) left.push(expand.avg[queue.find(j => j.route === route)?.kind || 'probe'])
+  if (!left.length) return null
+  return left.reduce((a, b) => a + b, 0) / Math.min(CONCURRENCY, left.length)
+}
+export const isWaitingForIdle = () => Object.values(expand.jobs).some(j => j.waiting)
 const adopted = new Map()   // 预同步的令牌 → 提交后的正式版本哈希
 const candidates = new Map() // 预同步的令牌 → 候选版本的副本源码（用完就删，一份几百 KB）
 const runningTokens = new Set()
@@ -47,13 +85,14 @@ export async function bindExpand({ pid, pageId, hash, makeDoc, width }) {
   if (scope !== expand.scope) {
     const g = ++gen
     routesJob = null; expand.discovering = false
-    expand.scope = scope; expand.hash = hash; expand.routes = []; expand.entries = {}; expand.jobs = {}; expand.queued = []; expand.error = ''
+    expand.scope = scope; expand.hash = hash; expand.routes = []; expand.entries = {}; expand.jobs = {}; expand.queued = []; expand.error = ''; expand.overrides = {}
     queue.length = 0
     ready = (async () => {
       try {
         const saved = await api(base())
         if (g !== gen) return
         expand.routes = saved.routes || []
+        expand.overrides = saved.overrides && typeof saved.overrides === 'object' ? saved.overrides : {}
         expand.entries = Object.fromEntries(Object.entries(saved.entries || {}).filter(([, e]) => e?.result && String(e.hash || '').startsWith(SCHEMA + ':')).map(([route, e]) => [route, { hash: e.hash, result: e.result }]))
       } catch { /* 没存过就从空的开始 */ }
     })()
@@ -105,7 +144,7 @@ export async function expandAll(currentRoute = '') {
   await ensureRoutes(currentRoute)
   if (g !== gen) return
   const order = [...expand.routes].sort((a, b) => (b.hash === currentRoute) - (a.hash === currentRoute))
-  for (const r of order) if (!isFresh(r.hash)) schedule(r.hash, expand.entries[r.hash]?.result?.nodes?.length && !expand.entries[r.hash].partial ? 'sync' : 'probe')   // 半截的结果要重找，不能当完整的同步
+  for (const r of order) if (!isFresh(r.hash)) schedule(r.hash, expand.entries[r.hash]?.result?.nodes?.length && !expand.entries[r.hash].partial ? 'sync' : 'probe', r.hash === currentRoute)   // 半截的结果要重找，不能当完整的同步
 }
 
 // 版本变了：所有展开过的页面都按原路径同步（后台慢慢来）
@@ -117,6 +156,36 @@ function syncStale() {
   for (const route of stale) if (!first.includes(route)) schedule(route, 'sync')
 }
 export function setFocusRoute(route) { expand.focusRoute = route }
+
+// 认错了，用户自己纠正：这个按钮点出来的其实是 别的业务页面 / 子页面 / 页签。kind 为空 = 恢复自动认。
+// 记在磁盘上，这一页马上按新认法重找一遍；以后每次展开都照这个来
+export async function setOverride(route, label, kind) {
+  if (!ctx || !label) return
+  const g = gen, c = ctx
+  await ready
+  if (g !== gen) return
+  const mine = { ...(expand.overrides[route] || {}) }
+  if (kind) mine[label] = kind; else delete mine[label]
+  const next = { ...expand.overrides }
+  if (Object.keys(mine).length) next[route] = mine; else delete next[route]
+  expand.overrides = next
+  // 撤销「其实是别的业务页面」：当初因为它加进清单的页面也拿掉，不然按自动规则它还是会被当成跳走
+  if (kind !== 'jump' && expand.routes.some(r => r.added === label && r.from === route)) {
+    expand.routes = expand.routes.filter(r => !(r.added === label && r.from === route))
+    api(`${base(c)}/routes`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ routes: expand.routes }) }).catch(() => {})
+  }
+  api(`${base(c)}/overrides`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ overrides: next }) })
+    .catch(() => { if (c === ctx) expand.error = '纠正没存上，下次打开可能又按原来的认法' })
+  schedule(route, 'probe', true, true)
+}
+// 用户说「其实是别的业务页面」，而那一页不在清单里（地址是个新的 #路由）：加进业务页面清单
+function addRoutes(route, result, c) {
+  const extra = (result.jumps || []).filter(j => j.forced && j.hash && !expand.routes.some(r => r.hash === j.hash))
+  if (!extra.length) return
+  const seen = new Set()
+  expand.routes = [...expand.routes, ...extra.filter(j => !seen.has(j.hash) && seen.add(j.hash)).map(j => ({ hash: j.hash, title: (j.title || j.hash).slice(0, 30), added: j.label, from: route }))]
+  api(`${base(c)}/routes`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ routes: expand.routes }) }).catch(() => {})
+}
 
 // ===== 预同步：AI 改完、还在做运行检查的时候，就用候选版本先把正在看的那页拍出来 =====
 // 检查 + 提交要一两秒，这段时间副本已经在跑了；提交成功直接认领成正式结果，失败就退回旧快照。
@@ -172,7 +241,7 @@ function pump() {
   expand.queued = queue.map(j => j.route)
 }
 
-async function run({ route, kind, token }) {
+async function run({ route, kind, token, priority }) {
   const g = gen, c = ctx
   // 预同步拍的是候选版本：先挂在「pending:令牌」名下，提交成功再认领
   let hash = token ? `pending:${token}` : expand.hash
@@ -180,20 +249,31 @@ async function run({ route, kind, token }) {
   const entry = expand.entries[route]
   // 用编号认自己的任务：expand 是响应式对象，取出来的是代理，和原对象比 === 永远不相等
   const id = ++jobSeq
-  expand.jobs[route] = { kind, progress: null, id }
+  expand.jobs[route] = { kind, progress: null, id, started: Date.now(), paused: 0, waiting: false, priority: !!priority }
   const mine = () => expand.jobs[route]?.id === id
   const progress = update => { if (mine()) expand.jobs[route].progress = update }
+  // 后台的页面：两次点击之间看一眼，你在用电脑、或者正在看的那页在跑，就先等着
+  const pause = priority ? null : async () => {
+    if (route === expand.focusRoute || !(priorityRunning > 0 || userBusy())) return
+    const t = Date.now()
+    if (mine()) Object.assign(expand.jobs[route], { waiting: true, waitSince: t })
+    while (alive() && route !== expand.focusRoute && (priorityRunning > 0 || userBusy())) await sleep(300)
+    if (mine()) { expand.jobs[route].waiting = false; expand.jobs[route].paused += Date.now() - t }
+  }
+  if (priority) priorityRunning++
   try {
     const doc = ((token && candidates.get(token)) || c.makeDoc)(route)
     let result
     if (kind === 'sync' && entry?.result?.nodes?.length) {
-      result = await syncNodes({ doc, nodes: entry.result.nodes, jumps: entry.result.jumps || [], links: entry.result.links || [], dead: entry.result.dead || [], routes: expand.routes.map(r => r.hash), first: [...(touched[route] || [])], width: c.width, height: 800, cancelled: () => !alive() || adopted.get(token) === null,
+      result = await syncNodes({ doc, pause, nodes: entry.result.nodes, jumps: entry.result.jumps || [], links: entry.result.links || [], dead: entry.result.dead || [], coverage: entry.result.coverage || null, routes: expand.routes.map(r => r.hash), first: [...(touched[route] || [])], width: c.width, height: 800, cancelled: () => !alive() || adopted.get(token) === null,
         onUpdate: update => { if (!alive() || adopted.get(token) === null) return; progress(update); expand.entries[route] = { ...expand.entries[route], result: update, ...(token ? { hash, prev: entry } : {}) } } })
     } else {
-      result = await probePage({ doc, width: c.width, routes: expand.routes.map(r => r.hash), height: 800, cancelled: () => !alive(),
+      result = await probePage({ doc, pause, overrides: expand.overrides[route] || {}, width: c.width, routes: expand.routes.map(r => r.hash), height: 800, cancelled: () => !alive(),
         onUpdate: update => { if (!alive()) return; progress(update); const now = expand.entries[route]; if (!now || now.partial) expand.entries[route] = { hash, result: update, partial: true } } })
     }
     if (!alive()) return
+    if (mine() && !result.cancelled) { const j = expand.jobs[route]; learn(kind === 'sync' ? 'sync' : 'probe', Date.now() - j.started - j.paused) }
+    if (kind !== 'sync') addRoutes(route, result, c)
     if (token) {
       if (adopted.get(token) === null) { expand.entries[route] = entry; return }   // 检查没通过，候选作废
       if (adopted.has(token)) hash = adopted.get(token)                           // 已经提交：直接是正式版本
@@ -211,6 +291,7 @@ async function run({ route, kind, token }) {
     // 同步半路出错：退回旧快照，别让卡片一直转「更新中」
     if (kind === 'sync' && entry) expand.entries[route] = entry
   } finally {
+    if (priority) priorityRunning--
     if (token) { runningTokens.delete(token); if (adopted.has(token)) forget(token) }
     if (alive() && mine()) {
       delete expand.jobs[route]

@@ -39,7 +39,16 @@ class 展开快照(unittest.TestCase):
         self.assertEqual(data["entries"]["#overview"]["hash"], "c")
 
     def test_没展开过就是空的(self):
-        self.assertEqual(storage.load_expand(self.pid, self.page), {"routes": [], "entries": {}})
+        self.assertEqual(storage.load_expand(self.pid, self.page), {"routes": [], "entries": {}, "overrides": {}})
+
+    def test_用户纠正的认法单独存_不会被当成某个路由的结果(self):
+        storage.save_expand_entry(self.pid, self.page, "#ops", "h", {"nodes": []})
+        storage.save_expand_overrides(self.pid, self.page, {"#ops": {"表格行 · 查看": "subpage", "巡检路线": "jump", "乱写": "delete"}, "#empty": {"x": "nope"}})
+        data = storage.load_expand(self.pid, self.page)
+        self.assertEqual(data["overrides"], {"#ops": {"表格行 · 查看": "subpage", "巡检路线": "jump"}})
+        self.assertEqual(list(data["entries"]), ["#ops"])
+        storage.save_expand_overrides(self.pid, self.page, {})
+        self.assertEqual(storage.load_expand(self.pid, self.page)["overrides"], {})
 
     def test_页面编号不能拿来穿目录(self):
         with self.assertRaises(ValueError):

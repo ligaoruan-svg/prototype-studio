@@ -315,7 +315,13 @@ def _route_file(route: str) -> str:
 def load_expand(project_id: str, page_id: str) -> dict[str, Any]:
     load_meta(project_id)
     root = _expand_dir(project_id, page_id)
-    out: dict[str, Any] = {"routes": [], "entries": {}}
+    out: dict[str, Any] = {"routes": [], "entries": {}, "overrides": {}}
+    fixes = root / "overrides.json"
+    if fixes.exists():
+        try:
+            out["overrides"] = json.loads(fixes.read_text(encoding="utf-8")).get("overrides", {})
+        except (OSError, ValueError):
+            pass
     index = root / "routes.json"
     if index.exists():
         try:
@@ -323,7 +329,7 @@ def load_expand(project_id: str, page_id: str) -> dict[str, Any]:
         except (OSError, ValueError):
             pass
     for path in sorted(root.glob("*.json")) if root.exists() else []:
-        if path.name == "routes.json":
+        if path.name in ("routes.json", "overrides.json"):
             continue
         try:
             item = json.loads(path.read_text(encoding="utf-8"))
@@ -335,8 +341,30 @@ def load_expand(project_id: str, page_id: str) -> dict[str, Any]:
 
 def save_expand_routes(project_id: str, page_id: str, routes: list[dict[str, Any]]) -> None:
     load_meta(project_id)
-    clean = [{"hash": str(r.get("hash", ""))[:200], "title": str(r.get("title", ""))[:60]} for r in routes[:80]]
+    clean = []
+    for r in routes[:80]:
+        item = {"hash": str(r.get("hash", ""))[:200], "title": str(r.get("title", ""))[:60]}
+        # 用户纠正「其实是别的业务页面」时加进来的页面：记下是哪页哪个按钮加的，撤销纠正时一起拿掉
+        if r.get("added"):
+            item.update({"added": str(r["added"])[:80], "from": str(r.get("from", ""))[:200]})
+        clean.append(item)
     write_atomic(_expand_dir(project_id, page_id) / "routes.json", json.dumps({"routes": clean}, ensure_ascii=False))
+
+
+# 用户纠正过的认法：{路由: {按钮文字: "jump" | "subpage" | "tab"}}，下次展开按这个来
+OVERRIDE_KINDS = {"jump", "subpage", "tab"}
+
+
+def save_expand_overrides(project_id: str, page_id: str, overrides: dict[str, Any]) -> None:
+    load_meta(project_id)
+    clean: dict[str, dict[str, str]] = {}
+    for route, items in list(overrides.items())[:80]:
+        if not isinstance(items, dict):
+            continue
+        kept = {str(label)[:80]: kind for label, kind in list(items.items())[:200] if kind in OVERRIDE_KINDS}
+        if kept:
+            clean[str(route)[:200]] = kept
+    write_atomic(_expand_dir(project_id, page_id) / "overrides.json", json.dumps({"overrides": clean}, ensure_ascii=False))
 
 
 def save_expand_entry(project_id: str, page_id: str, route: str, version_hash: str, result: dict[str, Any]) -> None:

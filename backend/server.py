@@ -372,6 +372,10 @@ class ExpandRoutesIn(BaseModel):
     routes: list[dict] = []
 
 
+class ExpandOverridesIn(BaseModel):
+    overrides: dict = {}
+
+
 class ExpandEntryIn(BaseModel):
     route: str = ""
     hash: str = ""
@@ -390,6 +394,15 @@ def get_expand(project_id: str, page_id: str):
 def put_expand_routes(project_id: str, page_id: str, body: ExpandRoutesIn):
     try:
         storage.save_expand_routes(project_id, page_id, body.routes)
+        return {"ok": True}
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.put("/api/projects/{project_id}/pages/{page_id}/expand/overrides")
+def put_expand_overrides(project_id: str, page_id: str, body: ExpandOverridesIn):
+    try:
+        storage.save_expand_overrides(project_id, page_id, body.overrides)
         return {"ok": True}
     except (FileNotFoundError, ValueError) as exc:
         raise HTTPException(400, str(exc))
