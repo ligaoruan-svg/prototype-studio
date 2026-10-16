@@ -162,6 +162,7 @@ _TEMPLATE = r'''
     if(mode==='box'||swallowClick){e.preventDefault();e.stopImmediatePropagation();swallowClick=false;return;}   // 刚拖完框，这一下 click 不算点选
     if(mode==='select'){
       e.preventDefault();e.stopImmediatePropagation();hover=null;if(dragBox)dragBox.style.display='none';
+      if(strokes.length){clearInk();send('DRAWING',{count:0});}   // 画了没发又去点别的：这次画的作废，改成点选
       if(e.shiftKey||e.metaKey||e.ctrlKey){
         const at=picked.indexOf(el);
         if(at>=0)picked.splice(at,1);else if(picked.length<16)picked.push(el);
@@ -202,25 +203,90 @@ _TEMPLATE = r'''
   // 按下时先记起点，移动超过 6px 才算拖；没拖就照常当点击处理
   let dragging=false,swallowClick=false,dragEnabled=true;   // 拖框只在评论里有；编辑里拖一下什么都不做
   for(const type of ['pointerdown','mousedown'])window.addEventListener(type,e=>{if(mode==='select'){dragDown(e);e.preventDefault();e.stopImmediatePropagation();}},true);
+  // ===== 评论里的画笔：在页面上直接画圈、划线（参照 Claude Design）=====
+  // 笔迹按页面坐标存（滚动后还在原处），画在一层不挡点击的 SVG 上；每画完一笔，
+  // 把笔迹圈到的元素报给宿主（AI 拿它定位源码），截图在发送时再拍
+  let strokes=[],redoStrokes=[],current=null,inkLayer=null;
+  function ink(){
+    if(inkLayer)return inkLayer;
+    inkLayer=document.createElementNS('http://www.w3.org/2000/svg','svg');inkLayer.dataset.paOverlay='1';
+    Object.assign(inkLayer.style,{position:'fixed',left:'0',top:'0',width:'100vw',height:'100vh',pointerEvents:'none',zIndex:'2147483645',overflow:'visible'});
+    document.documentElement.appendChild(inkLayer);return inkLayer;
+  }
+  function drawInk(){
+    if(!strokes.length&&!current){if(inkLayer)inkLayer.innerHTML='';return;}
+    const all=current?[...strokes,current]:strokes,dx=scrollX,dy=scrollY;
+    ink().innerHTML=all.map(st=>'<polyline fill="none" stroke="#e5383b" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" points="'+st.map(p=>(p.x-dx).toFixed(1)+','+(p.y-dy).toFixed(1)).join(' ')+'"/>').join('');
+  }
+  window.addEventListener('scroll',()=>{if(strokes.length||current)drawInk();},true);
+  function strokeRect(st){const xs=st.map(p=>p.x-scrollX),ys=st.map(p=>p.y-scrollY);return {left:Math.min(...xs),top:Math.min(...ys),right:Math.max(...xs),bottom:Math.max(...ys)};}
+  function reportInk(){
+    if(!strokes.length){send('DRAWING',{count:0});return;}
+    // 每一笔：圈住的范围里露在最前面的元素，加上笔迹直接压过的元素
+    const seen=new Set(),nodes=[];
+    const add=el=>{if(el&&el!==document.body&&el!==document.documentElement&&!el.closest('[data-pa-overlay]')&&!seen.has(el)){seen.add(el);nodes.push(el);}};
+    for(const st of strokes){
+      const r=strokeRect(st);
+      // 画的是一个圈：取圈里面的；画的是一道线（下划线、删除线）：取线压过的。圈的边线常常压到旁边的东西，不能算
+      if(r.right-r.left>24&&r.bottom-r.top>24)findInRect(r).forEach(add);
+      else for(let k=0;k<st.length;k+=3){const p=st[k];add(document.elementFromPoint(p.x-scrollX,p.y-scrollY));}
+    }
+    if(!nodes.length&&strokes.length){const r=strokeRect(strokes[strokes.length-1]);add(document.elementFromPoint((r.left+r.right)/2,(r.top+r.bottom)/2));}
+    const kept=nodes.filter((el,_,all)=>!all.some(n=>n!==el&&el.contains(n))).slice(0,16);
+    const box=strokes.map(strokeRect).reduce((a,b)=>({left:Math.min(a.left,b.left),top:Math.min(a.top,b.top),right:Math.max(a.right,b.right),bottom:Math.max(a.bottom,b.bottom)}));
+    let ancestor=kept[0];while(ancestor&&kept.some(n=>!ancestor.contains(n)))ancestor=ancestor.parentElement;
+    const targets=kept.map(describe);
+    send('DRAWING',{...describe(ancestor||document.body),kind:'region',drawing:true,count:strokes.length,redo:redoStrokes.length,
+      text:targets.map(n=>n.text||n.tag).join(' · ').slice(0,500),targets,bounds:box});
+  }
+  // 截图：把当前页面（含打开的弹窗、填的值）连同样式放进 SVG foreignObject 画到 canvas，再叠上笔迹。
+  // 不依赖外部库；外链图片画不出来（浏览器不让），原型里大多是 CSS 画的，够用来标位置
+  async function shoot(pad=60,maxW=1100){
+    const W=innerWidth,H=innerHeight;
+    const box=strokes.length?strokes.map(strokeRect).reduce((a,b)=>({left:Math.min(a.left,b.left),top:Math.min(a.top,b.top),right:Math.max(a.right,b.right),bottom:Math.max(a.bottom,b.bottom)})):{left:0,top:0,right:W,bottom:H};
+    const x0=Math.max(0,Math.floor(box.left-pad)),y0=Math.max(0,Math.floor(box.top-pad)),x1=Math.min(W,Math.ceil(box.right+pad)),y1=Math.min(H,Math.ceil(box.bottom+pad));
+    const css=[...document.querySelectorAll('style')].filter(n=>!n.closest('[data-pa-overlay]')&&!n.hasAttribute('data-pa-calm')).map(n=>n.textContent).join('\n');
+    const rootCs=getComputedStyle(document.documentElement),vars=[];for(const k of rootCs)if(k.startsWith('--'))vars.push(k+':'+rootCs.getPropertyValue(k));
+    const clone=document.body.cloneNode(true);
+    clone.querySelectorAll('script,[data-pa-overlay],iframe,video,canvas').forEach(n=>n.remove());
+    // 输入框里填的、下拉选的值写回属性，克隆出来才看得见
+    const src=[...document.body.querySelectorAll('input,select,textarea')],dst=[...clone.querySelectorAll('input,select,textarea')];
+    src.forEach((el,k)=>{const c=dst[k];if(!c)return;if(el.tagName==='SELECT'){[...c.options].forEach((o,m)=>{if(m===el.selectedIndex)o.setAttribute('selected','');else o.removeAttribute('selected');});}else if(el.type==='checkbox'||el.type==='radio'){if(el.checked)c.setAttribute('checked','');else c.removeAttribute('checked');}else if(el.tagName==='TEXTAREA')c.textContent=el.value;else c.setAttribute('value',el.value);});
+    const bodyCs=getComputedStyle(document.body);
+    const xhtml='<div xmlns="http://www.w3.org/1999/xhtml" style="'+vars.join(';').replace(/"/g,"'")+';width:'+W+'px;height:'+H+'px;overflow:hidden;position:relative;background:'+bodyCs.backgroundColor+'"><style>'+css.replace(/:root\b/g,'.pa-shot-root').replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</style><div class="pa-shot-root '+(document.documentElement.className||'')+'" style="position:absolute;left:'+(-scrollX)+'px;top:'+(-scrollY)+'px;width:'+document.documentElement.scrollWidth+'px">'+new XMLSerializer().serializeToString(clone)+'</div></div>';
+    const svg='<svg xmlns="http://www.w3.org/2000/svg" width="'+W+'" height="'+H+'"><foreignObject width="100%" height="100%">'+xhtml+'</foreignObject></svg>';
+    const img=new Image();img.decoding='sync';
+    await new Promise((ok,bad)=>{img.onload=ok;img.onerror=()=>bad(new Error('截图失败'));img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);});
+    const scale=Math.min(1,maxW/(x1-x0));
+    const cv=document.createElement('canvas');cv.width=Math.round((x1-x0)*scale);cv.height=Math.round((y1-y0)*scale);
+    const ctx=cv.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,cv.width,cv.height);
+    ctx.drawImage(img,x0,y0,x1-x0,y1-y0,0,0,cv.width,cv.height);
+    ctx.strokeStyle='#e5383b';ctx.lineWidth=3.5*Math.max(scale,.6);ctx.lineCap='round';ctx.lineJoin='round';
+    for(const st of strokes){ctx.beginPath();st.forEach((p,k)=>{const x=(p.x-scrollX-x0)*scale,y=(p.y-scrollY-y0)*scale;k?ctx.lineTo(x,y):ctx.moveTo(x,y);});ctx.stroke();}
+    const big=cv.toDataURL('image/jpeg',.85);
+    const t=document.createElement('canvas'),ts=Math.min(1,320/cv.width);t.width=Math.round(cv.width*ts);t.height=Math.round(cv.height*ts);
+    t.getContext('2d').drawImage(cv,0,0,t.width,t.height);
+    return {data_url:big,thumb:t.toDataURL('image/jpeg',.7),width:cv.width,height:cv.height};
+  }
+  function clearInk(){strokes=[];redoStrokes=[];current=null;drawInk();}
   function dragDown(e){
     if((mode!=='box'&&mode!=='select')||(mode==='select'&&!dragEnabled)||e.button!==0||e.target?.closest?.('[data-pa-overlay]'))return;e.preventDefault();e.stopImmediatePropagation();
     if(dragStart)return;
-    dragStart={x:e.clientX,y:e.clientY};dragging=mode==='box';if(!dragBox)dragBox=overlay('2px solid #b8532f');
-    if(dragging)Object.assign(dragBox.style,{display:'block',left:e.clientX+'px',top:e.clientY+'px',width:'0',height:'0',background:'#b8532f12'});
+    dragStart={x:e.clientX,y:e.clientY};dragging=false;current=null;
   }
   function dragMove(e){
     if(!dragStart)return;
-    if(!dragging){if(Math.abs(e.clientX-dragStart.x)+Math.abs(e.clientY-dragStart.y)<6)return;dragging=true;hover=null;paint();dragBox.style.display='block';dragBox.style.background='#b8532f12';}
+    if(!dragging){if(Math.abs(e.clientX-dragStart.x)+Math.abs(e.clientY-dragStart.y)<6)return;dragging=true;hover=null;paint();current=[{x:dragStart.x+scrollX,y:dragStart.y+scrollY}];}
     e.preventDefault();e.stopImmediatePropagation();
-    Object.assign(dragBox.style,{left:Math.min(dragStart.x,e.clientX)+'px',top:Math.min(dragStart.y,e.clientY)+'px',width:Math.abs(e.clientX-dragStart.x)+'px',height:Math.abs(e.clientY-dragStart.y)+'px'});
+    const last=current[current.length-1],x=e.clientX+scrollX,y=e.clientY+scrollY;
+    if(Math.abs(last.x-x)+Math.abs(last.y-y)>=2){current.push({x,y});drawInk();}
   }
   function dragUp(e){
-    if(!dragStart)return;
-    const r={left:Math.min(dragStart.x,e.clientX),top:Math.min(dragStart.y,e.clientY),right:Math.max(dragStart.x,e.clientX),bottom:Math.max(dragStart.y,e.clientY)};dragStart=null;
+    if(!dragStart)return;dragStart=null;
     if(!dragging)return;   // 没拖动：交给 click 当点选
     dragging=false;e.preventDefault();e.stopImmediatePropagation();swallowClick=true;setTimeout(()=>{swallowClick=false;},0);
-    if(r.right-r.left<8||r.bottom-r.top<8){dragBox.style.display='none';return;}
-    selectRegion(r);
+    if(current&&current.length>2){strokes.push(current);redoStrokes=[];}
+    current=null;drawInk();reportInk();
   }
   // 只按几何位置筛，会把弹窗背后的元素一起选进来——它们确实在框里，
   // 但用户看不见，改的也不是它们。这里用命中测试确认"这个点上露在最前面的
@@ -232,15 +298,21 @@ _TEMPLATE = r'''
     // 这种情况它是看得见的，不该被排除。
     return !!top&&(top===el||el.contains(top)||top.contains(el));
   }
-  function selectRegion(r){
-    const inBox=[...document.body.querySelectorAll('button,a,input,select,textarea,h1,h2,h3,h4,p,label,th,td,span,li')].filter(el=>{
+  // 候选：常见的可见元素，加上自己直接带字的（AI 生成的页面里文字多半直接写在 div 里）
+  const hasOwnText=el=>[...el.childNodes].some(n=>n.nodeType===3&&n.textContent.trim());
+  function inRect(r){
+    return [...document.body.querySelectorAll('*')].filter(el=>!el.closest('[data-pa-overlay]')&&(el.matches('button,a,input,select,textarea,h1,h2,h3,h4,p,label,th,td,span,li,img,svg')||hasOwnText(el))).filter(el=>{
       const b=el.getBoundingClientRect(),x=b.left+b.width/2,y=b.top+b.height/2;
       return b.width>0&&b.height>0&&x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom;
     });
-    const nodes=inBox.filter(el=>{
-      const b=el.getBoundingClientRect();
-      return visibleAt(el,b.left+b.width/2,b.top+b.height/2);
-    }).filter((el,_,all)=>!all.some(n=>n!==el&&el.contains(n))).slice(0,16);
+  }
+  function findInRect(r){
+    return inRect(r).filter(el=>{const b=el.getBoundingClientRect();return visibleAt(el,b.left+b.width/2,b.top+b.height/2);})
+      .filter((el,_,all)=>!all.some(n=>n!==el&&el.contains(n))).slice(0,16);
+  }
+  function selectRegion(r){
+    const inBox=inRect(r);
+    const nodes=findInRect(r);
     if(!nodes.length){
       send('NOTICE',{message:inBox.length
         ? '这片区域被弹窗或遮罩挡住了，只能框选当前看得见的内容'
@@ -664,7 +736,7 @@ _TEMPLATE = r'''
     if(m.type==='PA_PROBE_INIT'){if(Array.isArray(m.routes))knownRoutes=m.routes;probeInit(!!m.full).then(r=>send('PROBE_REPLY',{id:m.id,...r}),err=>send('PROBE_REPLY',{id:m.id,ok:false,error:String(err)}));return;}
     if(m.type==='PA_PROBE_TRY'){probeTry(m.path||[],m.step).then(r=>send('PROBE_REPLY',{id:m.id,...r}),err=>send('PROBE_REPLY',{id:m.id,ok:false,error:String(err),needReload:true}));return;}
     if(m.type==='PA_REPLAY'){replay(m.path||[]).then(r=>send('REPLAYED',r),()=>send('REPLAYED',{ok:false,at:0}));return;}
-    if(m.type==='PA_SET_MODE'){mode=m.mode;hover=null;dragStart=null;dragging=false;if(m.mode==='interact')picked=[];if(dragBox)dragBox.style.display='none';paint();}
+    if(m.type==='PA_SET_MODE'){if(m.mode!==mode)clearInk();mode=m.mode;hover=null;dragStart=null;dragging=false;if(m.mode==='interact')picked=[];if(dragBox)dragBox.style.display='none';paint();}
     if(m.type==='PA_SELECT'){
       if(!m.selector&&dragBox)dragBox.style.display='none';
       try{const one=m.selector?document.querySelector(m.selector):null;
@@ -678,6 +750,10 @@ _TEMPLATE = r'''
     }
     if(m.type==='PA_BOX_RECT')selectRegion(m.bounds);
     if(m.type==='PA_SET_DRAG'){dragEnabled=!!m.enabled;dragStart=null;dragging=false;}
+    if(m.type==='PA_DRAW_UNDO'&&strokes.length){redoStrokes.push(strokes.pop());drawInk();reportInk();}
+    if(m.type==='PA_DRAW_REDO'&&redoStrokes.length){strokes.push(redoStrokes.pop());drawInk();reportInk();}
+    if(m.type==='PA_DRAW_CLEAR'){clearInk();}
+    if(m.type==='PA_DRAW_SHOT'){shoot().then(r=>send('DRAW_SHOT',{id:m.id,ok:true,...r}),err=>send('DRAW_SHOT',{id:m.id,ok:false,error:String(err&&err.message||err)}));}
     if(m.type==='PA_HIGHLIGHT')highlight(m.targets);
     if(m.type==='PA_SCROLL'){
       let el=document.elementFromPoint(m.x,m.y);

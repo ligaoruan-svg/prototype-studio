@@ -105,6 +105,7 @@ class AnnotationIn(BaseModel):
     modal_trail: str = ""
     in_subpage: str = ""
     view_route: str = ""
+    shot: str = ""   # 画笔评论的缩略图（jpeg data URL），存成文件
 
 
 class AgentIn(BaseModel):
@@ -645,6 +646,14 @@ def add_annotation(project_id: str, page_id: str, body: AnnotationIn):
         return storage.add_annotation(project_id, page_id, body.model_dump())
     except Exception as exc:
         raise HTTPException(400, str(exc))
+
+
+@app.get("/api/projects/{project_id}/shots/{ann_id}")
+def annotation_shot(project_id: str, ann_id: str):
+    path = storage.shot_path(project_id, ann_id)
+    if not path.is_file():
+        raise HTTPException(404)
+    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"})
 
 
 class ExpandRoutesIn(BaseModel):

@@ -511,3 +511,13 @@ input[type=color]::-webkit-color-swatch { border: none; border-radius: 2px; }
 .dyn-note svg { flex-shrink: 0; margin-top: 2px; color: var(--primary); }
 .dyn-note p { margin: 0; }
 .dyn-note b { display: block; color: var(--ink); font-weight: 600; }
+
+/* ===== 评论里的画笔：画布底部的说明栏、评论缩略图 ===== */
+.draw-bar { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 6; display: flex; align-items: center; gap: 6px; width: min(640px, calc(100% - 32px)); padding: 7px 7px 7px 14px; border: 1px solid var(--line); border-radius: 14px; background: #fff; box-shadow: 0 10px 30px #2b1d1426; }
+.draw-bar > svg { flex-shrink: 0; color: #e5383b; }
+.draw-bar input { flex: 1; min-width: 0; height: 34px; border: 0; outline: none; background: none; font-size: 13px; }
+.draw-bar button { height: 32px; min-height: 0; padding: 0 12px; border-radius: 9px; font-size: 12.5px; }
+.draw-bar .icon-button { width: 32px; padding: 0; }
+.draw-bar .primary { min-width: 58px; }
+.ann-shot { display: block; width: 100%; max-height: 120px; object-fit: cover; object-position: top left; margin-bottom: 4px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+.draw-hint { margin: 10px 16px; }

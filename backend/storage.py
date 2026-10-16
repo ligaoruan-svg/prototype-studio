@@ -137,6 +137,12 @@ def get_page(meta: dict[str, Any], page_id: str) -> dict[str, Any]:
     raise KeyError(page_id)
 
 
+def shot_path(project_id: str, ann_id: str) -> Path:
+    if not re.fullmatch(r"ann_[\w-]+", ann_id):
+        raise ValueError("无效的评论编号")
+    return project_dir(project_id) / "shots" / f"{ann_id}.jpg"
+
+
 def resolve_link(meta: dict[str, Any], href: str, page_id: str = "") -> str | None:
     """原型里的链接（a.html、../orders/index.html）指向项目里的哪一页"""
     import posixpath
@@ -221,9 +227,15 @@ def purge_item(project_id: str, page_id: str = "") -> None:
     if not page.get("deleted_at"):
         raise ValueError("只能彻底删除回收站里的页面")
     meta["pages"] = [p for p in meta["pages"] if p["id"] != page_id]
+    gone = [a.get("id", "") for a in meta.get("annotations", []) if a.get("page_id") == page_id and a.get("shot")]
     meta["annotations"] = [a for a in meta.get("annotations", []) if a.get("page_id") != page_id]
     meta["updated_at"] = now_iso()
     save_meta(meta)
+    for ann_id in gone:   # 这一页评论的缩略图一起删
+        try:
+            shot_path(project_id, ann_id).unlink()
+        except (OSError, ValueError):
+            pass
     if not re.fullmatch(r"page_[\w-]+", page_id):
         return
     for folder in (pdir / "versions" / page_id, pdir / "expand" / page_id, pdir / "changes" / page_id):
@@ -349,6 +361,18 @@ def add_annotation(project_id: str, page_id: str, payload: dict[str, Any]) -> di
         "created_at": now_iso(),
         "status": "active",
     }
+    # 画笔评论的缩略图（带红圈的那块页面）：存成单独的图片文件，project.json 里只记一个标记
+    shot = str(payload.get("shot") or "")
+    if shot.startswith("data:image/jpeg;base64,") and len(shot) < 400_000:
+        import base64
+        try:
+            data = base64.b64decode(shot.split(",", 1)[1], validate=True)
+            folder = project_dir(project_id) / "shots"
+            folder.mkdir(parents=True, exist_ok=True)
+            write_atomic(folder / f"{ann['id']}.jpg", data)
+            ann["shot"] = True
+        except (ValueError, OSError):
+            pass
     meta.setdefault("annotations", []).append(ann)
     meta["updated_at"] = now_iso()
     save_meta(meta)
@@ -360,6 +384,10 @@ def delete_annotation(project_id: str, ann_id: str) -> None:
     meta = load_meta(project_id)
     meta["annotations"] = [a for a in meta.get("annotations", []) if a.get("id") != ann_id]
     save_meta(meta)
+    try:
+        shot_path(project_id, ann_id).unlink()
+    except (OSError, ValueError):
+        pass
 
 
 
