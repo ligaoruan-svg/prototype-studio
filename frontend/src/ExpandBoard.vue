@@ -86,7 +86,7 @@ const frame = computed(() => ({ w: state.value.width || 1150, h: state.value.hei
 const routePatch = computed(() => props.patch && (props.patch.route == null || props.patch.route === props.route) ? props.patch : null)
 const picked = computed(() => props.selection?.card?.route === props.route ? props.selection.card : null)
 const focused = computed(() => props.focus == null ? null : scenes.value.find(s => s.node.id === props.focus) || null)
-const hint = computed(() => props.mode === 'interact' ? '点卡片就能交互；要改哪里，点卡片右上角「编辑」' : props.mode === 'box' ? '在卡片里拖动框选一组元素；太小时点「编辑」放大' : '点击元素选择修改，按住 Shift 多选；太小时点「编辑」放大')
+const hint = computed(() => props.mode === 'interact' ? '点卡片就能交互；要改哪里，点卡片右上角「编辑」' : '点击元素选择，按住 Shift 多选；太小时点「编辑」放大')
 
 // 这一页上能跳去别的业务页面的按钮：不挂进树里（那一页有自己的树），列在页面卡下面，点一下切过去看那一页的树
 const jumps = computed(() => (state.value.jumps || []).filter(j => !(j.hash && j.hash === props.route)).map(j => {

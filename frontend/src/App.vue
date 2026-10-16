@@ -1,12 +1,11 @@
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { PanelsTopLeft, Plus, Upload, History, Download, Settings2, ChevronDown, ChevronRight, X, MessageSquare, Square, MousePointer2, Hand, Code2, Monitor, Tablet, Smartphone, Undo2, ArrowUp, Check, CheckCheck, LoaderCircle, SlidersHorizontal, SquareMousePointer, Palette, AlertCircle, ShieldCheck, Braces, FileCode2, CircleHelp, PanelLeftClose, PanelRightClose, Copy, Pencil, Ruler, Sparkles } from 'lucide-vue-next'
-import { Scan, ImagePlus, Image as ImageIcon, FolderOpen, Layers, Maximize2, MoreHorizontal, Brain } from 'lucide-vue-next'
+import { Scan, ImagePlus, Image as ImageIcon, FolderOpen, Layers, Maximize2, MoreHorizontal, Brain, MessageCircle, Play } from 'lucide-vue-next'
 import ExpandBoard from './ExpandBoard.vue'
 import { adoptPresync, bindExpand, dropPresync, presync, setFocusRoute, expand, expandAll, isFresh } from './expandStore.js'
 import { buildExpandExport } from './expandExport.js'
 import ImageReference from './ImageReference.vue'
-import RegionCapture from './RegionCapture.vue'
 import FileManager from './FileManager.vue'
 import { previewMessage, PREVIEW_SANDBOX } from './previewMessage.js'
 import { preparePreviewDocument } from './previewDocument.js'
@@ -42,7 +41,6 @@ watch(keepInspector, v => { try { localStorage.setItem('pf-inspector-pinned', St
 const leftOpen = ref(window.innerWidth > 960), rightOpen = ref(keepInspector.value)
 const showGuide = ref(stored('pf-hide-guide') !== 'true')
 const selected = ref(null), inspection = ref(null), textValue = ref(''), note = ref(''), input = ref('')
-const regionKey = ref(0)   // 自增一次就重挂 RegionCapture，把上一次画的框擦掉
 const busy = ref(false), saving = ref(false), loading = ref(false), status = ref('本地工作区')
 const error = ref(''), notice = ref(''), pendingUser = ref(''), pendingRef = ref(null), lastResult = ref(null)
 const previewFrame = ref(null), previewDoc = ref(''), composer = ref(null), chatBox = ref(null), fileInput = ref(null)
@@ -97,7 +95,46 @@ async function api(url, options = {}) {
 const post = (url, body = {}) => api(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
 function toast(message) { notice.value = message; clearTimeout(toastTimer); toastTimer = setTimeout(() => notice.value = '', 3000) }
 function send(message) { previewFrame.value?.contentWindow?.postMessage(previewMessage(message), '*') }
-function setMode(value) { mode.value = value; if (view.value === 'code') view.value = 'preview'; send({ type: 'PA_SET_MODE', mode: value }); if (window.innerWidth <= 960) { leftOpen.value = false; rightOpen.value = false } if (value === 'select') toast('点击选中；按住 Shift 或 ⌘ 可以多选几处'); if (value === 'box') toast('按住拖动，框选你想调整的区域') }
+function setMode(value) { mode.value = value === 'box' ? 'select' : value; if (view.value === 'code') view.value = 'preview'; send({ type: 'PA_SET_MODE', mode: mode.value }); if (window.innerWidth <= 960) { leftOpen.value = false; rightOpen.value = false } }
+// 四种用法，参照 Claude Design：浏览（像用户一样点）/ 评论（点一下或拖一个框，留意见给 AI）/
+// 编辑（选中直接改属性，不经过 AI）/ 演示（全屏，只剩原型）。底下预览只有两种状态：能点（interact）、能选（select）
+const tool = ref('browse')
+const TOOLS = [
+  { id: 'browse', label: '浏览', key: 'H', icon: Hand, tip: '像真用户一样点、跳转、开弹窗' },
+  { id: 'comment', label: '评论', key: 'C', icon: MessageCircle, tip: '点一下元素，或拖一个框选一片区域，写意见交给 AI' },
+  { id: 'edit', label: '编辑', key: 'V', icon: Pencil, tip: '选中元素，直接改文字、颜色、字号、间距（不调用 AI）；按住 Shift 多选' },
+]
+function setTool(value) {
+  if (value === 'present') { startPresent(); return }
+  tool.value = value
+  setMode(value === 'browse' ? 'interact' : 'select')
+  if (value === 'comment') toast('点一下元素，或者拖一个框选一片，写下怎么改')
+  if (value === 'edit') toast('点选要改的元素；按住 Shift 或 ⌘ 可以多选')
+}
+// 别处（展开、指给它看）直接切了预览的状态：工具跟着变，能选默认算「编辑」
+watch(mode, value => {
+  if (value === 'interact' && (tool.value === 'comment' || tool.value === 'edit')) tool.value = 'browse'
+  if (value !== 'interact' && tool.value === 'browse') tool.value = 'edit'
+})
+// 演示：全屏、收起所有面板，只剩原型本身；Esc 或右上角退出
+const presenting = ref(false)
+function startPresent() {
+  if (!page.value || !previewDoc.value) return
+  if (boardOpen.value) showPreview()
+  closeSelection(); presenting.value = true; setMode('interact')
+  send({ type: 'PA_RENDER_MARKERS', annotations: [] })
+  document.documentElement.requestFullscreen?.().catch(() => {})
+  toast('演示中：按 Esc 退出')
+}
+function stopPresent() {
+  if (!presenting.value) return
+  presenting.value = false; tool.value = 'browse'
+  send({ type: 'PA_RENDER_MARKERS', annotations: annotations.value })
+  if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {})
+}
+if (typeof document !== 'undefined') document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement) stopPresent() })
+// 评论：写在右侧，存成一条意见（攒几条一起交给 AI），或者直接发给 AI
+const commentDraft = ref('')
 function toggleBoard() {
   if (!page.value || !previewDoc.value) return
   if (boardOpen.value) { showPreview(); return }
@@ -169,7 +206,7 @@ function openFromBoard(node) {
 }
 // 展开视图打开时，预览 iframe 整个卸掉，收起时重新挂上、重新载入。
 // 以前用 display:none 藏着：Safari 里藏过的 iframe 再显示出来是一片空白，换了 srcdoc 也不重绘。
-function clearSelectionOnly() { selected.value = null; inspection.value = null; note.value = ''; textValue.value = ''; ++regionKey.value; send({ type: 'PA_SELECT', selector: '' }) }
+function clearSelectionOnly() { selected.value = null; inspection.value = null; note.value = ''; textValue.value = ''; send({ type: 'PA_SELECT', selector: '' }) }
 function closeSelection() { clearSelectionOnly(); if (!keepInspector.value) rightOpen.value = false }
 function hideGuide() { showGuide.value = false; localStorage.setItem('pf-hide-guide', 'true') }
 // 选中的东西在弹窗里时，告诉 AI 是哪个弹窗、怎么点开的——不然它只能满文件搜按钮文字
@@ -405,14 +442,16 @@ async function undo(changeId = '') {
 }
 
 
-async function saveNote() {
-  const content = input.value.trim()
+async function saveNote(text) {
+  const fromPanel = typeof text === 'string'
+  const content = (fromPanel ? text : input.value).trim()
   if (!selected.value || !content || locked.value) return
   const wasRegion = selected.value.kind === 'region'
   saving.value = true
   try {
     await post(endpoint('/annotations'), { ...selected.value, ...modalContext(selected.value), note: content })
-    if (input.value.trim() === content) input.value = ''
+    if (fromPanel) commentDraft.value = ''
+    else if (input.value.trim() === content) input.value = ''
     // 记下之后立刻把这次的选中清掉：保留着它，下一次框选会顶掉它而不是新起一条，
     // 右侧还一直显示上一处，看不出这条到底记住了没有。清干净，留在当前模式，
     // 就可以直接接着框下一处 / 点下一个。
@@ -428,6 +467,12 @@ async function removeAnnotation(id) {
 }
 function openLeft() { leftOpen.value = true; if (window.innerWidth <= 960) rightOpen.value = false }
 function toggleRight() { rightOpen.value = !rightOpen.value; if (rightOpen.value && window.innerWidth <= 960) leftOpen.value = false }
+async function commentToAI() {
+  const text = commentDraft.value.trim()
+  if (!text || !selected.value) return
+  input.value = text; commentDraft.value = ''
+  await runAgent()
+}
 async function toAI() { leftOpen.value = true; if (window.innerWidth <= 960) rightOpen.value = false; await nextTick(); composer.value?.focus() }
 // 预览现场：停在哪一页、最近 5 分钟里点过什么、页面报过什么错
 function previewScene() {
@@ -772,9 +817,11 @@ function keydown(event) {
   if (editing || event.altKey) return
   if (command && key === 'z' && !event.shiftKey) { event.preventDefault?.(); undo(); return }
   if (command) return
-  if (key === 'escape') { if (boardFocus.value != null) { boardFocus.value = null; return } if (boardOpen.value) { showPreview(); return } closeSelection(); setMode('interact') }
+  if (key === 'escape') { if (presenting.value) { stopPresent(); return } if (boardFocus.value != null) { boardFocus.value = null; return } if (boardOpen.value) { showPreview(); return } closeSelection(); setTool('browse') }
+  if (presenting.value) return
   if (key === 'e' && page.value) { event.preventDefault?.(); toggleBoard(); return }
-  if ({ h: 'interact', v: 'select', b: 'box' }[key] && page.value) { event.preventDefault?.(); setMode({ h: 'interact', v: 'select', b: 'box' }[key]) }
+  const next = { h: 'browse', c: 'comment', b: 'comment', v: 'edit', p: 'present' }[key]
+  if (next && page.value) { event.preventDefault?.(); setTool(next) }
 }
 
 
@@ -791,10 +838,11 @@ onUnmounted(() => { window.removeEventListener('message', onMessage); window.rem
 </script>
 
 <template>
-  <div class="studio">
+  <div class="studio" :class="{ presenting }">
+    <button v-if="presenting" class="present-exit" @click="stopPresent"><X :size="14" />退出演示 <kbd>Esc</kbd></button>
     <header class="app-header">
       <div class="header-left"><a class="brand" href="/" aria-label="原型工坊首页"><span class="brand-symbol"><PanelsTopLeft :size="21" /></span><strong>原型工坊</strong><span class="local-badge">本地</span></a><div class="project-picker"><span class="divider"></span><select aria-label="切换项目" :value="project?.id || ''" :disabled="locked || !projects.length" @change="chooseProject($event.target.value)"><option v-if="!projects.length" value="">我的工作区</option><option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }}</option></select><ChevronDown :size="14" /><label v-if="project?.pages.length > 1" class="file-picker" title="这个项目里有多个 HTML 文件，切换要看的那个"><span>/</span><select aria-label="切换原型文件" :value="pageId" :disabled="locked" @change="choosePage($event.target.value)"><option v-for="p in project.pages" :key="p.id" :value="p.id">{{ p.title }} · v{{ p.version }}</option></select><ChevronDown :size="13" /></label></div><button v-if="!leftOpen" class="icon-button" title="打开对话" aria-label="打开对话" @click="openLeft"><MessageSquare :size="17" /></button></div>
-      <div class="header-center"><div class="view-tabs" role="tablist" aria-label="查看方式"><button :class="{ active: view === 'preview' && !boardOpen }" @click="showPreview"><Monitor :size="14" /><span>预览</span></button><button :class="{ active: view === 'preview' && boardOpen }" :disabled="!page || !previewDoc" title="展开这一页的所有弹窗 · E" @click="showBoard"><Layers :size="14" /><span>展开</span><kbd>E</kbd></button></div><div v-if="page && view !== 'code'" class="mode-tools" role="group" aria-label="操作方式"><button :class="{ active: mode === 'interact' }" :disabled="loading" title="交互 · H：像真用户一样点；在展开里点卡片可以交互" @click="setMode('interact')"><Hand :size="15" /><span>交互</span><kbd>H</kbd></button><button :class="{ active: mode === 'select' }" :disabled="loading" title="点选 · V（按住 Shift / ⌘ 多选同一视图内的元素）" @click="setMode('select')"><MousePointer2 :size="15" /><span>点选</span><kbd>V</kbd></button><button :class="{ active: mode === 'box' }" :disabled="loading" title="拉框 · B" @click="setMode('box')"><Scan :size="15" /><span>拉框</span><kbd>B</kbd></button></div></div>
+      <div class="header-center"><div class="view-tabs" role="tablist" aria-label="查看方式"><button :class="{ active: view === 'preview' && !boardOpen }" @click="showPreview"><Monitor :size="14" /><span>预览</span></button><button :class="{ active: view === 'preview' && boardOpen }" :disabled="!page || !previewDoc" title="展开这一页的所有弹窗 · E" @click="showBoard"><Layers :size="14" /><span>展开</span><kbd>E</kbd></button></div><div v-if="page && view !== 'code'" class="mode-tools" role="group" aria-label="操作方式"><button v-for="t in TOOLS" :key="t.id" :class="{ active: tool === t.id }" :disabled="loading" :title="`${t.label} · ${t.key}：${t.tip}`" @click="setTool(t.id)"><component :is="t.icon" :size="15" /><span>{{ t.label }}</span><kbd>{{ t.key }}</kbd></button></div><button v-if="page && view !== 'code'" class="present-button" :disabled="loading || !previewDoc" title="演示 · P：全屏播放原型，给评审、给客户看" @click="setTool('present')"><Play :size="14" /><span>演示</span></button></div>
       <nav class="header-right" aria-label="画布和项目操作"><div class="device-tools" v-if="view === 'preview' && !boardOpen"><button v-for="d in [{ id: 'desktop', label: '桌面', icon: Monitor }, { id: 'tablet', label: '平板', icon: Tablet }, { id: 'mobile', label: '手机', icon: Smartphone }]" :key="d.id" class="icon-button" :class="{ active: device === d.id }" :aria-label="d.label + '预览'" :title="d.label" @click="device = d.id"><component :is="d.icon" :size="16" /></button><span class="actual-width">{{ canvasWidth }} px</span></div><div class="history-tools"><button class="icon-button" aria-label="撤销上一步" :title="undoCount ? '撤销上一步 · ⌘/Ctrl + Z' : '暂无可撤销的修改'" :disabled="!undoCount || locked" @click="undo()"><Undo2 :size="16" /></button><button class="history-button" :disabled="!page || loading" title="历史版本" @click="openDialog('history')"><History :size="15" /><span>{{ page ? 'v' + page.version : '历史' }}</span></button></div><button class="export-button" :disabled="!page || locked" title="导出 HTML" @click="download()"><Download :size="15" /><span>导出</span></button><details ref="moreMenu" class="more-menu"><summary class="icon-button" aria-label="更多" title="新建、导入、文件管理、配色、设计规范、模型设置"><MoreHorizontal :size="18" /></summary><div class="more-list" @click="moreMenu?.removeAttribute('open')"><button :disabled="locked" @click="openDialog('new')"><Plus :size="15" />新建</button><button :disabled="locked" @click="fileInput.click()"><Upload :size="15" />导入</button><button :disabled="locked" @click="openDialog('files')"><FolderOpen :size="15" />文件管理</button><hr><button :disabled="!page || loading" @click="openDialog('palette')"><Palette :size="15" />项目配色</button><button @click="openDialog('spec')"><Ruler :size="15" />设计规范</button><button v-if="project?.pages.length > 1" @click="download(true)"><Download :size="15" />导出整个项目 ZIP</button><button @click="openDialog('settings')"><Settings2 :size="15" />模型设置</button></div></details><span class="divider"></span><button class="icon-button" :class="{ active: rightOpen }" aria-label="切换属性面板" @click="toggleRight"><SlidersHorizontal :size="17" /></button></nav>
       <input ref="fileInput" type="file" class="sr-only" accept=".html,.htm,.zip" @change="upload" />
       <input ref="imageInput" type="file" class="sr-only" accept="image/png,image/jpeg,image/webp" @change="uploadImage" />
@@ -828,7 +876,7 @@ onUnmounted(() => { window.removeEventListener('message', onMessage); window.rem
         <div v-if="view === 'preview'" class="canvas" :class="device">
 
           <ExpandBoard v-if="boardMounted" :class="{ 'view-hidden': !boardOpen }" :aria-hidden="!boardOpen" v-model:focus="boardFocus" v-model:route="boardRoute" :notes="annotations" :patch="cardPatch" :page-name="page?.title" :selection="selected" :mode="mode" @open="openFromBoard" @select="pickFromBoard" @clear="closeSelection" @mode="setMode" @export="requestExport" />
-          <div class="preview-shell" :class="{ 'is-selecting': mode !== 'interact', 'view-hidden': boardOpen }" :aria-hidden="boardOpen"><iframe v-if="previewDoc" ref="previewFrame" title="原型预览" :srcdoc="previewDoc" :sandbox="PREVIEW_SANDBOX"></iframe><div v-else class="empty-canvas"><div class="empty-emblem"><PanelsTopLeft :size="30" :stroke-width="1.4" /></div><h1>给想法一个可操作的样子</h1><p>从已有的 HTML 开始修改，<br>或描述需求，让 AI 帮你搭建第一版。</p><div><button class="primary" @click="openDialog('new')"><Plus :size="16" />新建原型</button><button class="outline" @click="fileInput.click()"><Upload :size="16" />导入原型</button></div><span>支持 HTML、包含多页面的 ZIP</span></div><RegionCapture v-if="previewDoc && mode === 'box' && !loading" :key="regionKey" @select="send({ type: 'PA_BOX_RECT', bounds: $event })" @scroll="send({ type: 'PA_SCROLL', ...$event })" /><div v-if="loading" class="loading-veil"><LoaderCircle class="spin" :size="25" /><span>正在加载原型…</span></div></div>
+          <div class="preview-shell" :class="{ 'is-selecting': mode !== 'interact', 'view-hidden': boardOpen }" :aria-hidden="boardOpen"><iframe v-if="previewDoc" ref="previewFrame" title="原型预览" :srcdoc="previewDoc" :sandbox="PREVIEW_SANDBOX"></iframe><div v-else class="empty-canvas"><div class="empty-emblem"><PanelsTopLeft :size="30" :stroke-width="1.4" /></div><h1>给想法一个可操作的样子</h1><p>从已有的 HTML 开始修改，<br>或描述需求，让 AI 帮你搭建第一版。</p><div><button class="primary" @click="openDialog('new')"><Plus :size="16" />新建原型</button><button class="outline" @click="fileInput.click()"><Upload :size="16" />导入原型</button></div><span>支持 HTML、包含多页面的 ZIP</span></div><div v-if="loading" class="loading-veil"><LoaderCircle class="spin" :size="25" /><span>正在加载原型…</span></div></div>
           
         </div>
         <div v-else class="code-panel"><div class="code-toolbar"><Braces :size="15" /><select aria-label="源码区域" v-model="codeRegion"><option value="all">完整文件 · 只读</option><option v-for="region in sourceInfo.regions" :key="region.name" :value="region.name">{{ region.label || '自定义区域' }}</option></select><span>{{ codeText.split('\n').length }} 行</span><button class="quiet" @click="copySource"><Check v-if="codeCopied" :size="14" /><Copy v-else :size="14" />{{ codeCopied ? '已复制' : '复制' }}</button></div><div class="source-scroll"><pre class="line-numbers" aria-hidden="true">{{ lineNumbers }}</pre><pre class="source-code"><code>{{ codeText }}</code></pre></div></div>
@@ -837,15 +885,25 @@ onUnmounted(() => { window.removeEventListener('message', onMessage); window.rem
       </section>
 
       <aside class="inspector" :class="{ collapsed: !rightOpen }" aria-label="属性面板">
-        <div class="panel-header"><strong>属性</strong><span class="free-label">{{ aiOnly ? 'AI 修改' : '微调不调用 AI' }}</span><button class="icon-button" aria-label="收起属性" @click="rightOpen = false"><PanelRightClose :size="16" /></button></div>
+        <div class="panel-header"><strong>{{ tool === 'comment' ? '评论' : '属性' }}</strong><span class="free-label">{{ tool === 'comment' ? '交给 AI 修改' : aiOnly ? 'AI 修改' : '直接改，不调用 AI' }}</span><button class="icon-button" aria-label="收起属性" @click="rightOpen = false"><PanelRightClose :size="16" /></button></div>
         <div class="inspector-scroll">
-          <div v-if="!selected && !annotations.length" class="inspector-empty"><SquareMousePointer :size="28" :stroke-width="1.3" /><h2>还没有选中元素</h2><p>{{ mode === 'box' ? '按住拖动框选一片区域，' : '按 V 或在画布上方切换点选，' }}<br>{{ mode === 'box' ? '一次可以选中多个元素。' : '再点击要调整的位置。' }}</p></div>
+          <div v-if="!selected && !annotations.length" class="inspector-empty"><component :is="tool === 'comment' ? MessageCircle : SquareMousePointer" :size="28" :stroke-width="1.3" /><h2>{{ tool === 'comment' ? '还没有评论' : '还没有选中元素' }}</h2><p>{{ tool === 'comment' ? '点一下要改的元素，或者拖一个框选一片区域，' : tool === 'edit' ? '点一下要调整的元素，' : '切到「评论」或「编辑」，' }}<br>{{ tool === 'comment' ? '写下怎么改，可以攒几条一起交给 AI。' : tool === 'edit' ? '在这里直接改文字、颜色和尺寸。' : '再点页面上的元素。' }}</p></div>
           <div v-else-if="!selected" class="noted-panel">
             <div class="section-label">已记下的意见<span class="count">{{ annotations.length }}</span></div>
             <div v-for="(a, i) in annotations" :key="a.id" class="annotation-row"><span class="annotation-number">{{ i + 1 }}</span><div><b>{{ a.kind === 'region' ? `框选 ${a.targets?.length || 0} 个元素` : (a.text?.slice(0, 30) || a.tag) }}</b><p>{{ a.note }}</p></div><button class="icon-button" aria-label="移除这条意见" :disabled="locked" @click="removeAnnotation(a.id)"><X :size="14" /></button></div>
-            <p class="field-hint">{{ mode === 'interact' ? '按 V 点选或按 B 拉框，继续标下一处。' : '继续标下一处，或一起交给 AI 修改。' }}</p>
+            <p class="field-hint">{{ tool === 'comment' ? '继续点或框下一处，或一起交给 AI 修改。' : '按 C 切到评论，继续标下一处。' }}</p>
             <button class="primary full-width" :disabled="locked" @click="runAgent('请逐条处理已记下的修改意见，保留其他区域。', '', { intent: 'edit' })"><CheckCheck :size="15" />这 {{ annotations.length }} 条一起修改</button>
           </div>
+          <template v-else-if="tool === 'comment'">
+            <div class="selected-heading"><span class="element-icon"><MessageCircle :size="17" /></span><div><h2>{{ selected.kind === 'region' ? `框选了 ${selected.targets?.length || 0} 个元素` : elementLabel(selected) }}</h2><small>{{ selectionPlace || '写下这里要怎么改' }}</small></div><button class="icon-button" aria-label="取消选择" @click="closeSelection"><X :size="14" /></button></div>
+            <section class="property-section comment-box">
+              <div v-if="selected.kind === 'region'" class="region-list"><span v-for="(target, index) in selected.targets" :key="index">{{ target.text?.slice(0, 28) || target.tag }}</span></div>
+              <textarea v-model="commentDraft" class="text-property" rows="4" maxlength="1000" placeholder="比如：这一块改成卡片布局；按钮换成描边样式" aria-label="评论内容" @keydown.meta.enter.prevent="commentToAI" @keydown.ctrl.enter.prevent="commentToAI"></textarea>
+              <div class="comment-actions"><button class="outline" :disabled="locked || saving || !commentDraft.trim()" title="先记下，攒几条一起改" @click="saveNote(commentDraft)"><Plus :size="14" />添加评论</button><button class="primary" :disabled="locked || !commentDraft.trim()" title="⌘/Ctrl ↵" @click="commentToAI"><ArrowUp :size="14" />直接交给 AI</button></div>
+              <p class="field-hint">点下一个元素会换成那一个；按住 Shift 可以多选。记下的评论会钉在页面上。</p>
+            </section>
+            <div v-if="annotations.length" class="noted-panel"><div class="section-label">已记下的评论<span class="count">{{ annotations.length }}</span></div><div v-for="(a, i) in annotations" :key="a.id" class="annotation-row"><span class="annotation-number">{{ i + 1 }}</span><div><b>{{ a.kind === 'region' ? `框选 ${a.targets?.length || 0} 个元素` : (a.text?.slice(0, 30) || a.tag) }}</b><p>{{ a.note }}</p></div><button class="icon-button" aria-label="移除这条评论" :disabled="locked" @click="removeAnnotation(a.id)"><X :size="14" /></button></div><button class="primary full-width" :disabled="locked" @click="runAgent('请逐条处理已记下的修改意见，保留其他区域。', '', { intent: 'edit' })"><CheckCheck :size="15" />这 {{ annotations.length }} 条一起修改</button></div>
+          </template>
           <template v-else>
             <div class="selected-heading"><span class="element-icon"><MousePointer2 :size="17" /></span><div><h2>{{ elementLabel(selected) }}</h2><small>只调整选中的位置</small></div><button class="icon-button" aria-label="取消选择" @click="closeSelection"><X :size="14" /></button></div>
             <p v-if="!inspection" class="inspector-loading"><LoaderCircle class="spin" :size="14" />定位中…</p><p v-else-if="inspection.failed" class="inspector-loading">没能在源码里定位这个元素，不能直接改属性；可以在下面写意见交给 AI</p>
@@ -854,9 +912,9 @@ onUnmounted(() => { window.removeEventListener('message', onMessage); window.rem
               <section class="property-section"><div class="section-label">选中内容<span>{{ selected.kind === 'region' ? '多选' : '只读预览' }}</span></div><div v-if="selected.kind === 'region'" class="region-list"><span v-for="(target, index) in selected.targets" :key="index">{{ target.text?.slice(0, 40) || target.tag }}</span></div><p v-else class="selected-text">{{ selected.text || selected.tag }}</p><p class="field-hint">{{ selected.kind === 'region' ? '把这些位置的修改需求一起写入对话。' : selected.modal ? '这是动态弹窗中的元素，由 AI 修改对应模板；不能直接套用静态页面的微调。' : '这个位置由页面脚本生成，由 AI 修改对应代码。' }}</p><button class="primary full-width write-request" @click="toAI"><MessageSquare :size="15" />写修改需求</button><div class="quick-actions"><button @click="quickFill('text')">修改选中文字<ChevronRight :size="14" /></button><button @click="quickFill('short')">缩短说明<ChevronRight :size="14" /></button></div></section>
               <section class="property-section"><p class="sync-line"><Check :size="14" />选中位置已同步到对话</p><p class="field-hint">切换查看方式不会清空目标。已选元素在当前视图看不到时，仍保留名称与所属弹窗。</p><button class="outline full-width" @click="closeSelection">取消选择</button></section>
             </template>
-            <div v-else-if="!inspection.editable" class="dynamic-note"><Scan v-if="selected.kind === 'region'" :size="16" /><AlertCircle v-else :size="16" /><div><b>{{ selected.kind === 'region' ? `已框选 ${selected.targets.length} 个元素` : '这是动态生成的内容' }}</b><p>{{ selected.kind === 'region' ? '在对话中写下这片区域需要怎么改，可以直接修改或先记下。' : '这个位置由页面交互生成，无法直接微调。可以在对话中描述修改需求。' }}</p><div v-if="selected.targets" class="region-targets"><span v-for="(target, index) in selected.targets" :key="index">{{ target.text?.slice(0, 28) || target.tag }}</span></div><button class="text-button" @click="toAI">交给 AI 修改<ChevronRight :size="13" /></button></div></div>
+            <div v-else-if="!inspection.editable" class="dynamic-note"><Scan v-if="selected.kind === 'region'" :size="16" /><AlertCircle v-else :size="16" /><div><b>{{ selected.kind === 'region' ? `已选中 ${selected.targets.length} 个元素` : '这是代码生成的内容' }}</b><p>{{ selected.kind === 'region' ? '多个元素一起改，用评论告诉 AI 怎么改。' : '它是页面脚本渲染出来的（列表、模板里的数据），不能直接改。用评论告诉 AI 怎么改，它会去改对应的代码。' }}</p><button class="outline" @click="setTool('comment')"><MessageCircle :size="14" />改成评论</button><div v-if="selected.targets" class="region-targets"><span v-for="(target, index) in selected.targets" :key="index">{{ target.text?.slice(0, 28) || target.tag }}</span></div><button class="text-button" @click="toAI">交给 AI 修改<ChevronRight :size="13" /></button></div></div>
             <template v-else>
-              <div v-if="playing" class="dynamic-note play-note"><Hand :size="16" /><div><b>交互中 · 属性只读</b><p>交互时的操作不会保存。要改这个元素，先回到编辑。</p><button class="outline" @click="setMode('select')">返回编辑</button></div></div>
+              <div v-if="playing" class="dynamic-note play-note"><Hand :size="16" /><div><b>浏览中 · 属性只读</b><p>浏览时的操作不会保存。要改这个元素，先切到编辑。</p><button class="outline" @click="setTool('edit')">切到编辑</button></div></div>
               <section class="property-section"><div class="section-label">内容<span>当前元素</span></div><label class="field-label" for="element-text">文字</label><textarea id="element-text" class="text-property" v-model="textValue" :disabled="!canEdit || !inspection.text_editable" @change="edit('text', textValue)"></textarea><p v-if="!inspection.text_editable" class="field-hint">包含子元素，请点选具体文字进行编辑。</p></section>
               <section class="property-section"><div class="section-label">外观<span>当前元素</span></div><label v-for="field in [{ key: 'color', label: '文字颜色' }, { key: 'background-color', label: '背景颜色' }]" :key="field.key" class="color-field"><span>{{ field.label }}</span><div><i :style="{ background: selected.styles?.[field.key] }"></i><select :aria-label="field.label" value="" :disabled="!canEdit" @change="edit(field.key, $event.target.value)"><option value="" disabled>当前颜色</option><option v-for="color in colors" :key="color.key" :value="`var(${color.key})`">{{ color.label }} · {{ color.value }}</option></select></div></label><div class="number-grid"><label v-for="field in numericFields" :key="field.key"><span>{{ field.label }}</span><div class="number-control"><input type="number" min="0" max="160" :step="field.step" :aria-label="field.label" :value="Number.isFinite(parseFloat(selected.styles?.[field.key])) ? parseFloat(selected.styles[field.key]) : ''" placeholder="未读取" :disabled="!canEdit" @change="changeNumber(field.key, $event)"><span>px</span></div></label></div><label class="visibility-control"><span>显示元素</span><input type="checkbox" role="switch" :checked="selected.styles?.display !== 'none'" :disabled="!canEdit" @change="edit('display', $event.target.checked ? 'revert' : 'none')"><span class="switch-track"></span></label></section>
             </template>

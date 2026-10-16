@@ -57,9 +57,16 @@ test('记下一条之后会清掉当前选中，好接着标下一处', () => {
   assert.match(app, /clearSelectionOnly\(\)\n?\s*await refresh\(false\)/)
   assert.match(app, /已记下第 \$\{annotations\.value\.length\} 条/)
   assert.match(app, /function clearSelectionOnly\(\)/)
-  // 上一次画的框要擦掉，否则残留在画布上
-  assert.match(app, /\+\+regionKey\.value/)
-  assert.match(app, /:key="regionKey"/)
+  // 上一次拖的框要擦掉，否则残留在画布上：清空选中时通知预览，预览里把框藏起来
+  assert.match(app, /function clearSelectionOnly\(\)[^\n]*send\(\{ type: 'PA_SELECT', selector: '' \}\)/)
+  assert.match(bridge, /if\(!m\.selector&&dragBox\)dragBox\.style\.display='none'/)
+})
+
+test('拉框并进了点选：拖动超过几像素才算框选，没拖动照常是点选', () => {
+  assert.match(bridge, /if\(mode==='select'\)\{dragDown\(e\)/)
+  assert.match(bridge, /<6\)return;dragging=true/)
+  assert.match(bridge, /swallowClick=true/)
+  assert.doesNotMatch(app, /RegionCapture/)
 })
 
 test('框选用命中测试，挡住的元素不再被穿透选中', () => {

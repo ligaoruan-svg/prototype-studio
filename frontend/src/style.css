@@ -478,3 +478,20 @@ input[type=color]::-webkit-color-swatch { border: none; border-radius: 2px; }
 
 .stale-banner { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); z-index: 60; display: flex; align-items: center; gap: 8px; max-width: min(640px, calc(100vw - 32px)); padding: 9px 10px 9px 14px; border: 1px solid #edd6a6; border-radius: 12px; background: #fffaf0; color: #7a4f0b; font-size: 12.5px; box-shadow: 0 8px 24px #2b201a1a; }
 .stale-banner svg { flex-shrink: 0; }
+
+/* ===== 四种用法：浏览 / 评论 / 编辑 + 演示 ===== */
+.present-button { display: inline-flex; align-items: center; gap: 5px; height: 34px; padding: 0 12px; border-radius: 11px; background: #efede6; color: #5f5a50; font-size: 12.5px; font-weight: 500; }
+.present-button:hover:not(:disabled) { background: #e7e4db; color: var(--ink); }
+.present-button svg { color: var(--primary); }
+.comment-box textarea { width: 100%; min-height: 92px; resize: vertical; }
+.comment-actions { display: flex; gap: 8px; margin-top: 10px; }
+.comment-actions button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 34px; font-size: 12.5px; }
+.studio.presenting .app-header, .studio.presenting .conversation-panel, .studio.presenting .inspector, .studio.presenting .canvas-status { display: none !important; }
+.studio.presenting .workspace { grid-template-columns: 0 minmax(0,1fr) 0 !important; }
+.studio.presenting .canvas-panel { padding: 0 !important; background: #1d1b18; }
+.studio.presenting .preview-shell { width: 100% !important; max-width: none !important; height: 100% !important; margin: 0 !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; }
+.present-exit { position: fixed; z-index: 60; top: 12px; right: 14px; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 9px; background: #1d1b18cc; color: #fff; font-size: 12px; backdrop-filter: blur(6px); opacity: .35; transition: opacity .15s; }
+.present-exit:hover { opacity: 1; }
+.present-exit kbd { padding: 0 5px; border-radius: 4px; background: #ffffff26; font: 11px ui-monospace, monospace; }
+@media (max-width: 1240px) { .present-button > span { display: none; } .present-button { width: 34px; padding: 0; justify-content: center; } }
+.studio.presenting .canvas { padding: 0 !important; }

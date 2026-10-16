@@ -136,9 +136,9 @@ _TEMPLATE = r'''
   window.addEventListener('mousemove',e=>{if(mode!=='select')return;hover=e.target instanceof Element&&!e.target.closest('[data-pa-overlay]')?e.target:null;paint();},true);
   window.addEventListener('click',e=>{
     const el=e.target instanceof Element?e.target:null;if(!el)return;
-    if(mode==='box'){e.preventDefault();e.stopImmediatePropagation();return;}
+    if(mode==='box'||swallowClick){e.preventDefault();e.stopImmediatePropagation();swallowClick=false;return;}   // 刚拖完框，这一下 click 不算点选
     if(mode==='select'){
-      e.preventDefault();e.stopImmediatePropagation();hover=null;
+      e.preventDefault();e.stopImmediatePropagation();hover=null;if(dragBox)dragBox.style.display='none';
       if(e.shiftKey||e.metaKey||e.ctrlKey){
         const at=picked.indexOf(el);
         if(at>=0)picked.splice(at,1);else if(picked.length<16)picked.push(el);
@@ -175,20 +175,27 @@ _TEMPLATE = r'''
         changed:quickSig()!==sigBefore,opened:layers().length>layersBefore,errors,at});
     },700);
   }
-  for(const type of ['pointerdown','mousedown'])window.addEventListener(type,e=>{if(mode==='select'){e.preventDefault();e.stopImmediatePropagation();}},true);
+  // 点选模式里：点一下选一个，拖一下框一片（拉框并进了点选，不再单独一个模式）。
+  // 按下时先记起点，移动超过 6px 才算拖；没拖就照常当点击处理
+  let dragging=false,swallowClick=false;
+  for(const type of ['pointerdown','mousedown'])window.addEventListener(type,e=>{if(mode==='select'){dragDown(e);e.preventDefault();e.stopImmediatePropagation();}},true);
   function dragDown(e){
-    if(mode!=='box'||e.button!==0)return;e.preventDefault();e.stopImmediatePropagation();
+    if((mode!=='box'&&mode!=='select')||e.button!==0||e.target?.closest?.('[data-pa-overlay]'))return;e.preventDefault();e.stopImmediatePropagation();
     if(dragStart)return;
-    dragStart={x:e.clientX,y:e.clientY};if(!dragBox)dragBox=overlay('2px solid #b8532f');
-    Object.assign(dragBox.style,{display:'block',left:e.clientX+'px',top:e.clientY+'px',width:'0',height:'0',background:'#b8532f12'});
+    dragStart={x:e.clientX,y:e.clientY};dragging=mode==='box';if(!dragBox)dragBox=overlay('2px solid #b8532f');
+    if(dragging)Object.assign(dragBox.style,{display:'block',left:e.clientX+'px',top:e.clientY+'px',width:'0',height:'0',background:'#b8532f12'});
   }
   function dragMove(e){
-    if(!dragStart)return;e.preventDefault();e.stopImmediatePropagation();
+    if(!dragStart)return;
+    if(!dragging){if(Math.abs(e.clientX-dragStart.x)+Math.abs(e.clientY-dragStart.y)<6)return;dragging=true;hover=null;paint();dragBox.style.display='block';dragBox.style.background='#b8532f12';}
+    e.preventDefault();e.stopImmediatePropagation();
     Object.assign(dragBox.style,{left:Math.min(dragStart.x,e.clientX)+'px',top:Math.min(dragStart.y,e.clientY)+'px',width:Math.abs(e.clientX-dragStart.x)+'px',height:Math.abs(e.clientY-dragStart.y)+'px'});
   }
   function dragUp(e){
-    if(!dragStart)return;e.preventDefault();e.stopImmediatePropagation();
+    if(!dragStart)return;
     const r={left:Math.min(dragStart.x,e.clientX),top:Math.min(dragStart.y,e.clientY),right:Math.max(dragStart.x,e.clientX),bottom:Math.max(dragStart.y,e.clientY)};dragStart=null;
+    if(!dragging)return;   // 没拖动：交给 click 当点选
+    dragging=false;e.preventDefault();e.stopImmediatePropagation();swallowClick=true;setTimeout(()=>{swallowClick=false;},0);
     if(r.right-r.left<8||r.bottom-r.top<8){dragBox.style.display='none';return;}
     selectRegion(r);
   }
@@ -229,7 +236,7 @@ _TEMPLATE = r'''
   window.addEventListener('submit',e=>{e.preventDefault();if(mode==='select')e.stopImmediatePropagation();},true);
   window.addEventListener('scroll',e=>{paint();if(restoringScroll)return;if(e.target instanceof Element&&!e.target.closest('[data-pa-overlay]'))scrollContainers.add(e.target);clearTimeout(scrollTimer);scrollTimer=setTimeout(()=>send('SCROLL_STATE',{state:scrollState()}),80);},true);
   window.addEventListener('resize',()=>{paint();send('WIDTH',{width:innerWidth});});
-  window.addEventListener('keydown',e=>{if(!e.isTrusted||e.target?.isContentEditable||e.target?.closest?.('input,textarea,select'))return;const key=e.key.toLowerCase(),command=e.metaKey||e.ctrlKey;if((!command&&!e.altKey&&['h','v','b','e','escape'].includes(key))||(command&&['z','/','enter'].includes(key))){e.preventDefault();send('SHORTCUT',{key:e.key,metaKey:e.metaKey,ctrlKey:e.ctrlKey,altKey:e.altKey,shiftKey:e.shiftKey});}},true);
+  window.addEventListener('keydown',e=>{if(!e.isTrusted||e.target?.isContentEditable||e.target?.closest?.('input,textarea,select'))return;const key=e.key.toLowerCase(),command=e.metaKey||e.ctrlKey;if((!command&&!e.altKey&&['h','c','v','b','p','e','escape'].includes(key))||(command&&['z','/','enter'].includes(key))){e.preventDefault();send('SHORTCUT',{key:e.key,metaKey:e.metaKey,ctrlKey:e.ctrlKey,altKey:e.altKey,shiftKey:e.shiftKey});}},true);
   // ===== 展开：找出这一页能打开的所有弹窗 =====
   // 原型里的弹窗大多是 JS 现拼的，源码里搜不到、预览里要点好几层才看得见。
   // 这里在一个后台副本里把按钮挨个点一遍：点完多出来一层遮罩，就是它打开的弹窗；
@@ -634,7 +641,7 @@ _TEMPLATE = r'''
     if(m.type==='PA_PROBE_INIT'){if(Array.isArray(m.routes))knownRoutes=m.routes;probeInit(!!m.full).then(r=>send('PROBE_REPLY',{id:m.id,...r}),err=>send('PROBE_REPLY',{id:m.id,ok:false,error:String(err)}));return;}
     if(m.type==='PA_PROBE_TRY'){probeTry(m.path||[],m.step).then(r=>send('PROBE_REPLY',{id:m.id,...r}),err=>send('PROBE_REPLY',{id:m.id,ok:false,error:String(err),needReload:true}));return;}
     if(m.type==='PA_REPLAY'){replay(m.path||[]).then(r=>send('REPLAYED',r),()=>send('REPLAYED',{ok:false,at:0}));return;}
-    if(m.type==='PA_SET_MODE'){mode=m.mode;hover=null;dragStart=null;if(m.mode==='interact')picked=[];if(dragBox)dragBox.style.display='none';paint();}
+    if(m.type==='PA_SET_MODE'){mode=m.mode;hover=null;dragStart=null;dragging=false;if(m.mode==='interact')picked=[];if(dragBox)dragBox.style.display='none';paint();}
     if(m.type==='PA_SELECT'){
       if(!m.selector&&dragBox)dragBox.style.display='none';
       try{const one=m.selector?document.querySelector(m.selector):null;
@@ -644,7 +651,7 @@ _TEMPLATE = r'''
     }
     if(m.type==='PA_RENDER_MARKERS'){
       markers.forEach(m=>m.pin.remove());markers=[];
-      (m.annotations||[]).forEach((a,i)=>{try{const el=document.querySelector(a.selector);if(!el)return;const pin=overlay('2px solid white');pin.textContent=i+1;Object.assign(pin.style,{width:'22px',height:'22px',borderRadius:'50%',background:'#b8532f',color:'white',font:'11px system-ui',placeItems:'center'});markers.push({el,pin});}catch{}});paint();
+      (m.annotations||[]).forEach((a,i)=>{try{const el=document.querySelector(a.selector);if(!el)return;const pin=overlay('2px solid white');pin.textContent=i+1;pin.title=String(a.note||'').slice(0,120);Object.assign(pin.style,{width:'24px',height:'24px',borderRadius:'50% 50% 50% 4px',background:'#b8532f',color:'white',font:'600 11px system-ui',placeItems:'center',boxShadow:'0 2px 6px #0003'});markers.push({el,pin});}catch{}});paint();
     }
     if(m.type==='PA_BOX_RECT')selectRegion(m.bounds);
     if(m.type==='PA_HIGHLIGHT')highlight(m.targets);
