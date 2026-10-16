@@ -64,6 +64,34 @@ async def same_origin_only(request, call_next):
 SANDBOX_CSP = {"Content-Security-Policy": "sandbox allow-scripts allow-forms allow-modals allow-popups"}
 
 
+# 各接口里漏掉的错误统一兜住：项目或页面不存在 → 404，参数不对 → 400，模型出错 → 按错误分类说人话。
+# 以前这些会变成一句「Internal Server Error」，界面上什么都看不出来
+@app.exception_handler(FileNotFoundError)
+async def _not_found(request, exc):
+    return _JSONResponse({"detail": "项目或页面不存在，可能已经移到回收站"}, status_code=404)
+
+
+@app.exception_handler(KeyError)
+async def _missing(request, exc):
+    return _JSONResponse({"detail": "没找到要操作的对象，可能已经被删除或移到回收站"}, status_code=404)
+
+
+@app.exception_handler(ValueError)
+async def _bad_value(request, exc):
+    return _JSONResponse({"detail": str(exc)[:300] or "参数不对"}, status_code=400)
+
+
+@app.exception_handler(PatchError)
+async def _patch(request, exc):
+    return _JSONResponse({"detail": str(exc)[:600]}, status_code=400)
+
+
+@app.exception_handler(WorkError)
+async def _work(request, exc):
+    payload = error_payload(exc)
+    return _JSONResponse({"detail": payload["message"], "error": payload}, status_code=502 if payload["code"] in {"network", "busy", "timeout", "model_account"} else 400)
+
+
 class AnnotationIn(BaseModel):
     selector: str
     tag: str = ""
@@ -283,6 +311,7 @@ def _memory_llm():
 
 
 SYNTHESIZING: set[str] = set()
+SYNTH_LOCK = threading.Lock()
 
 
 def synthesize_later(project_id: str) -> None:
@@ -295,7 +324,10 @@ def synthesize_later(project_id: str) -> None:
             return
     except Exception:
         return
-    SYNTHESIZING.add(project_id)   # 先占上：两次修改紧挨着结束时别起两个整理
+    with SYNTH_LOCK:   # 先占上：两次修改紧挨着结束时别起两个整理（查和占要一起做，不然两个线程都查到「没在整理」）
+        if project_id in SYNTHESIZING:
+            return
+        SYNTHESIZING.add(project_id)
     def go():
         try:
             memory.synthesize(project_id, _memory_llm())
@@ -802,21 +834,7 @@ def export_project(project_id: str):
 @app.get("/api/projects/{project_id}/resolve")
 def resolve_page(project_id: str, href: str, page_id: str = ""):
     meta = storage.load_meta(project_id)
-    clean = href.split("#",1)[0].split("?",1)[0]
-    candidates = [clean.lstrip("./")]
-    if page_id:
-        try:
-            current = storage.get_page(meta, page_id)
-            parent = Path(current["path"]).parent
-            candidates.insert(0, str((parent / clean).as_posix()).lstrip("./"))
-        except Exception:
-            pass
-    for page in meta.get("pages", []):
-        if page.get('deleted_at'):
-            continue
-        if page["path"] in candidates or any(Path(page["path"]).name == Path(c).name for c in candidates):
-            return {"page_id": page["id"]}
-    return {"page_id": None}
+    return {"page_id": storage.resolve_link(meta, href, page_id)}
 
 
 @app.get("/preview-assets/{project_id}/{asset_path:path}")

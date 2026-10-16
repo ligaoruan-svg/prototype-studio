@@ -10,7 +10,7 @@ const visibleProjects = computed(() => projects.value.filter(p => p.name.toLower
 const visibleTrash = computed(() => trash.value.filter(p => p.name.toLowerCase().includes(query.value.toLowerCase())))
 async function request(url, method = 'GET', body) {
   const response = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) })
-  const data = await response.json()
+  const data = await response.json().catch(() => ({}))   // 出错时后台可能回的是纯文本
   if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : '操作失败，请重试')
   return data
 }

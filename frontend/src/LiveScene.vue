@@ -16,19 +16,24 @@ function listen(event) {
   if (data.source !== 'prototype-agent') return
   if (data.type === 'LOADED') {
     if (props.node.isPage) { status.value = 'ready'; return }
-    setTimeout(() => iframe.value?.contentWindow?.postMessage({ type: 'PA_REPLAY', path: JSON.parse(JSON.stringify(props.node.path || [])) }, '*'), 450)
+    clearTimeout(replayTimer)
+    replayTimer = setTimeout(() => iframe.value?.contentWindow?.postMessage({ type: 'PA_REPLAY', path: JSON.parse(JSON.stringify(props.node.path || [])) }, '*'), 450)
   }
   if (data.type === 'REPLAYED') status.value = data.ok ? 'ready' : 'failed'
 }
-function restart() { status.value = 'loading'; nonce.value++ }
+// 原型一直不回话（脚本卡死、载入报错）：15 秒后撤掉白层，至少能看见、能自己点
+let giveUp = null, replayTimer = null
+function arm() { clearTimeout(giveUp); giveUp = setTimeout(() => { if (status.value === 'loading') status.value = 'failed' }, 15_000) }
+function restart() { status.value = 'loading'; nonce.value++; arm() }
 defineExpose({ restart })
 let observer
 onMounted(() => {
   window.addEventListener('message', listen)
   observer = new ResizeObserver(([entry]) => { width.value = Math.floor(entry.contentRect.width) })
   observer.observe(stage.value)
+  arm()
 })
-onUnmounted(() => { window.removeEventListener('message', listen); observer?.disconnect() })
+onUnmounted(() => { window.removeEventListener('message', listen); observer?.disconnect(); clearTimeout(giveUp); clearTimeout(replayTimer) })
 </script>
 <template>
   <div ref="stage" class="live-stage">

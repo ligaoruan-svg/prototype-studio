@@ -89,6 +89,9 @@ export async function bindExpand({ pid, pageId, hash, makeDoc, width }) {
   if (scope !== expand.scope) {
     const g = ++gen
     routesJob = null; expand.discovering = false
+    // 换了项目 / 页面：上一个的预同步候选、点选记录都不要了（候选里存着整份页面，留着就是泄漏）
+    for (const k of Object.keys(touched)) delete touched[k]
+    candidates.clear(); adopted.clear(); runningTokens.clear()
     expand.scope = scope; expand.hash = hash; expand.routes = []; expand.entries = {}; expand.jobs = {}; expand.queued = []; expand.batch = false; expand.error = ''; expand.overrides = {}; routesV = 0
     queue.length = 0
     ready = (async () => {

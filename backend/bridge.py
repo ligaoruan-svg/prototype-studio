@@ -21,13 +21,25 @@ _TEMPLATE = r'''
   const scrollContainers = new Set(); let scrollTimer, restoringScroll=false;
   // Opaque sandbox origins cannot use native localStorage. Keep demo data scoped
   // to this project/page; only the trusted host persists it after receiving events.
-  const data = {...(window.__paStorageSeed || {})};
-  const store = {getItem:k=>Object.hasOwn(data,k)?data[k]:null,
-    setItem:(k,v)=>{data[k]=String(v);send('STORAGE',{data});},
-    removeItem:k=>{delete data[k];send('STORAGE',{data});},
-    clear:()=>{Object.keys(data).forEach(k=>delete data[k]);send('STORAGE',{data});},
-    key:i=>Object.keys(data)[i]??null, get length(){return Object.keys(data).length;}};
-  try { Object.defineProperty(window,'localStorage',{value:store}); Object.defineProperty(window,'sessionStorage',{value:store}); } catch {}
+  // localStorage 记到宿主那边（刷新还在）；sessionStorage 只在这一次打开里有效，不往外存。
+  // 用 Proxy 包一层：原型里常写 localStorage.token = 'x' / localStorage.token，也要能存能取
+  function makeStore(data,persist){
+    const save=()=>{if(persist)send('STORAGE',{data});};
+    const api={getItem:k=>Object.hasOwn(data,String(k))?data[String(k)]:null,
+      setItem:(k,v)=>{data[String(k)]=String(v);save();},
+      removeItem:k=>{delete data[String(k)];save();},
+      clear:()=>{Object.keys(data).forEach(k=>delete data[k]);save();},
+      key:i=>Object.keys(data)[i]??null, get length(){return Object.keys(data).length;}};
+    return new Proxy(api,{
+      get:(t,k)=>k in t||typeof k!=='string'?t[k]:(Object.hasOwn(data,k)?data[k]:undefined),
+      set:(t,k,v)=>{if(typeof k==='string'&&!(k in t))api.setItem(k,v);return true;},
+      deleteProperty:(t,k)=>{api.removeItem(k);return true;},
+      has:(t,k)=>k in t||Object.hasOwn(data,k),
+      ownKeys:()=>Object.keys(data),
+      getOwnPropertyDescriptor:(t,k)=>Object.hasOwn(data,k)?{value:data[k],enumerable:true,configurable:true,writable:true}:undefined});
+  }
+  const store=makeStore({...(window.__paStorageSeed || {})},true);
+  try { Object.defineProperty(window,'localStorage',{value:store}); Object.defineProperty(window,'sessionStorage',{value:makeStore({},false)}); } catch {}
   if(window.__paRoute&&String(window.__paRoute).startsWith('#')) location.hash=window.__paRoute;
   window.addEventListener('hashchange',()=>send('ROUTE',{hash:location.hash}));
   // 报错既发给宿主，也记在这里：用户点了某个按钮之后冒出来的报错，要跟着那次点击一起交给 AI
@@ -36,7 +48,12 @@ _TEMPLATE = r'''
   window.addEventListener('error',e=>{if(e.message){noteError(e.message);send('RUNTIME_ERROR',{message:e.message,lineno:e.lineno});}});
   window.addEventListener('unhandledrejection',e=>{const m=String(e.reason?.message||e.reason||'Promise rejection');noteError(m);send('RUNTIME_ERROR',{message:m});});
   const originalError=console.error;
-  console.error=(...args)=>{const m=args.map(x=>String(x?.message||x)).join(' ').slice(0,1200);noteError(m);send('RUNTIME_ERROR',{message:m});originalError.apply(console,args);};
+  // 包一层把报错交给宿主；这一层自己绝不能抛错（Object.create(null) 转字符串会抛），循环里狂打日志时也别刷屏
+  let lastErrorSent=0;
+  console.error=(...args)=>{
+    try{const m=args.map(x=>{try{return String(x?.message||x);}catch{return Object.prototype.toString.call(x);}}).join(' ').slice(0,1200);
+      noteError(m);const now=Date.now();if(now-lastErrorSent>200){lastErrorSent=now;send('RUNTIME_ERROR',{message:m});}}catch{}
+    originalError.apply(console,args);};
 
   function selectorFor(el){
     const pid=el.getAttribute('data-pid');
@@ -130,7 +147,15 @@ _TEMPLATE = r'''
     }
     if(e.isTrusted)traceClick(el);
     const link=el.closest('a[href]');const href=link?.getAttribute('href')||'';
-    if(href.startsWith('#')){e.preventDefault();location.hash=href;return;}
+    if(href.startsWith('#')){
+      // 预览里有 <base>，不拦的话 #xxx 会被当成跳到资源目录。但要等原型自己的处理先跑完再决定：
+      // 原型自己 preventDefault 了（Bootstrap 页签、#xxx 打开弹窗）就不替它改地址；href="#" 本来就只是占位
+      e.preventDefault();
+      let pagePrevented=false;
+      try{e.preventDefault=()=>{pagePrevented=true;};}catch{}
+      setTimeout(()=>{if(!pagePrevented&&href.length>1&&href!=='#!'&&location.hash!==href)location.hash=href;},0);
+      return;
+    }
     if(/\.html?(?:[?#].*)?$/i.test(href) && !/^(?:https?:)?\/\//i.test(href)){e.preventDefault();send('NAVIGATE',{href});}
   },true);
   // 交互模式下用户真点的每一下：点了什么、点完地址变没变、内容变没变、有没有弹窗、有没有报错。
@@ -213,6 +238,7 @@ _TEMPLATE = r'''
   const LAYER_SEL='[role=dialog],[aria-modal=true],dialog,[class*=modal],[class*=Modal],[class*=dialog],[class*=Dialog],[class*=drawer],[class*=popup],[class*=mask],[class*=overlay]';
   const LAYER_NAME=/modal|dialog|drawer|popup|mask|overlay|layer/i;
   const CLICKABLE='button,a[href],[data-action],[data-cx],[onclick],[role=button],.btn,[class*=btn]';
+  const REAL_CONTROL='button,a[href],[role=button],input[type=button],input[type=submit]';
   // 导航、页签、分页只是换内容，不会弹窗；跳过它们省掉大半次数。
   // 不用 [class*=tab]：那会把 table 里的「编辑」也一起跳过。
   const SKIP_NAME=/(^|[\s_-])(tabs?|tab-?bar|sidebar|side-?nav|menu|pager|pagination|breadcrumb)($|[\s_-])/i;
@@ -307,7 +333,10 @@ _TEMPLATE = r'''
       // 菜单（业务页面另算）、页签（tabsIn 另算）不记；分页条算「查询 / 翻页这类」；别的（面包屑等）记成菜单
       if(!inLayer&&inSkipZone(el)){if(el.closest('[class*=pag],[class*=Pag]'))note('noise',el,'翻页');else if(!(navBox()&&navBox().contains(el))&&!el.closest('[role=tab],[role=tablist]')&&!inTabBar(el))note('nav',el);continue;}
       if(!inLayer&&inChrome(el)){note('chrome',el);continue;}
-      const outer=el.parentElement?.closest(CLICKABLE);if(outer&&scope.contains(outer))continue;
+      // 外层是真按钮（button 里的 span）才把里面的让给它；外层只是 .btn-group、.op-btns 这种容器时，点里面的按钮。
+      // 容器自己（没有自己的点击处理）也不当按钮点——以前点的是「编辑 删除」整排，什么都打不开
+      const outer=el.parentElement?.closest(CLICKABLE);if(outer&&scope.contains(outer)&&outer.matches(REAL_CONTROL))continue;
+      if(!el.matches(REAL_CONTROL)&&!el.matches('[onclick],[data-action],[data-cx]')&&el.querySelector(REAL_CONTROL))continue;
       const raw=bare(el);
       if(CLOSE_TEXT.test(raw)||isCloser(el))continue;
       if(COMMIT_TEXT.test(raw)){note('commit',el);continue;}
@@ -410,7 +439,7 @@ _TEMPLATE = r'''
   async function closeAll(base){
     for(let i=0;i<5;i++){
       const L=topOpen(base);if(!L)return true;const title=keyOf(L);
-      const btn=[...L.querySelectorAll('[data-cx="m-x"],[data-action*="close"],[class*=close],[aria-label*="关闭"],[aria-label*="lose"],button,.btn')].find(b=>vis(b)&&(b.matches('[data-cx="m-x"],[data-action*="close"],[class*=close],[aria-label]')||CLOSE_TEXT.test((b.innerText||'').trim())));
+      const btn=[...L.querySelectorAll('[data-cx="m-x"],[data-action*="close"],[class*=close],[aria-label*="关闭"],[aria-label*="lose"],button,.btn')].find(b=>vis(b)&&(b.matches('[data-cx="m-x"],[data-action*="close"],[class*=close],[aria-label*="关闭"],[aria-label*="lose"]')||CLOSE_TEXT.test((b.innerText||'').trim())));
       if(btn)btn.click();else document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
       await sleep(90);
       if(L.isConnected&&shown(L)&&keyOf(L)===title&&topOpen(base)===L){L.classList.remove('show','open','active','visible','in','is-open');await sleep(60);if(topOpen(base)===L)return false;}

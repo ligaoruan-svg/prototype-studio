@@ -30,11 +30,10 @@ async function switchModel(p) {
   catch (e) { toast(e.message) } finally { switchingModel.value = false }
 }
 // 点别处收起；点进预览（iframe 里的点击传不到这里，只会让窗口失焦）、按 Esc 也收起
-if (typeof window !== 'undefined') {
-  window.addEventListener('click', () => { modelMenu.value = false })
-  window.addEventListener('blur', () => { modelMenu.value = false })
-  window.addEventListener('keydown', e => { if (e.key === 'Escape') modelMenu.value = false })
-}
+const closeModelMenu = () => { modelMenu.value = false }
+const escModelMenu = e => { if (e.key === 'Escape') modelMenu.value = false }
+onMounted(() => { window.addEventListener('click', closeModelMenu); window.addEventListener('blur', closeModelMenu); window.addEventListener('keydown', escModelMenu) })
+onUnmounted(() => { window.removeEventListener('click', closeModelMenu); window.removeEventListener('blur', closeModelMenu); window.removeEventListener('keydown', escModelMenu) })
 const mode = ref('interact'), view = ref('preview'), device = ref('desktop')
 const stored = key => { try { return localStorage.getItem(key) } catch { return null } }
 const keepInspector = ref(stored('pf-inspector-pinned') === 'true')
@@ -273,7 +272,11 @@ async function inspect(target) {
     if (selected.value?.selector !== target.selector) return
     inspection.value = result
     if (result.text_editable) textValue.value = result.text
-  } catch (e) { error.value = e.message }
+  } catch (e) {
+    if (selected.value?.selector !== target.selector) return
+    error.value = e.message
+    inspection.value = { editable: false, failed: true }   // 别一直转「定位中」：说清没定位到，还可以写意见给 AI
+  }
 }
 async function onMessage(event) {
   if (event.source !== previewFrame.value?.contentWindow) return
@@ -291,7 +294,8 @@ async function onMessage(event) {
   if (data.type === 'SELECTION_CLEARED') clearSelectionOnly()   // 按住 Shift 把最后一个也取消掉了
   if (data.type === 'SCROLL_STATE') previewScroll.value = data.state
   if (data.type === 'WIDTH') canvasWidth.value = data.width
-  if (data.type === 'SHORTCUT') keydown(data)
+  // 预览里按的快捷键转过来；⌘↵（发给 AI）不收——原型里的脚本也能伪造这条消息，不能让它替你发需求
+  if (data.type === 'SHORTCUT' && !(data.key === 'Enter' || data.key === 'enter')) keydown(data)
   if (data.type === 'LOADED' && pendingReplay.value) { const node = pendingReplay.value; pendingReplay.value = null; setTimeout(() => send({ type: 'PA_REPLAY', path: node.path }), 450); openedModal.value = { title: node.title, trail: node.trail, pending: true } }
   if (data.type === 'REPLAYED') {
     if (data.ok) { openedModal.value = { title: data.title || openedModal.value?.title, trail: openedModal.value?.trail || '' }; toast(`已打开「${openedModal.value.title}」，直接点选要改的地方`) }
@@ -368,7 +372,11 @@ async function edit(prop, value) {
     await refresh(false)
   } catch (e) {
     if (committed) status.value = '已保存 · 预览刷新失败'
-    else { error.value = e.message; status.value = '修改未保存 · 已保留原页面' }
+    else {
+      error.value = e.message; status.value = '修改未保存 · 已保留原页面'
+      // 展开卡片上先改了样子，保存没成：卡片退回原样，别让它显示一个没存进去的值
+      if (cardPatch.value) cardPatch.value = { ...cardPatch.value, seq: ++patchSeq, revert: true }
+    }
     await refresh().catch(() => {})
   }
   finally {
@@ -553,7 +561,7 @@ async function addComponent(event) {
 }
 watch(() => project.value?.id, id => { memoryCount.value = 0; if (id) refreshMemoryCount() })
 async function openMemory() { await openDialog('spec'); specTab.value = 'memory' }
-async function refreshMemoryCount() { if (!project.value) return; try { const m = await api(`/api/projects/${project.value.id}/memory`); memoryCount.value = (m.project?.memory?.length || 0) + (m.global?.memory?.length || 0) } catch { /* 读不到就不显示数 */ } }
+async function refreshMemoryCount() { const id = project.value?.id; if (!id) return; try { const m = await api(`/api/projects/${id}/memory`); if (project.value?.id !== id) return; memoryCount.value = (m.project?.memory?.length || 0) + (m.global?.memory?.length || 0) } catch { /* 读不到就不显示数 */ } }
 async function forgetFromCard(id) {
   try { await api(`/api/projects/${project.value.id}/memory/${id}`, { method: 'DELETE' }); toast('已忘掉这条约定') } catch (e) { toast(e.message) }
 }
@@ -725,8 +733,18 @@ function requestExport() {
   }
   exportExpand()
 }
-watch(() => pendingExport.value && !expand.discovering && expand.routes.length > 0 && expand.routes.every(r => isFresh(r.hash)), ready => {
-  if (ready) { pendingExport.value = false; exportExpand() }
+// 等到全部展开好再导出；有的页面展开失败（原型没响应）就永远等不到「全部好」——
+// 所以后台没事可做了也导出，用现有的，并说清哪些没展开成。不能卡着，过很久又突然下载
+watch(() => {
+  if (!pendingExport.value || expand.discovering || !expand.routes.length) return ''
+  if (expand.routes.every(r => isFresh(r.hash))) return 'ready'
+  return !Object.keys(expand.jobs).length && !expand.queued.length && !expand.batch ? 'idle' : ''
+}, state => {
+  if (!state) return
+  pendingExport.value = false
+  const failed = state === 'idle' ? expand.routes.filter(r => !isFresh(r.hash)).length : 0
+  exportExpand()
+  if (failed) toast(`有 ${failed} 个页面没展开成功，导出的是其余页面${expand.error ? '（' + expand.error + '）' : ''}`)
 })
 watch(() => expand.scope, () => { pendingExport.value = false })   // 切到别的项目 / 页面就不再自动导出
 function exportExpand() {
@@ -828,7 +846,7 @@ onUnmounted(() => { window.removeEventListener('message', onMessage); window.rem
           </div>
           <template v-else>
             <div class="selected-heading"><span class="element-icon"><MousePointer2 :size="17" /></span><div><h2>{{ elementLabel(selected) }}</h2><small>只调整选中的位置</small></div><button class="icon-button" aria-label="取消选择" @click="closeSelection"><X :size="14" /></button></div>
-            <p v-if="!inspection" class="inspector-loading"><LoaderCircle class="spin" :size="14" />定位中…</p>
+            <p v-if="!inspection" class="inspector-loading"><LoaderCircle class="spin" :size="14" />定位中…</p><p v-else-if="inspection.failed" class="inspector-loading">没能在源码里定位这个元素，不能直接改属性；可以在下面写意见交给 AI</p>
             <template v-else-if="aiOnly && (selected.card || selected.modal)">
               <section class="property-section"><div class="section-label">所在位置<span>目标不会丢失</span></div><p class="target-location">{{ selected.pageTitle || page?.title }}<br>{{ selected.viewTitle || selected.modal }} › {{ selected.kind === 'region' ? '多处选择' : elementLabel(selected) }}</p><button v-if="selected.card" class="outline full-width" @click="focusSelected"><Maximize2 :size="15" />放大编辑</button></section>
               <section class="property-section"><div class="section-label">选中内容<span>{{ selected.kind === 'region' ? '多选' : '只读预览' }}</span></div><div v-if="selected.kind === 'region'" class="region-list"><span v-for="(target, index) in selected.targets" :key="index">{{ target.text?.slice(0, 40) || target.tag }}</span></div><p v-else class="selected-text">{{ selected.text || selected.tag }}</p><p class="field-hint">{{ selected.kind === 'region' ? '把这些位置的修改需求一起写入对话。' : selected.modal ? '这是动态弹窗中的元素，由 AI 修改对应模板；不能直接套用静态页面的微调。' : '这个位置由页面脚本生成，由 AI 修改对应代码。' }}</p><button class="primary full-width write-request" @click="toAI"><MessageSquare :size="15" />写修改需求</button><div class="quick-actions"><button @click="quickFill('text')">修改选中文字<ChevronRight :size="14" /></button><button @click="quickFill('short')">缩短说明<ChevronRight :size="14" /></button></div></section>

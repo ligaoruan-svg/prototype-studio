@@ -4,6 +4,7 @@ import json
 import shutil
 import uuid
 import re
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -134,6 +135,29 @@ def get_page(meta: dict[str, Any], page_id: str) -> dict[str, Any]:
         if page["id"] == page_id and not page.get("deleted_at"):
             return page
     raise KeyError(page_id)
+
+
+def resolve_link(meta: dict[str, Any], href: str, page_id: str = "") -> str | None:
+    """原型里的链接（a.html、../orders/index.html）指向项目里的哪一页"""
+    import posixpath
+    clean = href.split("#",1)[0].split("?",1)[0]
+    norm = lambda p: posixpath.normpath(p).lstrip("./") if p else ""
+    candidates = [norm(clean)]
+    if page_id:
+        try:
+            current = get_page(meta, page_id)
+            candidates.insert(0, norm(posixpath.join(posixpath.dirname(current["path"]), clean)))
+        except KeyError:
+            pass
+    pages = [p for p in meta.get("pages", []) if not p.get('deleted_at')]
+    # 先按完整路径找（相对当前页优先）；orders/index.html 和 users/index.html 同名，只按文件名找会跳错
+    for cand in candidates:
+        for page in pages:
+            if page["path"] == cand:
+                return page["id"]
+    # 路径对不上时才按文件名，而且只在唯一一个同名页面时才算
+    names = [p for p in pages if any(posixpath.basename(p["path"]) == posixpath.basename(c) for c in candidates if c)]
+    return names[0]["id"] if len(names) == 1 else None
 
 
 def page_file(project_id: str, page_id: str) -> Path:
@@ -454,7 +478,19 @@ def save_expand_routes(project_id: str, page_id: str, routes: list[dict[str, Any
         if r.get("added"):
             item.update({"added": str(r["added"])[:80], "from": str(r.get("from", ""))[:200]})
         clean.append(item)
-    write_atomic(_expand_dir(project_id, page_id) / "routes.json", json.dumps({"routes": clean, "v": int(version or 0)}, ensure_ascii=False))
+    root = _expand_dir(project_id, page_id)
+    write_atomic(root / "routes.json", json.dumps({"routes": clean, "v": int(version or 0)}, ensure_ascii=False))
+    # 页面清单变了（菜单删了某页）：清单外、而且一天没碰过的展开结果删掉。每次打开都要整份读一遍它们
+    keep = {_route_file(r["hash"]) for r in clean} | {_route_file("")}
+    if clean:
+        for path in root.glob("*.json"):
+            if path.name in ("routes.json", "overrides.json") or path.name in keep:
+                continue
+            try:
+                if time.time() - path.stat().st_mtime > 86400:
+                    path.unlink()
+            except OSError:
+                pass
 
 
 # 用户纠正过的认法：{路由: {按钮文字: "jump" | "subpage" | "tab"}}，下次展开按这个来
@@ -474,8 +510,9 @@ def save_expand_overrides(project_id: str, page_id: str, overrides: dict[str, An
 
 
 def save_expand_entry(project_id: str, page_id: str, route: str, version_hash: str, result: dict[str, Any]) -> None:
-    load_meta(project_id)
+    root = _expand_dir(project_id, page_id)    # 先验编号（不许拿来穿目录）
+    get_page(load_meta(project_id), page_id)   # 页面已经删了（展开还在后台跑完晚到）就别再把目录建回来
     body = json.dumps({"route": route[:200], "hash": version_hash[:80], "result": result}, ensure_ascii=False)
     if len(body) > 8_000_000:
         raise ValueError("这个页面的展开结果太大，没有保存")
-    write_atomic(_expand_dir(project_id, page_id) / _route_file(route), body)
+    write_atomic(root / _route_file(route), body)

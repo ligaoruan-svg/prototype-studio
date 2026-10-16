@@ -17,7 +17,9 @@ const empty = { title: '', styles: null, page: '', width: 1150, height: 800, nod
 const filter = ref('all'), query = ref(''), scroller = ref(null)
 // 展开了「后续」的节点，每个业务页面各记一份：卡片编号只在一页里唯一，共用一份会在 A 页展开、B 页同号的卡也跟着开
 const openByRoute = ref({})
-const openIds = computed({ get: () => openByRoute.value[props.route] || new Set(), set: v => { openByRoute.value = { ...openByRoute.value, [props.route]: v } } })
+// 按「项目:页面:路由」记展开了哪些：只按路由记的话，换个项目同名的 #list 会打开上一个项目的卡片
+const openKey = computed(() => expand.scope + '|' + props.route)
+const openIds = computed({ get: () => openByRoute.value[openKey.value] || new Set(), set: v => { openByRoute.value = { ...openByRoute.value, [openKey.value]: v } } })
 const entry = computed(() => expand.entries[props.route] || null)
 const job = computed(() => expand.jobs[props.route] || null)
 const state = computed(() => entry.value?.result || empty)

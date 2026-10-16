@@ -44,6 +44,8 @@ watch(() => props.mode, () => post({ type: 'CARD_MODE', mode: props.mode }))
 watch(() => props.patch?.seq, () => {
   const p = props.patch
   if (!p || (p.nodeId != null && p.nodeId !== props.node.id)) return
+  // 改了没存成：重新载入快照，退回原来的样子
+  if (p.revert) { if (iframe.value) iframe.value.srcdoc = doc.value; return }
   post({ type: 'CARD_PATCH', prop: p.prop, value: p.value, rels: [...(p.rels || [])] })
 })
 function listen(event) {

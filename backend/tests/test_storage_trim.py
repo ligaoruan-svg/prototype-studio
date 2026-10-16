@@ -60,6 +60,37 @@ class 存储瘦身(unittest.TestCase):
         storage.purge_item(self.pid, self.page)
         self.assertFalse((storage.project_dir(self.pid) / 'changes' / self.page).exists())
 
+    def test_清单外的旧展开结果会清掉(self):
+        import os, time
+        storage.save_expand_entry(self.pid, self.page, '#a', 's7:x', {'nodes': []})
+        storage.save_expand_entry(self.pid, self.page, '#gone', 's7:x', {'nodes': []})
+        storage.save_expand_entry(self.pid, self.page, '#fresh', 's7:x', {'nodes': []})
+        root = storage.project_dir(self.pid) / 'expand' / self.page
+        old = root / storage._route_file('#gone')
+        os.utime(old, (time.time() - 2 * 86400,) * 2)
+        storage.save_expand_routes(self.pid, self.page, [{'hash': '#a', 'title': 'A'}], 3)
+        self.assertFalse(old.exists(), '菜单里没有了、一天没碰的删掉')
+        self.assertTrue((root / storage._route_file('#a')).exists())
+        self.assertTrue((root / storage._route_file('#fresh')).exists(), '刚写的先留着')
+
+    def test_删掉的页面不再写展开结果(self):
+        storage.trash_item(self.pid, self.page)
+        with self.assertRaises(KeyError):
+            storage.save_expand_entry(self.pid, self.page, '#a', 's7:x', {'nodes': []})
+
+
+class 页面链接(unittest.TestCase):
+    META = {'pages': [{'id': 'o', 'path': 'orders/index.html'}, {'id': 'u', 'path': 'users/index.html'},
+                      {'id': 'l', 'path': 'users/list.html'}, {'id': 'x', 'path': 'old.html', 'deleted_at': '1'}]}
+
+    def test_同名页面按完整路径找(self):
+        self.assertEqual(storage.resolve_link(self.META, 'users/index.html'), 'u')
+        self.assertEqual(storage.resolve_link(self.META, '../orders/index.html', 'u'), 'o')
+        self.assertEqual(storage.resolve_link(self.META, 'index.html', 'o'), 'o', '相对当前页')
+        self.assertIsNone(storage.resolve_link(self.META, 'other/index.html'), '同名的有两个，猜不准就不跳')
+        self.assertEqual(storage.resolve_link(self.META, 'list.html#top'), 'l', '唯一同名可以按文件名')
+        self.assertIsNone(storage.resolve_link(self.META, 'old.html'), '回收站里的不算')
+
 
 if __name__ == '__main__':
     unittest.main()
