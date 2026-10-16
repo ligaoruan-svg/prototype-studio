@@ -73,9 +73,32 @@ _TEMPLATE = r'''
     }
     return parts.join(' > ');
   }
+  // 脚本生成的元素在源码里找不到对应的标签，没法按位置改；改样式就按「同类元素」写一条 CSS 规则：
+  // 从它往上找到第一个带类名的祖先，拼成 .metric > div:nth-of-type(2) 这样的选择器，页面上同类的一起变
+  const STATE_CLASS=/^(active|on|current|selected|show|open|hover|focus|disabled|checked|is-|has-|pa-)/i;
+  function stableClasses(el){return [...(el.classList||[])].filter(c=>/^[a-zA-Z_][\w-]*$/.test(c)&&!STATE_CLASS.test(c)&&!/\d{3,}/.test(c)).slice(0,2);}
+  function partOf(el){
+    const tag=el.tagName.toLowerCase(),cls=stableClasses(el);
+    if(cls.length)return tag+cls.map(c=>'.'+c).join('');
+    const p=el.parentElement,same=p?[...p.children].filter(c=>c.tagName===el.tagName):[];
+    return tag+(same.length>1?':nth-of-type('+(same.indexOf(el)+1)+')':'');
+  }
+  function styleSelectorFor(el){
+    try{
+      let sel=partOf(el),node=el;
+      if(stableClasses(el).length){
+        const anchor=el.parentElement?.closest('[class]');
+        if(anchor&&anchor!==document.body&&stableClasses(anchor).length)sel=partOf(anchor)+' '+sel;
+      }else{
+        for(let i=0;i<4;i++){const p=node.parentElement;if(!p||p===document.body||p===document.documentElement)break;sel=partOf(p)+' > '+sel;node=p;if(stableClasses(p).length)break;}
+      }
+      const all=[...document.querySelectorAll(sel)].filter(n=>!n.closest('[data-pa-overlay]'));
+      return all.includes(el)?{styleSel:sel,styleCount:all.length}:{};
+    }catch{return {};}
+  }
   function describe(el){
     const cs=getComputedStyle(el);
-    return {selector:selectorFor(el),pid:el.dataset.pid||'',tag:el.tagName.toLowerCase(),
+    return {selector:selectorFor(el),...styleSelectorFor(el),leaf:!el.children.length,pid:el.dataset.pid||'',tag:el.tagName.toLowerCase(),
       text:(el.innerText||el.textContent||'').trim().slice(0,500),outer_html:el.outerHTML.slice(0,5000),modal:modalOf(el),
       styles:Object.fromEntries(['color','background-color','font-size','border-radius','padding-top','padding-bottom','padding-left','padding-right','display'].map(k=>[k,cs.getPropertyValue(k)]))};
   }
@@ -664,6 +687,7 @@ _TEMPLATE = r'''
     if(m.type==='PA_PREVIEW'){
       try{
         if(m.prop.startsWith('--'))document.documentElement.style.setProperty(m.prop,m.value);
+        else if(m.all&&m.prop!=='text'){document.querySelectorAll(m.selector).forEach(t=>{if(!t.closest('[data-pa-overlay]'))t.style.setProperty(m.prop,m.value,'important');});}
         else {const target=document.querySelector(m.selector);if(!target)return;if(m.prop==='text')target.textContent=m.value;else target.style.setProperty(m.prop,m.value,'important');}
         paint();
       }catch{}

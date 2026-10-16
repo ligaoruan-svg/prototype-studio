@@ -22,7 +22,7 @@ from .agent import run_agent
 from .atomicio import write_atomic
 from .bridge import build_bridge
 from .safety import host_name, zip_member_ok, to_utf8
-from .patcher import apply_operations, locate, outline, token_values, DEFAULT_TOKENS, PatchError
+from .patcher import apply_operations, locate, outline, token_values, DEFAULT_TOKENS, PatchError, literal_count, replace_literal
 from starlette.concurrency import run_in_threadpool
 from .deepseek_client import chat
 from .errors import WorkError, error_payload
@@ -124,6 +124,8 @@ class EditIn(BaseModel):
     prop: str
     value: str
     expected_hash: str
+    literal: str = ""          # 脚本生成的元素改文字：它原来的字，直接换源码里那一处
+    style_selector: str = ""   # 脚本生成的元素改样式：同类元素的选择器，写一条 CSS 规则
 
 
 class CommitIn(BaseModel):
@@ -895,7 +897,7 @@ def page_source(project_id: str, page_id: str):
 
 
 @app.get('/api/projects/{project_id}/pages/{page_id}/inspect')
-def inspect_element(project_id: str, page_id: str, selector: str):
+def inspect_element(project_id: str, page_id: str, selector: str, text: str = "", style_selector: str = ""):
     source = storage.read_page(project_id, page_id)
     try:
         node, span = locate(source, selector)
@@ -904,7 +906,9 @@ def inspect_element(project_id: str, page_id: str, selector: str):
                 'name': element_name({'tag':node.name,'text':node.get_text(' ',strip=True)}),
                 'line': node.sourceline, 'html': source[span.start:span.end][:4000], 'hash': transactions.digest(source)}
     except PatchError as exc:
-        return {'editable': False, 'text_editable': False, 'reason': str(exc), 'hash': transactions.digest(source)}
+        # 源码里没有它的标签（脚本生成的）：样式按同类元素改，文字看源码里能不能找到原样的那一处
+        return {'editable': False, 'text_editable': False, 'reason': str(exc), 'hash': transactions.digest(source),
+                'dynamic': bool(style_selector), 'literal_count': literal_count(source, text) if text else 0}
 
 
 @app.post('/api/projects/{project_id}/pages/{page_id}/edit')
@@ -915,6 +919,17 @@ def manual_edit(project_id: str, page_id: str, body: EditIn):
             raise PatchError('页面已更新，请刷新后重试')
         if body.prop.startswith('--'):
             ops = [{'action':'set_token', 'name':body.prop, 'value':body.value}]
+        elif body.prop == 'text' and body.literal:
+            result = replace_literal(source, body.literal, body.value)
+            return transactions.stage(project_id, page_id, source, result, '微调文字', targets=[{'selector':body.selector}] if body.selector else [])
+        elif body.style_selector:
+            ops = []
+            match = re.fullmatch(r'var\((--[\w-]+)\)', body.value)
+            if match and match[1] not in token_values(source):
+                if match[1] not in DEFAULT_TOKENS:
+                    raise PatchError('未知设计变量')
+                ops.append({'action':'set_token','name':match[1],'value':DEFAULT_TOKENS[match[1]]})
+            ops.append({'action':'set_rule','selector':body.style_selector,'name':body.prop,'value':body.value})
         else:
             node, _ = locate(source, body.selector)
             if body.prop == 'text':

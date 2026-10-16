@@ -71,7 +71,11 @@ const messages = computed(() => (project.value?.chat || []).filter(m => !m.page_
 const locked = computed(() => busy.value || saving.value || loading.value)
 // 展开里放大交互：演示数据不保存。这时属性面板也不能往源码里写，否则「不保存」和「已保存」同时出现
 const playing = computed(() => boardOpen.value && boardFocus.value != null && mode.value === 'interact')   // 页面卡的编号是 0，不能用真假判断
-const canEdit = computed(() => !!inspection.value?.editable && !locked.value && !playing.value)
+// 脚本生成的元素（源码里没有它的标签）：样式按「同类元素」写规则，文字在源码里能找到原样的那一处就直接换。
+// 展开卡片里的快照没有现场 DOM，还是交给 AI
+const dynEdit = computed(() => !!selected.value && !selected.value.card && selected.value.kind !== 'region' && !!inspection.value && !inspection.value.editable && !!inspection.value.dynamic && !!selected.value.styleSel)
+const canEdit = computed(() => (!!inspection.value?.editable || dynEdit.value) && !locked.value && !playing.value)
+const textEditable = computed(() => inspection.value?.editable ? !!inspection.value.text_editable : dynEdit.value && !!selected.value?.leaf && inspection.value?.literal_count === 1)
 const undoCount = computed(() => page.value?.undo_count || 0)
 const colorNames = { '--color-primary': '主色', '--color-bg': '页面背景', '--color-surface': '表面色', '--color-text': '正文', '--color-muted': '辅助文字', '--color-border': '边框', '--color-danger': '警示', '--color-success': '成功' }
 const colors = computed(() => Object.entries({ ...sourceInfo.value.defaults, ...sourceInfo.value.tokens }).filter(([, v]) => /^#[\da-f]{3,8}$/i.test(v.trim())).map(([key, value]) => ({ key, value: value.trim(), label: colorNames[key] || key.replace(/^--/, '') })))
@@ -230,7 +234,7 @@ function modalContext(target) {
   return ctx
 }
 // 选中的东西只能交给 AI 改（弹窗里的、脚本生成的、多选的），右侧换成「位置 + 内容 + 写需求」
-const aiOnly = computed(() => !!selected.value && !!inspection.value && !inspection.value.editable)
+const aiOnly = computed(() => !!selected.value && !!inspection.value && !inspection.value.editable && !dynEdit.value)
 const selectionPlace = computed(() => {
   const t = selected.value
   if (!t) return ''
@@ -314,7 +318,8 @@ async function inspect(target) {
   selected.value = target; inspection.value = null; textValue.value = target.text
   if (!target.refresh) { rightOpen.value = true; if (window.innerWidth <= 960) leftOpen.value = false }
   try {
-    const result = await api(endpoint('/inspect') + '?selector=' + encodeURIComponent(target.selector))
+    const extra = target.styleSel ? '&style_selector=' + encodeURIComponent(target.styleSel) + (target.leaf && target.text ? '&text=' + encodeURIComponent(target.text.slice(0, 200)) : '') : ''
+    const result = await api(endpoint('/inspect') + '?selector=' + encodeURIComponent(target.selector) + extra)
     if (selected.value?.selector !== target.selector) return
     inspection.value = result
     if (result.text_editable) textValue.value = result.text
@@ -404,15 +409,19 @@ async function checkAndCommit(candidate) {
 
 
 async function edit(prop, value) {
-  if (locked.value || (!prop.startsWith('--') && (!inspection.value?.editable || playing.value))) return
+  if (locked.value || (!prop.startsWith('--') && (!canEdit.value || playing.value))) return
   const selector = selected.value?.selector || ''
+  const dyn = dynEdit.value && !prop.startsWith('--')
   saving.value = true; error.value = ''; status.value = '修改中'
-  send({ type: 'PA_PREVIEW', selector, prop, value: String(value) })
+  // 同类元素一起改：预览里先把同类的都改上
+  send(dyn && prop !== 'text' ? { type: 'PA_PREVIEW', selector: selected.value.styleSel, all: true, prop, value: String(value) } : { type: 'PA_PREVIEW', selector, prop, value: String(value) })
   const card = selected.value?.card
   let committed = false
   if (card || prop.startsWith('--')) cardPatch.value = { seq: ++patchSeq, prop, value: String(value), route: prop.startsWith('--') ? null : card.route, nodeId: prop.startsWith('--') ? null : card.nodeId, rels: card?.rels || [] }
   try {
-    const result = await post(endpoint('/edit'), { selector, prop, value: String(value), expected_hash: sourceInfo.value.hash })
+    const result = await post(endpoint('/edit'), { selector, prop, value: String(value), expected_hash: sourceInfo.value.hash,
+      ...(dyn ? (prop === 'text' ? { literal: selected.value.text } : { style_selector: selected.value.styleSel }) : {}) })
+    if (dyn && prop === 'text' && result.changed) selected.value = { ...selected.value, text: String(value) }
     await checkAndCommit(result); committed = !!result.changed
     if (committed && selected.value?.selector === selector && !prop.startsWith('--')) selected.value = { ...selected.value, styles: { ...(selected.value.styles || {}), [prop]: String(value) } }
     if (!result.changed) status.value = '没有新的改动'
@@ -918,11 +927,12 @@ onUnmounted(() => { window.removeEventListener('message', onMessage); window.rem
             <div class="selected-heading"><span class="element-icon"><MousePointer2 :size="17" /></span><div><h2>{{ elementLabel(selected) }}</h2><small>{{ aiOnly ? '只读' : '直接修改 · 不调用 AI' }}</small></div><button class="icon-button" aria-label="取消选择" @click="closeSelection"><X :size="14" /></button></div>
             <p v-if="!inspection" class="inspector-loading"><LoaderCircle class="spin" :size="14" />定位中…</p><p v-else-if="inspection.failed" class="inspector-loading">没能在源码里定位这个元素，不能直接改属性；可以在下面写意见交给 AI</p>
             <div v-else-if="aiOnly && (selected.card || selected.modal)" class="dynamic-note"><AlertCircle :size="16" /><div><b>{{ selected.kind === 'region' ? `已选中 ${selected.targets?.length || 0} 个元素` : '这里不能直接改' }}</b><p>{{ selected.kind === 'region' ? '多个元素一起改，用评论告诉 AI 怎么改。' : selected.modal ? '这是弹窗里的内容，弹窗是脚本临时生成的，要由 AI 改对应的代码。' : '这是页面脚本生成的内容，要由 AI 改对应的代码。' }}</p><button class="outline" @click="setTool('comment')"><MessageCircle :size="14" />改成评论</button></div></div>
-            <div v-else-if="!inspection.editable" class="dynamic-note"><Scan v-if="selected.kind === 'region'" :size="16" /><AlertCircle v-else :size="16" /><div><b>{{ selected.kind === 'region' ? `已选中 ${selected.targets.length} 个元素` : '这是代码生成的内容' }}</b><p>{{ selected.kind === 'region' ? '多个元素一起改，用评论告诉 AI 怎么改。' : '它是页面脚本渲染出来的（列表、模板里的数据），不能直接改。用评论告诉 AI 怎么改，它会去改对应的代码。' }}</p><button class="outline" @click="setTool('comment')"><MessageCircle :size="14" />改成评论</button><div v-if="selected.targets" class="region-targets"><span v-for="(target, index) in selected.targets" :key="index">{{ target.text?.slice(0, 28) || target.tag }}</span></div></div></div>
+            <div v-else-if="!inspection.editable && !dynEdit" class="dynamic-note"><Scan v-if="selected.kind === 'region'" :size="16" /><AlertCircle v-else :size="16" /><div><b>{{ selected.kind === 'region' ? `已选中 ${selected.targets.length} 个元素` : '这是代码生成的内容' }}</b><p>{{ selected.kind === 'region' ? '多个元素一起改，用评论告诉 AI 怎么改。' : '它是页面脚本渲染出来的（列表、模板里的数据），不能直接改。用评论告诉 AI 怎么改，它会去改对应的代码。' }}</p><button class="outline" @click="setTool('comment')"><MessageCircle :size="14" />改成评论</button><div v-if="selected.targets" class="region-targets"><span v-for="(target, index) in selected.targets" :key="index">{{ target.text?.slice(0, 28) || target.tag }}</span></div></div></div>
             <template v-else>
               <div v-if="playing" class="dynamic-note play-note"><Hand :size="16" /><div><b>浏览中 · 属性只读</b><p>浏览时的操作不会保存。要改这个元素，先切到编辑。</p><button class="outline" @click="setTool('edit')">切到编辑</button></div></div>
-              <section class="property-section"><div class="section-label">内容<span>当前元素</span></div><label class="field-label" for="element-text">文字</label><textarea id="element-text" class="text-property" v-model="textValue" :disabled="!canEdit || !inspection.text_editable" @change="edit('text', textValue)"></textarea><p v-if="!inspection.text_editable" class="field-hint">包含子元素，请点选具体文字进行编辑。</p></section>
-              <section class="property-section"><div class="section-label">外观<span>当前元素</span></div><label v-for="field in [{ key: 'color', label: '文字颜色' }, { key: 'background-color', label: '背景颜色' }]" :key="field.key" class="color-field"><span>{{ field.label }}</span><div><i :style="{ background: selected.styles?.[field.key] }"></i><select :aria-label="field.label" value="" :disabled="!canEdit" @change="edit(field.key, $event.target.value)"><option value="" disabled>当前颜色</option><option v-for="color in colors" :key="color.key" :value="`var(${color.key})`">{{ color.label }} · {{ color.value }}</option></select></div></label><div class="number-grid"><label v-for="field in numericFields" :key="field.key"><span>{{ field.label }}</span><div class="number-control"><input type="number" min="0" max="160" :step="field.step" :aria-label="field.label" :value="Number.isFinite(parseFloat(selected.styles?.[field.key])) ? parseFloat(selected.styles[field.key]) : ''" placeholder="未读取" :disabled="!canEdit" @change="changeNumber(field.key, $event)"><span>px</span></div></label></div><label class="visibility-control"><span>显示元素</span><input type="checkbox" role="switch" :checked="selected.styles?.display !== 'none'" :disabled="!canEdit" @change="edit('display', $event.target.checked ? 'revert' : 'none')"><span class="switch-track"></span></label></section>
+              <div v-if="dynEdit" class="dyn-note"><Layers :size="14" /><p><b>脚本生成的元素</b>{{ selected.styleCount > 1 ? `改样式会作用到页面上同类的 ${selected.styleCount} 个元素（比如每张卡片里的同一位置），` : '改样式只作用到它自己，' }}文字能找到原样的那一处才能直接改。</p></div>
+              <section class="property-section"><div class="section-label">内容<span>当前元素</span></div><label class="field-label" for="element-text">文字</label><textarea id="element-text" class="text-property" v-model="textValue" :disabled="!canEdit || !textEditable" @change="edit('text', textValue)"></textarea><p v-if="!textEditable" class="field-hint">{{ !dynEdit ? '包含子元素，请点选具体文字进行编辑。' : !selected.leaf ? '包含子元素，请点选具体文字。' : inspection.literal_count > 1 ? '这段字在源码里出现了好几处，没法确定改哪一处，用评论交给 AI。' : '这是脚本算出来的内容（数字、统计结果），用评论交给 AI。' }}</p></section>
+              <section class="property-section"><div class="section-label">外观<span>{{ dynEdit && selected.styleCount > 1 ? `同类 ${selected.styleCount} 个一起改` : '当前元素' }}</span></div><label v-for="field in [{ key: 'color', label: '文字颜色' }, { key: 'background-color', label: '背景颜色' }]" :key="field.key" class="color-field"><span>{{ field.label }}</span><div><i :style="{ background: selected.styles?.[field.key] }"></i><select :aria-label="field.label" value="" :disabled="!canEdit" @change="edit(field.key, $event.target.value)"><option value="" disabled>当前颜色</option><option v-for="color in colors" :key="color.key" :value="`var(${color.key})`">{{ color.label }} · {{ color.value }}</option></select></div></label><div class="number-grid"><label v-for="field in numericFields" :key="field.key"><span>{{ field.label }}</span><div class="number-control"><input type="number" min="0" max="160" :step="field.step" :aria-label="field.label" :value="Number.isFinite(parseFloat(selected.styles?.[field.key])) ? parseFloat(selected.styles[field.key]) : ''" placeholder="未读取" :disabled="!canEdit" @change="changeNumber(field.key, $event)"><span>px</span></div></label></div><label class="visibility-control"><span>显示元素</span><input type="checkbox" role="switch" :checked="selected.styles?.display !== 'none'" :disabled="!canEdit" @change="edit('display', $event.target.checked ? 'revert' : 'none')"><span class="switch-track"></span></label></section>
             </template>
             <p v-if="!aiOnly" class="field-hint edit-hint">改动马上保存，可以用顶部撤销。要 AI 帮你改得更多，<button class="link-btn" @click="setTool('comment')">切到评论</button>。</p>
           </template>

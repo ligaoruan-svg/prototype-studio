@@ -189,6 +189,33 @@ def replace_unique(source, old, new, region=""):
     return source[:a] + text.replace(old, new, 1) + source[b:]
 
 
+# ===== 脚本生成的元素：文字直接改源码里那一处字面量 =====
+# 「设备总数」「在线率」这种标签在脚本里是写死的字符串，只出现一次就能直接换；
+# 「4」「50%」这种是算出来的数，换不了，交给 AI。
+_COMPUTED = re.compile(r"[\d\s.,，%:：¥$+\-/()（）]+")
+_UNSAFE = re.compile(r"[\'\"`<>\\\n\r]|\$\{")
+
+
+def literal_count(source: str, text: str) -> int:
+    text = (text or "").strip()
+    if len(text) < 2 or len(text) > 200 or _COMPUTED.fullmatch(text) or _UNSAFE.search(text):
+        return 0
+    return source.count(text)
+
+
+def replace_literal(source: str, old: str, new: str) -> str:
+    old, new = (old or "").strip(), (new or "").strip()
+    if not new:
+        raise PatchError("文字不能为空")
+    if _UNSAFE.search(new) or len(new) > 200:
+        raise PatchError("新文字里不能有引号、尖括号、反斜杠、换行；复杂的改动用评论交给 AI")
+    n = literal_count(source, old)
+    if n != 1:
+        raise PatchError("这段文字在源码里出现了 %d 次，没法确定改哪一处；用评论交给 AI" % n if n
+                         else "这段文字是脚本算出来的，源码里找不到原样的字；用评论交给 AI")
+    return source.replace(old, new, 1)
+
+
 def append_block(source, value, kind):
     closing = re.search(r"</head\s*>" if kind == "style" else r"</body\s*>", source, re.I)
     if not closing:
@@ -263,6 +290,9 @@ def apply_operations(source: str, operations: list[dict]) -> tuple[str, list[str
             source = append_block(source, value, action.split("_")[1])
         elif action == "set_token":
             source = set_token(source, name, value)
+        elif action == "set_rule":
+            # 给一类元素写样式规则（脚本生成的元素在源码里没有标签，不用定位）
+            source = set_style(source, selector, name, value)
         else:
             node, span = locate(source, selector)
             if span.tag in {"html", "head", "body"} and action in {"set_text", "set_html", "replace_outer_html", "remove"}:
