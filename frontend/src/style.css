@@ -495,3 +495,6 @@ input[type=color]::-webkit-color-swatch { border: none; border-radius: 2px; }
 .present-exit kbd { padding: 0 5px; border-radius: 4px; background: #ffffff26; font: 11px ui-monospace, monospace; }
 @media (max-width: 1240px) { .present-button > span { display: none; } .present-button { width: 34px; padding: 0; justify-content: center; } }
 .studio.presenting .canvas { padding: 0 !important; }
+.edit-hint { margin: 4px 16px 14px; }
+.link-btn { display: inline; padding: 0; min-height: 0; height: auto; border: 0; background: none; color: var(--primary); font-size: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.inspector-empty b { color: var(--ink); font-weight: 600; }

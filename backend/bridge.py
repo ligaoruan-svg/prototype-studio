@@ -177,10 +177,10 @@ _TEMPLATE = r'''
   }
   // 点选模式里：点一下选一个，拖一下框一片（拉框并进了点选，不再单独一个模式）。
   // 按下时先记起点，移动超过 6px 才算拖；没拖就照常当点击处理
-  let dragging=false,swallowClick=false;
+  let dragging=false,swallowClick=false,dragEnabled=true;   // 拖框只在评论里有；编辑里拖一下什么都不做
   for(const type of ['pointerdown','mousedown'])window.addEventListener(type,e=>{if(mode==='select'){dragDown(e);e.preventDefault();e.stopImmediatePropagation();}},true);
   function dragDown(e){
-    if((mode!=='box'&&mode!=='select')||e.button!==0||e.target?.closest?.('[data-pa-overlay]'))return;e.preventDefault();e.stopImmediatePropagation();
+    if((mode!=='box'&&mode!=='select')||(mode==='select'&&!dragEnabled)||e.button!==0||e.target?.closest?.('[data-pa-overlay]'))return;e.preventDefault();e.stopImmediatePropagation();
     if(dragStart)return;
     dragStart={x:e.clientX,y:e.clientY};dragging=mode==='box';if(!dragBox)dragBox=overlay('2px solid #b8532f');
     if(dragging)Object.assign(dragBox.style,{display:'block',left:e.clientX+'px',top:e.clientY+'px',width:'0',height:'0',background:'#b8532f12'});
@@ -654,6 +654,7 @@ _TEMPLATE = r'''
       (m.annotations||[]).forEach((a,i)=>{try{const el=document.querySelector(a.selector);if(!el)return;const pin=overlay('2px solid white');pin.textContent=i+1;pin.title=String(a.note||'').slice(0,120);Object.assign(pin.style,{width:'24px',height:'24px',borderRadius:'50% 50% 50% 4px',background:'#b8532f',color:'white',font:'600 11px system-ui',placeItems:'center',boxShadow:'0 2px 6px #0003'});markers.push({el,pin});}catch{}});paint();
     }
     if(m.type==='PA_BOX_RECT')selectRegion(m.bounds);
+    if(m.type==='PA_SET_DRAG'){dragEnabled=!!m.enabled;dragStart=null;dragging=false;}
     if(m.type==='PA_HIGHLIGHT')highlight(m.targets);
     if(m.type==='PA_SCROLL'){
       let el=document.elementFromPoint(m.x,m.y);

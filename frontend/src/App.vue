@@ -123,18 +123,27 @@ function startPresent() {
   if (boardOpen.value) showPreview()
   closeSelection(); presenting.value = true; setMode('interact')
   send({ type: 'PA_RENDER_MARKERS', annotations: [] })
-  document.documentElement.requestFullscreen?.().catch(() => {})
+  wentFullscreen = false
+  document.documentElement.requestFullscreen?.().catch(() => {})   // 浏览器不让全屏也照样演示（只是没铺满屏幕）
   toast('演示中：按 Esc 退出')
 }
 function stopPresent() {
   if (!presenting.value) return
   presenting.value = false; tool.value = 'browse'
-  send({ type: 'PA_RENDER_MARKERS', annotations: annotations.value })
+  send({ type: 'PA_RENDER_MARKERS', annotations: visiblePins() })
   if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {})
 }
-if (typeof document !== 'undefined') document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement) stopPresent() })
+// 用户按 Esc 时浏览器先退全屏、按键传不到页面：跟着退出演示。只认「真进过全屏又退出」，进不去全屏不算
+let wentFullscreen = false
+if (typeof document !== 'undefined') document.addEventListener('fullscreenchange', () => {
+  if (document.fullscreenElement) wentFullscreen = true
+  else if (wentFullscreen) { wentFullscreen = false; stopPresent() }
+})
 // 评论：写在右侧，存成一条意见（攒几条一起交给 AI），或者直接发给 AI
 const commentDraft = ref('')
+// 评论气泡只在评论模式里钉在页面上；浏览、编辑、演示时收起来，不挡视线（和 Claude Design 一样）
+const visiblePins = () => (tool.value === 'comment' && !presenting.value ? annotations.value : [])
+watch(tool, value => { send({ type: 'PA_RENDER_MARKERS', annotations: visiblePins() }); send({ type: 'PA_SET_DRAG', enabled: value === 'comment' }) })
 function toggleBoard() {
   if (!page.value || !previewDoc.value) return
   if (boardOpen.value) { showPreview(); return }
@@ -240,7 +249,7 @@ async function refresh(reload = true) {
   const [meta, info] = await Promise.all([api(`/api/projects/${pid}`), api(`/api/projects/${pid}/pages/${id}/source`)])
   if (serial !== loadSequence) return
   project.value = meta; sourceInfo.value = info
-  send({ type: 'PA_RENDER_MARKERS', annotations: annotations.value })
+  send({ type: 'PA_RENDER_MARKERS', annotations: visiblePins() })
   if (reload || previewHash.value !== info.hash) {
     const response = await fetch(`/preview/${pid}/${id}`)
     if (!response.ok) throw new Error('预览加载失败，请重试')
@@ -321,7 +330,8 @@ async function onMessage(event) {
   if (data.source !== 'prototype-agent' || data.projectId !== project.value?.id || data.pageId !== pageId.value) return
   if (data.type === 'READY') {
     send({ type: 'PA_SET_MODE', mode: mode.value })
-    send({ type: 'PA_RENDER_MARKERS', annotations: annotations.value })
+    send({ type: 'PA_SET_DRAG', enabled: tool.value === 'comment' })
+    send({ type: 'PA_RENDER_MARKERS', annotations: visiblePins() })
     if (selected.value && selected.value.kind !== 'region' && !selected.value.card) send({ type: 'PA_SELECT', selector: selected.value.selector })
   }
   if (data.type === 'SELECTED' && !loading.value) await inspect(data)
@@ -887,7 +897,7 @@ onUnmounted(() => { window.removeEventListener('message', onMessage); window.rem
       <aside class="inspector" :class="{ collapsed: !rightOpen }" aria-label="属性面板">
         <div class="panel-header"><strong>{{ tool === 'comment' ? '评论' : '属性' }}</strong><span class="free-label">{{ tool === 'comment' ? '交给 AI 修改' : aiOnly ? 'AI 修改' : '直接改，不调用 AI' }}</span><button class="icon-button" aria-label="收起属性" @click="rightOpen = false"><PanelRightClose :size="16" /></button></div>
         <div class="inspector-scroll">
-          <div v-if="!selected && !annotations.length" class="inspector-empty"><component :is="tool === 'comment' ? MessageCircle : SquareMousePointer" :size="28" :stroke-width="1.3" /><h2>{{ tool === 'comment' ? '还没有评论' : '还没有选中元素' }}</h2><p>{{ tool === 'comment' ? '点一下要改的元素，或者拖一个框选一片区域，' : tool === 'edit' ? '点一下要调整的元素，' : '切到「评论」或「编辑」，' }}<br>{{ tool === 'comment' ? '写下怎么改，可以攒几条一起交给 AI。' : tool === 'edit' ? '在这里直接改文字、颜色和尺寸。' : '再点页面上的元素。' }}</p></div>
+          <div v-if="!selected && (tool !== 'comment' || !annotations.length)" class="inspector-empty"><component :is="tool === 'comment' ? MessageCircle : tool === 'edit' ? Pencil : Hand" :size="28" :stroke-width="1.3" /><h2>{{ tool === 'comment' ? '评论：告诉 AI 怎么改' : tool === 'edit' ? '编辑：自己动手改' : '浏览中' }}</h2><p v-if="tool === 'comment'">点一下要改的元素，或者<b>拖一个框</b>选一片区域，<br>写下怎么改，交给 AI 去改代码。</p><p v-else-if="tool === 'edit'">点一下元素，在这里<b>直接改</b>文字、颜色、字号、间距，<br>马上生效，不调用 AI、不花 token。</p><p v-else>像用户一样点页面。<br>要改东西，切到「评论」或「编辑」。</p><p v-if="tool !== 'comment' && annotations.length" class="field-hint">页面上有 {{ annotations.length }} 条评论，切到「评论」（C）查看</p></div>
           <div v-else-if="!selected" class="noted-panel">
             <div class="section-label">已记下的意见<span class="count">{{ annotations.length }}</span></div>
             <div v-for="(a, i) in annotations" :key="a.id" class="annotation-row"><span class="annotation-number">{{ i + 1 }}</span><div><b>{{ a.kind === 'region' ? `框选 ${a.targets?.length || 0} 个元素` : (a.text?.slice(0, 30) || a.tag) }}</b><p>{{ a.note }}</p></div><button class="icon-button" aria-label="移除这条意见" :disabled="locked" @click="removeAnnotation(a.id)"><X :size="14" /></button></div>
@@ -905,20 +915,16 @@ onUnmounted(() => { window.removeEventListener('message', onMessage); window.rem
             <div v-if="annotations.length" class="noted-panel"><div class="section-label">已记下的评论<span class="count">{{ annotations.length }}</span></div><div v-for="(a, i) in annotations" :key="a.id" class="annotation-row"><span class="annotation-number">{{ i + 1 }}</span><div><b>{{ a.kind === 'region' ? `框选 ${a.targets?.length || 0} 个元素` : (a.text?.slice(0, 30) || a.tag) }}</b><p>{{ a.note }}</p></div><button class="icon-button" aria-label="移除这条评论" :disabled="locked" @click="removeAnnotation(a.id)"><X :size="14" /></button></div><button class="primary full-width" :disabled="locked" @click="runAgent('请逐条处理已记下的修改意见，保留其他区域。', '', { intent: 'edit' })"><CheckCheck :size="15" />这 {{ annotations.length }} 条一起修改</button></div>
           </template>
           <template v-else>
-            <div class="selected-heading"><span class="element-icon"><MousePointer2 :size="17" /></span><div><h2>{{ elementLabel(selected) }}</h2><small>只调整选中的位置</small></div><button class="icon-button" aria-label="取消选择" @click="closeSelection"><X :size="14" /></button></div>
+            <div class="selected-heading"><span class="element-icon"><MousePointer2 :size="17" /></span><div><h2>{{ elementLabel(selected) }}</h2><small>{{ aiOnly ? '只读' : '直接修改 · 不调用 AI' }}</small></div><button class="icon-button" aria-label="取消选择" @click="closeSelection"><X :size="14" /></button></div>
             <p v-if="!inspection" class="inspector-loading"><LoaderCircle class="spin" :size="14" />定位中…</p><p v-else-if="inspection.failed" class="inspector-loading">没能在源码里定位这个元素，不能直接改属性；可以在下面写意见交给 AI</p>
-            <template v-else-if="aiOnly && (selected.card || selected.modal)">
-              <section class="property-section"><div class="section-label">所在位置<span>目标不会丢失</span></div><p class="target-location">{{ selected.pageTitle || page?.title }}<br>{{ selected.viewTitle || selected.modal }} › {{ selected.kind === 'region' ? '多处选择' : elementLabel(selected) }}</p><button v-if="selected.card" class="outline full-width" @click="focusSelected"><Maximize2 :size="15" />放大编辑</button></section>
-              <section class="property-section"><div class="section-label">选中内容<span>{{ selected.kind === 'region' ? '多选' : '只读预览' }}</span></div><div v-if="selected.kind === 'region'" class="region-list"><span v-for="(target, index) in selected.targets" :key="index">{{ target.text?.slice(0, 40) || target.tag }}</span></div><p v-else class="selected-text">{{ selected.text || selected.tag }}</p><p class="field-hint">{{ selected.kind === 'region' ? '把这些位置的修改需求一起写入对话。' : selected.modal ? '这是动态弹窗中的元素，由 AI 修改对应模板；不能直接套用静态页面的微调。' : '这个位置由页面脚本生成，由 AI 修改对应代码。' }}</p><button class="primary full-width write-request" @click="toAI"><MessageSquare :size="15" />写修改需求</button><div class="quick-actions"><button @click="quickFill('text')">修改选中文字<ChevronRight :size="14" /></button><button @click="quickFill('short')">缩短说明<ChevronRight :size="14" /></button></div></section>
-              <section class="property-section"><p class="sync-line"><Check :size="14" />选中位置已同步到对话</p><p class="field-hint">切换查看方式不会清空目标。已选元素在当前视图看不到时，仍保留名称与所属弹窗。</p><button class="outline full-width" @click="closeSelection">取消选择</button></section>
-            </template>
-            <div v-else-if="!inspection.editable" class="dynamic-note"><Scan v-if="selected.kind === 'region'" :size="16" /><AlertCircle v-else :size="16" /><div><b>{{ selected.kind === 'region' ? `已选中 ${selected.targets.length} 个元素` : '这是代码生成的内容' }}</b><p>{{ selected.kind === 'region' ? '多个元素一起改，用评论告诉 AI 怎么改。' : '它是页面脚本渲染出来的（列表、模板里的数据），不能直接改。用评论告诉 AI 怎么改，它会去改对应的代码。' }}</p><button class="outline" @click="setTool('comment')"><MessageCircle :size="14" />改成评论</button><div v-if="selected.targets" class="region-targets"><span v-for="(target, index) in selected.targets" :key="index">{{ target.text?.slice(0, 28) || target.tag }}</span></div><button class="text-button" @click="toAI">交给 AI 修改<ChevronRight :size="13" /></button></div></div>
+            <div v-else-if="aiOnly && (selected.card || selected.modal)" class="dynamic-note"><AlertCircle :size="16" /><div><b>{{ selected.kind === 'region' ? `已选中 ${selected.targets?.length || 0} 个元素` : '这里不能直接改' }}</b><p>{{ selected.kind === 'region' ? '多个元素一起改，用评论告诉 AI 怎么改。' : selected.modal ? '这是弹窗里的内容，弹窗是脚本临时生成的，要由 AI 改对应的代码。' : '这是页面脚本生成的内容，要由 AI 改对应的代码。' }}</p><button class="outline" @click="setTool('comment')"><MessageCircle :size="14" />改成评论</button></div></div>
+            <div v-else-if="!inspection.editable" class="dynamic-note"><Scan v-if="selected.kind === 'region'" :size="16" /><AlertCircle v-else :size="16" /><div><b>{{ selected.kind === 'region' ? `已选中 ${selected.targets.length} 个元素` : '这是代码生成的内容' }}</b><p>{{ selected.kind === 'region' ? '多个元素一起改，用评论告诉 AI 怎么改。' : '它是页面脚本渲染出来的（列表、模板里的数据），不能直接改。用评论告诉 AI 怎么改，它会去改对应的代码。' }}</p><button class="outline" @click="setTool('comment')"><MessageCircle :size="14" />改成评论</button><div v-if="selected.targets" class="region-targets"><span v-for="(target, index) in selected.targets" :key="index">{{ target.text?.slice(0, 28) || target.tag }}</span></div></div></div>
             <template v-else>
               <div v-if="playing" class="dynamic-note play-note"><Hand :size="16" /><div><b>浏览中 · 属性只读</b><p>浏览时的操作不会保存。要改这个元素，先切到编辑。</p><button class="outline" @click="setTool('edit')">切到编辑</button></div></div>
               <section class="property-section"><div class="section-label">内容<span>当前元素</span></div><label class="field-label" for="element-text">文字</label><textarea id="element-text" class="text-property" v-model="textValue" :disabled="!canEdit || !inspection.text_editable" @change="edit('text', textValue)"></textarea><p v-if="!inspection.text_editable" class="field-hint">包含子元素，请点选具体文字进行编辑。</p></section>
               <section class="property-section"><div class="section-label">外观<span>当前元素</span></div><label v-for="field in [{ key: 'color', label: '文字颜色' }, { key: 'background-color', label: '背景颜色' }]" :key="field.key" class="color-field"><span>{{ field.label }}</span><div><i :style="{ background: selected.styles?.[field.key] }"></i><select :aria-label="field.label" value="" :disabled="!canEdit" @change="edit(field.key, $event.target.value)"><option value="" disabled>当前颜色</option><option v-for="color in colors" :key="color.key" :value="`var(${color.key})`">{{ color.label }} · {{ color.value }}</option></select></div></label><div class="number-grid"><label v-for="field in numericFields" :key="field.key"><span>{{ field.label }}</span><div class="number-control"><input type="number" min="0" max="160" :step="field.step" :aria-label="field.label" :value="Number.isFinite(parseFloat(selected.styles?.[field.key])) ? parseFloat(selected.styles[field.key]) : ''" placeholder="未读取" :disabled="!canEdit" @change="changeNumber(field.key, $event)"><span>px</span></div></label></div><label class="visibility-control"><span>显示元素</span><input type="checkbox" role="switch" :checked="selected.styles?.display !== 'none'" :disabled="!canEdit" @change="edit('display', $event.target.checked ? 'revert' : 'none')"><span class="switch-track"></span></label></section>
             </template>
-            <section v-if="selected.kind !== 'region' && !(aiOnly && (selected.card || selected.modal))" class="property-section ai-property"><button class="outline full-width" @click="toAI"><MessageSquare :size="15" />写修改需求<ChevronRight :size="14" /></button></section>
+            <p v-if="!aiOnly" class="field-hint edit-hint">改动马上保存，可以用顶部撤销。要 AI 帮你改得更多，<button class="link-btn" @click="setTool('comment')">切到评论</button>。</p>
           </template>
 
         </div>
