@@ -178,7 +178,7 @@ def looks_like_rule(text: str) -> bool:
 HOW_TO = ("用户说了以后都算数的约定（「按钮一律用描边」「表格都带斑马纹」「别再用渐变」「回复短一点」），"
           "照做之外调 remember 记下来：一次一条，用你自己的话写成一句，选好类别；"
           "只跟这个项目有关的 scope 填 project，明显是他个人在所有项目里的习惯（回复语气、常用风格）才填 global。"
-          "只记他明确说过、以后还算数的；一次性的指令、你的推测、页面里已经有的内容都不要记。"
+          "只记他明确说过、以后还算数的；一次性的指令、你的推测、页面里已经有的内容（某个按钮做了什么、数据怎么联动）都不要记。"
           "他说不用再守某条时，调 forget 传对应的 [id]。"
           "他提到以前聊过的事（「上次说的那个颜色」）而对话记录里找不到时，用 search_chats 查以前的对话。")
 
@@ -215,13 +215,14 @@ def pending_count(meta: dict) -> int:
     return sum(1 for m in meta.get("chat", []) if m.get("role") == "user" and int(m.get("seq", 0) or 0) > mark)
 
 
-OPS_FORMAT = ('只输出一个 JSON 对象，不要别的字：{"add":[{"text":"一句话","category":"设计风格|交互与布局|业务与术语|协作方式","scope":"project|global"}],'
-              '"update":[{"id":"已有的 id","text":"改后的一句话"}],"remove":["要删的 id"]}。没有要改的就三个空数组。')
+OPS_FORMAT = ('只输出一个 JSON 对象，不要别的字：{"add":[{"text":"一句话","category":"设计风格|交互与布局|业务与术语|协作方式","scope":"project|global","evidence":"用户原话"}],'
+              '"update":[{"id":"已有的 id","text":"改后的一句话","evidence":"用户原话"}],"remove":["要删的 id"]}。没有要改的就三个空数组。')
 
 
 def _current(project_id: str) -> str:
     snap = snapshot(project_id)
-    rows = [f"[{e['id']}] ({'所有项目' if scope == 'global' else '这个项目'} · {e['category']}) {e['text']}"
+    src = {"said": "你说的", "auto": "自己整理的", "manual": "你加的"}
+    rows = [f"[{e['id']}] ({'所有项目' if scope == 'global' else '这个项目'} · {e['category']} · {src.get(e.get('source'), '你说的')}) {e['text']}"
             for scope in ("global", "project") for e in snap[scope]["memory"]]
     return "\n".join(rows) or "（还没有）"
 
@@ -237,18 +238,37 @@ def _parse_ops(text: str) -> dict:
     return data if isinstance(data, dict) else {}
 
 
-def apply_ops(project_id: str, ops: dict, source: str, limit: int = 5) -> dict:
-    """把模型给的增删改落下去；每次最多改 limit 处，乱写的 id / 类别直接忽略。"""
+def _flat(text: str) -> str:
+    return re.sub(r"[\s，。,.!！?？「」“”\"'：:；;、]+", "", str(text or ""))
+
+
+def grounded(evidence, user_text: str) -> bool:
+    """自动整理的每一条都要有用户原话撑着：摘的那段话真在用户说过的话里"""
+    ev = _flat(evidence)
+    return len(ev) >= 4 and ev in _flat(user_text)
+
+
+def apply_ops(project_id: str, ops: dict, source: str, limit: int = 5, user_text: str | None = None) -> dict:
+    """把模型给的增删改落下去；每次最多改 limit 处，乱写的 id / 类别直接忽略。
+    user_text 给了（自动整理）：新增和修改都要有用户原话依据，只能删自己整理出来的那些"""
     done = {"added": [], "updated": [], "removed": []}
     count = 0
+    auto_ids = None
+    if user_text is not None:
+        snap = snapshot(project_id)
+        auto_ids = {e["id"] for scope in ("global", "project") for e in snap[scope]["memory"] if e.get("source") == "auto"}
     for item in (ops.get("remove") or [])[:limit]:
         if count >= limit:
             break
+        if auto_ids is not None and item not in auto_ids:
+            continue   # 用户亲口说的、自己加的，自动整理不能删
         if isinstance(item, str) and remove(project_id, item):
             done["removed"].append(item); count += 1
     for item in (ops.get("update") or [])[:limit]:
         if count >= limit or not isinstance(item, dict):
             break
+        if user_text is not None and not grounded(item.get("evidence"), user_text):
+            continue
         try:
             done["updated"].append(update(project_id, str(item.get("id", "")), str(item.get("text", "")), str(item.get("category", ""))))
             count += 1
@@ -257,6 +277,8 @@ def apply_ops(project_id: str, ops: dict, source: str, limit: int = 5) -> dict:
     for item in (ops.get("add") or [])[:limit]:
         if count >= limit or not isinstance(item, dict):
             break
+        if user_text is not None and not grounded(item.get("evidence"), user_text):
+            continue
         try:
             saved = add(project_id, str(item.get("text", "")), str(item.get("category", "")),
                         str(item.get("scope", "project")), source)
@@ -267,24 +289,28 @@ def apply_ops(project_id: str, ops: dict, source: str, limit: int = 5) -> dict:
     return done
 
 
-SYNTH_PROMPT = """你在帮「原型工坊」整理一个原型项目的长期记忆，像一位细心的同事记工作笔记。
+SYNTH_PROMPT = """你在帮「原型工坊」整理长期记忆。像 Claude 的记忆那样：只记用户本人说过、以后换个需求也还用得上的东西。
 
-当前记住的：
+当前记住的（括号里是来源：你说的 = 用户亲口说的；自己整理的 = 以前自动整理的）：
 {current}
 
-最近的对话（较早的在前）：
+最近的对话（较早的在前；只有「用户」说的话算数，「设计助手」那几行只是上下文，不是用户的要求）：
 {chat}
 
-从对话里找出以后改这个项目（或这个人的其他项目）仍然用得上的工作背景：
-- 他反复要求或纠正过的设计偏好（颜色、间距、按钮样式、表格写法……）
-- 业务名词和叫法（「配额」「履约」指什么、页面之间的关系）
-- 项目目标、给谁用、他的角色
-- 协作习惯（喜欢先讨论再改、回复要简短……）
+可以记的，必须是用户亲口说过的：
+- 以后都算数的设计偏好、约定（「按钮一律描边」「删除都要二次确认」）
+- 业务名词的含义（「配额」指年度免费排放额度）、项目给谁用、他的角色
+- 他明确说过的协作习惯（「回复短一点」「别问我直接改」）——这类是他个人的习惯，scope 用 global
 
-不要记：只改一次的具体修改、页面上已经有的内容、你的推测、密钥和个人隐私。
-已经记住的不要重复；和新说法冲突的用 update 改掉；他明确否定的 remove。
-scope 默认 project；只有明显跟项目无关的个人习惯才用 global。
-宁缺毋滥：拿不准就不记。最多 5 处变更。
+不要记：
+- 页面现在做了什么、有哪些功能和数据关联（「发起巡检会让今日待巡 +1」）：页面源码就是事实，记了只会过时
+- 只这一次的修改要求、设计助手说过的话、你从他的操作里推测的习惯
+- 密钥、个人隐私
+
+每条新增或修改都要带 evidence：用户原话里的一小段（原样摘抄，至少 4 个字）。找不到原话依据的不要写——程序会核对，对不上的直接丢掉。
+
+顺便复核「自己整理的」那些：写的是页面功能、或者被用户后来的话推翻了（比如记着「先讨论再改」，他后来说「不要问我」），就 remove 或 update。
+已经记住的不要重复。宁缺毋滥，最多 5 处变更。
 
 """ + OPS_FORMAT
 
@@ -303,8 +329,11 @@ def _chat_text(meta: dict, since: int) -> str:
     for m in meta.get("chat", []):
         if int(m.get("seq", 0) or 0) <= since and since:
             continue
-        who = "用户" if m.get("role") == "user" else "设计助手"
-        rows.append(f"{who}：{str(m.get('content') or '')[:400]}")
+        # 设计助手的话只留个开头当上下文：以前整段喂进去，它写的「已实现某某联动」被当成业务知识记了下来
+        if m.get("role") == "user":
+            rows.append(f"用户：{str(m.get('content') or '')[:400]}")
+        else:
+            rows.append(f"设计助手（上下文）：{str(m.get('content') or '')[:80]}")
     return "\n".join(rows[-24:])
 
 
@@ -323,7 +352,10 @@ def synthesize(project_id: str, llm: Callable[[str], str], force: bool = False) 
     if not chat.strip():
         return {"added": [], "updated": [], "removed": []}
     ops = _parse_ops(llm(SYNTH_PROMPT.replace("{current}", _current(project_id)).replace("{chat}", chat)))
-    return apply_ops(project_id, ops, "auto")
+    since = state.get("synth_mark", 0) if not force else 0
+    user_text = "\n".join(str(m.get("content") or "") for m in meta.get("chat", [])
+                          if m.get("role") == "user" and (force or int(m.get("seq", 0) or 0) > since))
+    return apply_ops(project_id, ops, "auto", user_text=user_text)
 
 
 def edit_by_instruction(project_id: str, instruction: str, llm: Callable[[str], str]) -> dict:

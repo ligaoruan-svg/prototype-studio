@@ -64,7 +64,7 @@ class 两层记忆(unittest.TestCase):
         for i in range(3):
             storage.append_chat(self.a, "user", f"把第 {i} 个按钮改成描边")
         calls = []
-        llm = lambda prompt: calls.append(prompt) or json.dumps({"add": [{"text": "按钮偏好描边样式", "category": "设计风格"}]}, ensure_ascii=False)
+        llm = lambda prompt: calls.append(prompt) or json.dumps({"add": [{"text": "按钮偏好描边样式", "category": "设计风格", "evidence": "这个也改成描边"}]}, ensure_ascii=False)
         self.assertEqual(memory.synthesize(self.a, llm).get("skipped"), "not_enough")
         storage.append_chat(self.a, "user", "这个也改成描边")
         done = memory.synthesize(self.a, llm)
@@ -72,6 +72,24 @@ class 两层记忆(unittest.TestCase):
         self.assertEqual(memory.snapshot(self.a)["project"]["memory"][0]["source"], "auto")
         self.assertIn("这个也改成描边", calls[0])
         self.assertEqual(memory.synthesize(self.a, llm).get("skipped"), "not_enough", "整理过的发言不再算")
+
+    def test_自动整理只记用户原话撑得住的(self):
+        said = memory.add(self.a, "删除都要二次确认", "交互与布局", "project", "said")
+        old_auto = memory.add(self.a, "用户习惯先讨论再改", "协作方式", "project", "auto")
+        storage.append_chat(self.a, "assistant", "已实现：发起巡检会让对应人员今日待巡 +1")
+        for text in ("新建巡检记录页", "加个统计页", "不要问我啦直接改", "以后表格都带斑马纹"):
+            storage.append_chat(self.a, "user", text)
+        llm = lambda prompt: json.dumps({
+            "add": [{"text": "发起巡检会让今日待巡+1", "category": "业务与术语", "evidence": "发起巡检会让对应人员今日待巡"},
+                    {"text": "表格都带斑马纹", "category": "设计风格", "evidence": "以后表格都带斑马纹"},
+                    {"text": "用户喜欢简洁", "category": "协作方式"}],
+            "update": [{"id": old_auto["id"], "text": "直接改，不用先问", "evidence": "不要问我啦"}],
+            "remove": [said["id"]]}, ensure_ascii=False)
+        done = memory.synthesize(self.a, llm)
+        self.assertEqual([e["text"] for e in done["added"]], ["表格都带斑马纹"], "设计助手说的、没有原话依据的都不记")
+        self.assertEqual([e["text"] for e in done["updated"]], ["直接改，不用先问"], "被用户后来的话推翻的改掉")
+        self.assertEqual(done["removed"], [], "用户亲口说的，自动整理删不了")
+        self.assertIn("设计助手（上下文）", memory.SYNTH_PROMPT.replace("{chat}", memory._chat_text(storage.load_meta(self.a), 0)))
 
     def test_模型乱回不出事(self):
         for i in range(4):
