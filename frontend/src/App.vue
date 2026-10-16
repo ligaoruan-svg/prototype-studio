@@ -112,6 +112,7 @@ function setTool(value) {
   if (value === 'present') { startPresent(); return }
   tool.value = value
   setMode(value === 'browse' ? 'interact' : 'select')
+  rightOpen.value = value !== 'browse'   // 评论、编辑：左栏换成评论 / 属性；浏览：回到对话
   if (value === 'comment') toast('点一下元素，或者拖一个框选一片，写下怎么改')
   if (value === 'edit') toast('点选要改的元素；按住 Shift 或 ⌘ 可以多选')
 }
@@ -484,7 +485,10 @@ async function saveNote(text) {
 async function removeAnnotation(id) {
   try { await api(`/api/projects/${project.value.id}/annotations/${id}`, { method: 'DELETE' }); await refresh(false) } catch (e) { error.value = e.message }
 }
-function openLeft() { leftOpen.value = true; if (window.innerWidth <= 960) rightOpen.value = false }
+// 对话和属性 / 评论共用左侧一栏（和 Claude Design 一样），用顶上的页签切换
+function openLeft() { leftOpen.value = true; rightOpen.value = false }
+function showChat() { leftOpen.value = true; rightOpen.value = false }
+function showPanel() { rightOpen.value = true }
 function toggleRight() { rightOpen.value = !rightOpen.value; if (rightOpen.value && window.innerWidth <= 960) leftOpen.value = false }
 async function commentToAI() {
   const text = commentDraft.value.trim()
@@ -492,7 +496,7 @@ async function commentToAI() {
   input.value = text; commentDraft.value = ''
   await runAgent()
 }
-async function toAI() { leftOpen.value = true; if (window.innerWidth <= 960) rightOpen.value = false; await nextTick(); composer.value?.focus() }
+async function toAI() { leftOpen.value = true; rightOpen.value = false; await nextTick(); composer.value?.focus() }
 // 预览现场：停在哪一页、最近 5 分钟里点过什么、页面报过什么错
 function previewScene() {
   const since = Date.now() - 5 * 60_000
@@ -867,11 +871,11 @@ onUnmounted(() => { window.removeEventListener('message', onMessage); window.rem
       <input ref="imageInput" type="file" class="sr-only" accept="image/png,image/jpeg,image/webp" @change="uploadImage" />
     </header>
 
-    <main class="workspace" :class="{ 'left-closed': !leftOpen, 'right-closed': !rightOpen }">
+    <main class="workspace" :class="{ 'side-closed': !leftOpen && !rightOpen }">
       <div v-if="(leftOpen || rightOpen)" class="mobile-scrim" @click="leftOpen = false; rightOpen = false"></div>
-      <aside class="conversation-panel" :class="{ collapsed: !leftOpen }" aria-label="对话">
+      <aside class="conversation-panel" :class="{ collapsed: !leftOpen || rightOpen }" aria-label="对话">
         <label class="mobile-project-picker"><span>当前项目</span><select aria-label="切换当前项目" :value="project?.id || ''" :disabled="locked || !projects.length" @change="chooseProject($event.target.value)"><option v-if="!projects.length" value="">尚未创建项目</option><option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }}</option></select></label>
-        <div class="panel-header"><strong class="panel-title"><MessageSquare :size="15" />对话</strong><button class="icon-button" aria-label="收起对话" @click="leftOpen = false"><PanelLeftClose :size="16" /></button></div>
+        <div class="panel-header"><div class="side-tabs" role="tablist" aria-label="左侧面板"><button type="button" role="tab" :aria-selected="!rightOpen" :class="{ active: !rightOpen }" @click="showChat"><MessageSquare :size="14" />对话</button><button type="button" role="tab" :aria-selected="rightOpen" :class="{ active: rightOpen }" @click="showPanel"><component :is="tool === 'comment' ? MessageCircle : SlidersHorizontal" :size="14" />{{ tool === 'comment' ? '评论' : '属性' }}<span v-if="tool === 'comment' && annotations.length" class="count">{{ annotations.length }}</span></button></div><button class="icon-button" aria-label="收起左侧面板" @click="leftOpen = false"><PanelLeftClose :size="16" /></button></div>
 
           <div ref="chatBox" class="messages" aria-live="polite">
             <div v-if="!messages.length && !pendingUser && showGuide" class="conversation-empty compact-guide"><h2>先聊清楚，再动手。</h2><p>可以一起评价设计、比较方案；确定方向后，只改需要调整的位置。</p><button v-for="suggestion in ['现在的设计怎么样？', '有哪些地方值得优化？', selected ? '调整选中区域的对齐' : '检查一下交互有没有漏的']" :key="suggestion" class="prompt-suggestion" :disabled="!page" @click="input = suggestion; toAI()">{{ suggestion }}<ChevronRight :size="14" /></button><button class="text-button dismiss-guide" @click="hideGuide">不再显示</button></div>
@@ -904,7 +908,8 @@ onUnmounted(() => { window.removeEventListener('message', onMessage); window.rem
       </section>
 
       <aside class="inspector" :class="{ collapsed: !rightOpen }" aria-label="属性面板">
-        <div class="panel-header"><strong>{{ tool === 'comment' ? '评论' : '属性' }}</strong><span class="free-label">{{ tool === 'comment' ? '交给 AI 修改' : aiOnly ? 'AI 修改' : '直接改，不调用 AI' }}</span><button class="icon-button" aria-label="收起属性" @click="rightOpen = false"><PanelRightClose :size="16" /></button></div>
+        <div class="panel-header"><div class="side-tabs" role="tablist" aria-label="左侧面板"><button type="button" role="tab" :aria-selected="!rightOpen" :class="{ active: !rightOpen }" @click="showChat"><MessageSquare :size="14" />对话</button><button type="button" role="tab" :aria-selected="rightOpen" :class="{ active: rightOpen }" @click="showPanel"><component :is="tool === 'comment' ? MessageCircle : SlidersHorizontal" :size="14" />{{ tool === 'comment' ? '评论' : '属性' }}<span v-if="tool === 'comment' && annotations.length" class="count">{{ annotations.length }}</span></button></div><button class="icon-button" aria-label="收起左侧面板" @click="leftOpen = false; rightOpen = false"><PanelLeftClose :size="16" /></button></div>
+        <p class="side-hint">{{ tool === 'comment' ? '写下怎么改，交给 AI 修改' : aiOnly ? '这里要交给 AI 修改' : '直接改，马上生效，不调用 AI' }}</p>
         <div class="inspector-scroll">
           <div v-if="!selected && (tool !== 'comment' || !annotations.length)" class="inspector-empty"><component :is="tool === 'comment' ? MessageCircle : tool === 'edit' ? Pencil : Hand" :size="28" :stroke-width="1.3" /><h2>{{ tool === 'comment' ? '评论：告诉 AI 怎么改' : tool === 'edit' ? '编辑：自己动手改' : '浏览中' }}</h2><p v-if="tool === 'comment'">点一下要改的元素，或者<b>拖一个框</b>选一片区域，<br>写下怎么改，交给 AI 去改代码。</p><p v-else-if="tool === 'edit'">点一下元素，在这里<b>直接改</b>文字、颜色、字号、间距，<br>马上生效，不调用 AI、不花 token。</p><p v-else>像用户一样点页面。<br>要改东西，切到「评论」或「编辑」。</p><p v-if="tool !== 'comment' && annotations.length" class="field-hint">页面上有 {{ annotations.length }} 条评论，切到「评论」（C）查看</p></div>
           <div v-else-if="!selected" class="noted-panel">
