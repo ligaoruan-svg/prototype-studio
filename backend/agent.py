@@ -236,6 +236,10 @@ WRAPUP_PROMPT = ("别再读源码了，根据已经读到的内容收个尾，�
                  "3. 实在找不到 → report_result 写明查了哪几处、为什么对不上，并告诉用户怎么指给你"
                  "（点选那个元素，或在交互模式下把出问题的操作点一遍再发）。")
 REJECT_LIMIT = 3     # 同一个工具被同一个理由拒绝这么多次，就收手
+# 读的是页面源码：改之前都还要用（补丁要照着原文写），只有页面改过、读到的已经不是现在的样子了才收起。
+# 规范、组件库这些读完就是参考，过两轮就收——生成一页烧几十万 tokens 主要是它们
+SOURCE_READS = {"inspect_page", "search_source", "read_source_slice", "read_region"}
+SOURCE_KEEP_ROUNDS = 8   # 源码读取最多留这么多轮，再久就算没改也收起（防止一直攒）
 READ_ONLY_TOOLS = {"inspect_page", "search_source", "read_source_slice", "read_region", "search_chats",
                    "read_component", "read_skill", "read_skill_file", "search_skill_file"}
 
@@ -459,6 +463,7 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
     wrapup_round = None   # 从第几轮起进入收尾（只能提问或汇报）
     reads = []            # (消息下标, 工具名, 第几轮, 读取指纹)：读规范、组件库、源码的结果，用过两轮就收起来
     writes = []           # (助手消息下标, 第几轮)：带大段修改参数的那条，用过两轮也收起来
+    source_version = 0    # 页面源码改过几次：读到的源码是不是已经过时，看它
     remembered = []       # 这一轮新记住的约定：结果卡片上要让用户看见，记错了能当场撤销
     budget = read_budget(context_budget)
     # 同一个工具被同一个理由连续拒绝多少次。failures 只管补丁失败，
@@ -473,9 +478,11 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
             break
         # 用过的大段读取结果（规范、组件库、源码片段）过两轮就收成一句话：不等攒满上下文预算才收，
         # 否则它们会跟着后面每一步重发——一页生成 50 多万输入 tokens 大半是这么来的
-        for at, name, when, fingerprint in reads:
+        for at, name, when, fingerprint, seen_version in reads:
             content = messages[at].get("content")
-            if round_no - when >= STALE_ROUNDS and isinstance(content, str) and len(content) > 1500 and '"collapsed": true' not in content:
+            age = round_no - when
+            stale = (age >= SOURCE_KEEP_ROUNDS or (age >= STALE_ROUNDS and seen_version != source_version)) if name in SOURCE_READS else age >= STALE_ROUNDS
+            if stale and isinstance(content, str) and len(content) > 1500 and '"collapsed": true' not in content:
                 # 说清收起的是哪一段（读的参数），它真要再看才知道读哪；只放开这一段的「读过了」拦截，别的照拦
                 messages[at]["content"] = json.dumps({"collapsed": True, "tool": name, "args": json.loads(fingerprint[1]),
                     "summary": "这段读取结果前面用过了，已收起；还需要原文就按行号再读那一小段。"}, ensure_ascii=False)
@@ -662,7 +669,7 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
                     check = verify_source(shell)
                     if not check["ok"]:
                         raise PatchError("页面外壳本身没通过检查：" + "；".join(check["issues"]))
-                    working_source = shell; changed = working_source != source
+                    working_source = shell; changed = working_source != source; source_version += 1
                     read_seen.clear(); read_regions.clear()
                     all_operations.append({"action": "start_from_shell", "skill": skill_name, "path": rel})
                     output = {"ok": True, "chars": len(shell),
@@ -745,7 +752,7 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
                     fresh = new_issues(baseline, check) if not check['ok'] else []
                     if fresh: raise PatchError('修改检查失败：'+'；'.join(fresh))
                     if new_source==working_source: raise PatchError("这次操作没有产生实际改动")
-                    working_source = new_source; changed = working_source != source
+                    working_source = new_source; changed = working_source != source; source_version += 1
                     # 源码变了，之前读过的段落、读过的区域都不是现在的样子：允许重读，
                     # 也不能再拿改动前读到的区域原文去整块替换（会把刚才的修改冲掉）
                     read_seen.clear(); read_regions.clear()
@@ -799,7 +806,7 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
             tool_log.append({"tool":fn,"args":args,"output":output})
             messages.append({"role":"tool","tool_call_id":call.get("id"),"content":json.dumps(output,ensure_ascii=False)})
             if fn in READ_ONLY_TOOLS:
-                reads.append((len(messages) - 1, fn, round_no, fingerprint))
+                reads.append((len(messages) - 1, fn, round_no, fingerprint, source_version))
             failed = output.get("ok") is False
             if failed and fn == "apply_operations": apply_failed = True
             try:

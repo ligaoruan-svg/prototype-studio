@@ -107,6 +107,20 @@ class 上下文不重复带大段(不丢修改):
         self.assertLess(len(args[0]), 300, '已经应用的整段 HTML 不再跟着每步重发')
 
 
+class 源码读取改之前不收(不丢修改):
+    PAGE = '<html><head><title>t</title></head><body>' + ''.join(f'<p id="p{i}">第 {i} 行 ' + 'x' * 120 + '</p>\n' for i in range(60)) + '<h1 id="t">旧标题</h1></body></html>'
+
+    def test_还没动手时读到的源码一直留着_改过以后才收(self):
+        reads = [msg(('read_source_slice', {'start': 1, 'end': 40}))] + [msg(('search_chats', {'query': f'词{i}'})) for i in range(4)]
+        self.script(*reads, msg(EDIT), msg(('search_chats', {'query': 'a'})), msg(('search_chats', {'query': 'b'})), msg(('search_chats', {'query': 'c'})))
+        self.run_agent()
+        def slice_msg(sent):
+            tools = [m for m in sent if m.get('role') == 'tool']
+            return tools[0]['content'] if tools else ''
+        self.assertNotIn('"collapsed": true', slice_msg(self.sent[5]), '读了源码、还在琢磨怎么改：原文要留着')
+        self.assertIn('"collapsed": true', slice_msg(self.sent[-1]), '页面改过了，旧的源码读取过时，收起')
+
+
 class 页面原来就有的问题不拦(不丢修改):
     PAGE = ('<html><head><title>t</title></head><body><h1 id="t">旧标题</h1><i data-pid="a"></i><i data-pid="a"></i>'
             '<script>function (</script></body></html>')

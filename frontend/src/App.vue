@@ -609,7 +609,9 @@ async function editAndResend(message) {
 async function smallerRequest(run) { input.value = run.request; leftOpen.value = true; await nextTick(); composer.value?.focus(); toast('要求放回输入框了，删成一小步再发，比如先只改一处') }
 // 「指给它看」：找不到通常是没指位置。点了没反应这类先切到交互把问题点一遍（AI 能看到你点了什么），别的切到点选点一下
 async function pointAt(run) {
-  if (selected.value) { input.value = '只修改当前选中的位置：' + run.request; await toAI(); return }
+  // 已经选中了：原话照发，选中的位置本来就会跟着需求一起交给 AI。以前在前面加「只修改当前选中的位置」，
+  // 要整体重做的需求也被限死在一个元素上
+  if (selected.value) { input.value = run.request; await toAI(); return }
   input.value = run.request; leftOpen.value = true
   const clicky = /没反应|点击|点了|点不|报错|跳转|打不开|切换|不动/.test(run.request)
   setMode(clicky ? 'interact' : 'select')
