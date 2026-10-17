@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { newLabels, topLabels } from '../src/probe.js'
+import { newLabels, topLabels } from '../src/lib/probe.js'
 
 test('改版后多出来的按钮能认出来', () => {
   const init = { triggers: [{ text: '新增设备' }, { text: '表格行 · 详情' }, { text: '表格行 · 编辑' }], tabs: [{ text: '巡检计划' }] }

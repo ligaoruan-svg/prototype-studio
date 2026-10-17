@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { reactive, ref } from 'vue'
-import { previewMessage } from '../src/previewMessage.js'
+import { previewMessage } from '../src/lib/previewMessage.js'
 
 test('box selection can cross the iframe boundary', () => {
   const bounds = ref({ left: 20, top: 149, right: 414, bottom: 343 })

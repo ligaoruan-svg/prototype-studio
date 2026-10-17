@@ -11,3 +11,6 @@ frontend/dist/
 .idea/
 .probe-test/
 .venv-broken*/
+
+# 桌面端自动放截图的目录
+Claude outputs/

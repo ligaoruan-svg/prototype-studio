@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { buildTree, cardDocument, thumbFrame, trailOf, shortLabel } from '../src/probeTree.js'
+import { buildTree, cardDocument, thumbFrame, trailOf, shortLabel } from '../src/lib/probeTree.js'
 
 // 真实场景：环境影响因子库管理，「新增因子」先选类型，点下一步再按类型进到不同表单
 const nodes = [
@@ -55,7 +55,7 @@ test('进度里的按钮名去掉「表格行」前缀并截短', () => {
   assert.equal(shortLabel('下一步 · 间接排放因子（外购电力/热力）', 10), '下一步 · 间接排放…')
 })
 
-import { pickToSelection, CARD_SCRIPT } from '../src/probeTree.js'
+import { pickToSelection, CARD_SCRIPT } from '../src/lib/probeTree.js'
 
 const gwp = { id: 7, title: '新增 GWP 值', layerSel: '#modal', label: '下一步 · GWP值' }
 
@@ -84,7 +84,7 @@ test('能点选的卡片才带脚本，页面缩略图仍然是纯静态', () =>
   assert.doesNotThrow(() => new Function(CARD_SCRIPT), '注入的脚本至少要能被解析')
 })
 
-import { originOf, crumbOf, ORIGIN_LABEL } from '../src/probeTree.js'
+import { originOf, crumbOf, ORIGIN_LABEL } from '../src/lib/probeTree.js'
 
 test('卡片按从哪儿打开分组：页面按钮 / 列表行 / 弹窗里的下一步', () => {
   assert.equal(originOf({ isPage: true }), 'page')

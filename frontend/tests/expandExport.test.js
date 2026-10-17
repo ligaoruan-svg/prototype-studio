@@ -1,7 +1,7 @@
 // 导出展开图：一个独立 HTML，按业务页面分节、每页一棵树，意见挂在对应卡片下
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { buildExpandExport } from '../src/expandExport.js'
+import { buildExpandExport } from '../src/lib/expandExport.js'
 
 const styles = { head: '<style>.x{color:red}</style>' }
 const result = (nodes = []) => ({ title: 'A', styles, page: '<div>page</div>', width: 1000, height: 700, nodes })

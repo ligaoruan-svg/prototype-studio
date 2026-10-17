@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { LoaderCircle, AlertCircle } from 'lucide-vue-next'
-import { liveDoc } from './expandStore.js'
+import { liveDoc } from '../../lib/expandStore.js'
 // 在展开视图里直接交互：真正跑起原型，按记下的路径把弹窗点开，然后随便点。
 // 用的是后台副本那一套：演示数据只在这一份里，点了保存也不会写回你的预览。
 const props = defineProps({ node: Object, route: String, frame: Object })

@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { consumeAgentStream } from '../src/streamAgent.js'
-import { PREVIEW_SANDBOX } from '../src/previewMessage.js'
+import { consumeAgentStream } from '../src/lib/streamAgent.js'
+import { PREVIEW_SANDBOX } from '../src/lib/previewMessage.js'
 function response(text, chunkSize = 7) {
   const data = new TextEncoder().encode(text)
   return new Response(new ReadableStream({ start(controller) { for (let i = 0; i < data.length; i += chunkSize) controller.enqueue(data.slice(i, i + chunkSize)); controller.close() } }))

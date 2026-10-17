@@ -2,8 +2,10 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
-const source = readFileSync(new URL('../src/ResultCard.vue', import.meta.url), 'utf8')
-const app = readFileSync(new URL('../src/App.vue', import.meta.url), 'utf8')
+const source = readFileSync(new URL('../src/components/chat/ResultCard.vue', import.meta.url), 'utf8')
+// App.vue 的界面拆到了 components/layout 下；这些检查看的是整个外壳，拼在一起看
+const app = ['../src/App.vue', '../src/components/layout/ConversationPanel.vue', '../src/components/layout/InspectorPanel.vue',
+  '../src/components/layout/AppHeader.vue', '../src/components/layout/StudioDialog.vue'].map(f => readFileSync(new URL(f, import.meta.url), 'utf8')).join('\n')
 
 test('every event the card fires is declared', () => {
   const declared = source.match(/defineEmits\(\[([^\]]*)\]\)/)[1].match(/'([^']+)'/g).map(s => s.slice(1, -1))
@@ -28,7 +30,7 @@ test('超出圈定范围的改动会在卡片上提示出来', () => {
   assert.match(source, /out_of_scope\.places\.join/)
 })
 
-const card = readFileSync(new URL('../src/ExecutionCard.vue', import.meta.url), 'utf8')
+const card = readFileSync(new URL('../src/components/chat/ExecutionCard.vue', import.meta.url), 'utf8')
 const bridge = readFileSync(new URL('../../backend/bridge.py', import.meta.url), 'utf8')
 
 test('进度标题按实际在做的事显示，不是一律"修改中"', () => {

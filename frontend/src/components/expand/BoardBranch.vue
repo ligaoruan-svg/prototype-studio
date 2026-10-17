@@ -4,7 +4,7 @@ import SceneCard from './SceneCard.vue'
 import InlineFocus from './InlineFocus.vue'
 import CardExtras from './CardExtras.vue'
 import BoardBranch from './BoardBranch.vue'
-import { edgeLabel } from './probeTree.js'
+import { edgeLabel } from '../../lib/probeTree.js'
 // 一条按钮链：「新增因子 →」弹窗卡片，后面接着它里面再点开的弹窗。
 // 后续默认收起，只展开当前路径（选中的、搜到的、正在编辑的），不然越往右越宽
 defineProps({ node: Object, styles: Object, frame: Object, picked: Object, mode: String, open: Object, patch: Object, focus: [Number, null], route: String, focusWidth: Number })

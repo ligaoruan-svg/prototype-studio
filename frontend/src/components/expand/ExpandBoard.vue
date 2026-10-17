@@ -1,8 +1,8 @@
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ArrowLeft, ArrowRight, Download, ExternalLink, Layers, LoaderCircle, LocateFixed, PencilLine, Play, RotateCw, Search, AlertCircle, ChevronDown } from 'lucide-vue-next'
-import { estimate, expand, expandAll, isFresh, requestRoute, routeEta, setOverride, touch } from './expandStore.js'
-import { ORIGIN_LABEL, ancestorsOf, buildTree, crumbOf, originOf, pickToSelection, shortLabel, trailOf } from './probeTree.js'
+import { estimate, expand, expandAll, isFresh, requestRoute, routeEta, setOverride, touch } from '../../lib/expandStore.js'
+import { ORIGIN_LABEL, ancestorsOf, buildTree, crumbOf, originOf, pickToSelection, shortLabel, trailOf } from '../../lib/probeTree.js'
 import SceneCard from './SceneCard.vue'
 import InlineFocus from './InlineFocus.vue'
 import CardExtras from './CardExtras.vue'

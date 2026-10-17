@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { withHome } from '../src/probe.js'
+import { withHome } from '../src/lib/probe.js'
 
 test('首页不在菜单链接里：补上「刚打开时那一页」', () => {
   const routes = [{ hash: '#page/0', title: '业务流程总览' }, { hash: '#page/4', title: '实时客流监测' }]

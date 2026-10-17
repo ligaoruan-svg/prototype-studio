@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { preparePreviewDocument } from '../src/previewDocument.js'
+import { preparePreviewDocument } from '../src/lib/previewDocument.js'
 
 test('没有 <head> 的页面也能放进路由和展开标记', () => {
   const withHead = preparePreviewDocument('<html><head><title>t</title></head><body></body></html>', { route: '#a', probe: true })

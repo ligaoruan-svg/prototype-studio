@@ -23,7 +23,7 @@
 在 Finder 里**双击 `启动原型工坊.command`**。首次运行会自动建虚拟环境、装依赖、起服务并打开浏览器；
 之后再双击就直接打开。关掉那个终端窗口即停止服务。已经在运行时再双击，只会打开浏览器，不会起第二个。
 
-习惯命令行的话 `./start_mac.sh` 效果一样，或者手动：
+习惯命令行的话 `./scripts/start_mac.sh` 效果一样，或者手动：
 
 ```bash
 python3 -m venv .venv
@@ -34,21 +34,37 @@ make dev                         # 等价于 uvicorn backend.server:app --port 5
 
 浏览器打开 <http://127.0.0.1:5173>，右上角齿轮里填模型接口地址、模型名称和 API 密钥。
 
-项目自带预构建前端（`frontend/dist`），日常使用不需要 npm。
+发布包自带预构建前端（`frontend/dist`），日常使用不需要 npm；从源码仓库运行时先构建一次（见下文「开发前端」）。
 
 ## 目录结构
 
 ```text
-启动原型工坊.command  双击启动：建环境、装依赖、起服务、开浏览器
-pyproject.toml   项目元数据与后端依赖（版本号从 backend/config.py 动态读取）
-Makefile         常用命令：make install / dev / web / build / package / clean
-backend/         FastAPI 服务：补丁、两阶段提交、Agent 循环、错误分类
-frontend/        Vue 3 + Vite 源码、单元测试与预构建 dist
-prompts/         系统提示词与设计规范，可直接改，也可在界面里编辑
-scripts/         发布打包、隔离验收服务器
-docs/            设计与整改记录
-sample/          新建项目用的骨架页面
-data/            本机数据：原型源码、版本、修改意见、对话（不纳入版本库）
+启动原型工坊.command   双击启动：建环境、装依赖、起服务、开浏览器
+pyproject.toml        项目元数据与后端依赖（版本号从 backend/config.py 动态读取）
+Makefile              常用命令：make install / dev / web / build / package / clean
+backend/              FastAPI 服务：补丁、两阶段提交、Agent 循环、错误分类
+  tests/              后端单元测试
+frontend/
+  src/
+    App.vue           顶层：状态、和后端/预览框的通信，provide 给各面板
+    main.js
+    components/
+      layout/         页面骨架：顶栏、左侧对话、左侧属性、各种弹窗
+      chat/           对话里的卡片：执行进度、结果、图片引用
+      expand/         「展开」看板：场景卡、分支、覆盖说明
+      settings/       模型设置、记忆、文件管理
+    lib/              不依赖界面的逻辑：流式解析、预览文档、展开存储与导出
+    styles/           全局样式
+  scripts/            备用构建 build-esm.mjs
+  tests/              前端单元测试
+  dist/               预构建产物（不纳入版本库，构建生成）
+prompts/              系统提示词、设计规范、技能包，可直接改，也可在界面里编辑
+scripts/              命令行启动、发布打包、隔离验收服务器
+docs/                 设计与整改记录
+  archive/            旧版本的说明与审查记录
+  screenshots/        文档用截图
+sample/               新建项目用的骨架页面
+data/                 本机数据：原型源码、版本、修改意见、对话（不纳入版本库）
 ```
 
 ## 技术要点

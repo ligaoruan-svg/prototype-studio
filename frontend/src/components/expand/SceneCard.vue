@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ChevronDown, ChevronRight, Code2, Layers, LoaderCircle, Monitor, PencilLine, RotateCw, Hand } from 'lucide-vue-next'
-import { cardDocument, edgeLabel } from './probeTree.js'
+import { cardDocument, edgeLabel } from '../../lib/probeTree.js'
 const props = defineProps({ node: Object, styles: Object, frame: Object, picked: Object, mode: String, crumb: String, large: Boolean, notes: Number, compact: Boolean, width: Number, patch: Object })
 const emit = defineEmits(['pick', 'edit', 'play', 'refind', 'fix'])
 const iframe = ref(null), stage = ref(null), measured = ref(0), root = ref(null)
