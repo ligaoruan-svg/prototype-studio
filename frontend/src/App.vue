@@ -641,6 +641,10 @@ async function applySuggestion({ suggestion, suggestions, discussion }) {
     : `按已讨论的建议修改，这 ${list.length} 条都要做：\n` + list.map((s, i) => `${i + 1}. ${s.label}：${s.instruction}`).join('\n')
   await runAgent(message, '', { intent: 'edit', includeAnnotations: false, selection: discussion?.selection || null })
 }
+// 建议清单底下的「其他」：跟着这次讨论的选区，按输入框当前的模式发出去
+async function customSuggestion({ text, discussion }) {
+  await runAgent(text, '', { includeAnnotations: false, selection: discussion?.selection || null })
+}
 async function discussSuggestion(suggestion) {
   composerIntent.value = 'discuss'; input.value = '关于“' + suggestion.label + '”：'; await toAI()
 }
@@ -918,7 +922,7 @@ provide('studio', {
   loading, locked, memoryCount, messages, model, modelMenu, moreMenu,
   openDialog, openLeft, openManagedProject, openMemory, page, pageId, pasteImage, pendingRef,
   pendingUser, playing, pointAt, previewDoc, project, projectName, projects, reference,
-  removeAnnotation, removeComponent, removeSkill, restore, rightOpen, runAgent, saveNote, saveSpec, selectLayer, hoverLayer, toast,
+  removeAnnotation, removeComponent, removeSkill, restore, rightOpen, runAgent, saveNote, saveSpec, customSuggestion, selectLayer, hoverLayer, toast,
   saving, selected, selectionPlace, setMode, setTool, shotUrl, showBoard, showChat,
   showGuide, showPanel, showPreview, skillList, smallerRequest, sourceInfo, specDraft, specInput,
   specNotice, specSaved, specTab, stopAgent, switchModel, switchingModel, textEditable, textValue,

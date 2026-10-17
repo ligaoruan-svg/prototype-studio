@@ -23,6 +23,9 @@ test('a discussion reply renders its answer and its suggestions', () => {
   assert.match(source, /emit\('apply', \{ suggestions: chosen\.value, discussion: discussion\.value \}\)/)
   assert.match(source, /type="checkbox"/, '几条建议勾选后一次交给 AI')
   assert.match(source, /v-if="opened\.has\(i\)" class="suggest-detail"/, '具体怎么改默认收起')
+  assert.match(source, /s\.recommended/, '推荐的那条标出来')
+  assert.match(source, /s\.summary/, '标题下面一句人话')
+  assert.match(source, /emit\('custom', \{ text, discussion: discussion\.value \}\)/, '都不要时可以直接写自己的想法')
   assert.match(source, /discussion\.value\?\.answer/)
 })
 

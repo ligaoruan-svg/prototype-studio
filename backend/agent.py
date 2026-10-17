@@ -165,7 +165,7 @@ TOOL_SPECS.append({"type": "function", "function": {
 
 TOOL_SPECS.extend([
     {"type":"function","function":{"name":"answer_user","description":"回答设计问题并给出可选的局部修改建议；不执行修改。",
-     "parameters":{"type":"object","properties":{"answer":{"type":"string"},"suggestions":{"type":"array","maxItems":3,"items":{"type":"object","properties":{"label":{"type":"string"},"instruction":{"type":"string"}},"required":["label","instruction"]}}},"required":["answer"]}}},
+     "parameters":{"type":"object","properties":{"answer":{"type":"string"},"suggestions":{"type":"array","maxItems":3,"items":{"type":"object","properties":{"label":{"type":"string","description":"10 个字以内的短标题"},"summary":{"type":"string","description":"给用户看的一句话说明，20 个字以内，说清改完是什么样"},"instruction":{"type":"string","description":"交给修改执行的完整指令，用户默认看不到"},"recommended":{"type":"boolean","description":"最推荐的那一条标 true，只标一条"}},"required":["label","summary","instruction"]}}},"required":["answer"]}}},
     {"type":"function","function":{"name":"report_result","description":"结束本轮修改前汇报结论和每条意见的真实处理结果。",
      "parameters":{"type":"object","properties":{"summary":{"type":"string"},"assumptions":{"type":"array","items":{"type":"string"},"maxItems":2},
      "annotations":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"status":{"type":"string","enum":["completed","partial","unprocessed"]},"reason":{"type":"string"}},"required":["id","status"]}},

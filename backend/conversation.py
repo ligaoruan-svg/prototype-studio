@@ -70,8 +70,16 @@ def discussion_result(answer: str, suggestions=None) -> dict:
             continue
         label = str(suggestion.get('label') or '').strip()[:80]
         instruction = str(suggestion.get('instruction') or '').strip()[:1500]
+        summary = str(suggestion.get('summary') or '').strip()[:60]
         if label and instruction:
-            choices.append({'label': label, 'instruction': instruction})
+            choices.append({'label': label, 'summary': summary, 'instruction': instruction,
+                            'recommended': suggestion.get('recommended') is True})
+    # 只认一条推荐，排在第一；一条都没标就推荐第一条——用户一眼知道先看哪条
+    if choices:
+        first = next((i for i, x in enumerate(choices) if x['recommended']), 0)
+        for i, x in enumerate(choices):
+            x['recommended'] = i == first
+        choices.insert(0, choices.pop(first))
     return {'answer': answer, 'suggestions': choices}
 
 

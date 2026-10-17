@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import { Check, Undo2, ChevronDown, AlertCircle, BookmarkCheck, MessageCircle, Sparkles } from 'lucide-vue-next'
 const props = defineProps({ result: Object, canUndo: Boolean, locked: Boolean, checking: Boolean })
-const emit = defineEmits(['undo', 'choose', 'apply', 'discuss', 'rephrase', 'forget'])
+const emit = defineEmits(['undo', 'choose', 'apply', 'discuss', 'custom', 'rephrase', 'forget'])
 const report = computed(() => props.result?.report)
 const discussion = computed(() => props.result?.discussion)
 // A question is already rendered by its own block; everything else needs a headline.
@@ -13,7 +13,9 @@ const forgotten = ref(new Set())
 function forget(item) { forgotten.value = new Set([...forgotten.value, item.id]); emit('forget', item.id) }
 // 讨论给出的几条改法：一行一条，勾选要做的，一次交给 AI；说明默认收起，要看再点开
 const suggestions = computed(() => discussion.value?.suggestions || [])
-const picked = ref(null)   // null = 全选
+// 默认只勾推荐的那条（参照 Claude：推荐的排第一、先替你选好）；以前没有推荐标记的旧消息照旧全选
+const defaultPick = () => suggestions.value.some(s => 'recommended' in s) ? new Set(suggestions.value.flatMap((s, i) => s.recommended ? [i] : [])) : null
+const picked = ref(defaultPick())   // null = 全选
 const opened = ref(new Set())
 const isPicked = i => !picked.value || picked.value.has(i)
 const chosen = computed(() => suggestions.value.filter((_, i) => isPicked(i)))
@@ -26,6 +28,9 @@ const applyLabel = computed(() => {
   return n === all ? `全部修改（${n} 条）` : `修改选中的 ${n} 条`
 })
 function applyChosen() { if (chosen.value.length) emit('apply', { suggestions: chosen.value, discussion: discussion.value }) }
+// 「其他」：都不想要，直接写自己的想法
+const other = ref('')
+function sendOther() { const text = other.value.trim(); if (!text || props.locked) return; other.value = ''; emit('custom', { text, discussion: discussion.value }) }
 const statuses = { completed: '已完成', partial: '部分完成', unprocessed: '未处理' }
 </script>
 <template>
@@ -36,12 +41,13 @@ const statuses = { completed: '已完成', partial: '部分完成', unprocessed:
       <div class="suggest-head"><Sparkles :size="13" /><span>可以这样改</span><small v-if="suggestions.length > 1">勾选要做的，一次交给 AI</small></div>
       <ul class="suggest-list">
         <li v-for="(s, i) in suggestions" :key="i" :class="{ off: !isPicked(i) }">
-          <label class="suggest-row"><input v-if="suggestions.length > 1" type="checkbox" :checked="isPicked(i)" :disabled="locked" @change="togglePick(i)"><span>{{ s.label }}</span></label>
+          <label class="suggest-row"><input v-if="suggestions.length > 1" type="checkbox" :checked="isPicked(i)" :disabled="locked" @change="togglePick(i)"><span class="suggest-text"><span class="suggest-title">{{ s.label }}<em v-if="s.recommended && suggestions.length > 1">推荐</em></span><small v-if="s.summary">{{ s.summary }}</small></span></label>
           <button type="button" class="suggest-icon" :class="{ open: opened.has(i) }" :aria-label="opened.has(i) ? '收起说明' : '看具体怎么改'" :title="opened.has(i) ? '收起说明' : '看具体怎么改'" @click="toggleOpen(i)"><ChevronDown :size="14" /></button>
           <button type="button" class="suggest-icon" aria-label="继续聊这条" title="继续聊这条" :disabled="locked" @click="$emit('discuss', s)"><MessageCircle :size="13" /></button>
-          <p v-if="opened.has(i)" class="suggest-detail">{{ s.instruction }}</p>
+          <p v-if="opened.has(i)" class="suggest-detail"><b>交给 AI 的具体做法</b>{{ s.instruction }}</p>
         </li>
       </ul>
+      <div class="suggest-other"><input v-model="other" maxlength="500" :disabled="locked" placeholder="都不想要？直接说你的想法" aria-label="其他想法" @keydown.enter.prevent="sendOther"><button type="button" class="text-button" :disabled="locked || !other.trim()" @click="sendOther">发送</button></div>
       <button class="primary suggest-apply" :disabled="locked || !chosen.length" @click="applyChosen">{{ applyLabel }}</button>
     </div>
     <ol v-if="report?.annotations?.length" class="opinion-results"><li v-for="item in report.annotations" :key="item.id" :class="item.status"><span>{{ item.number }}</span><div><b>{{ item.note || item.name }}</b><small>{{ statuses[item.status] }}{{ item.reason ? '：' + item.reason : '' }}</small></div></li></ol>
@@ -72,7 +78,16 @@ const statuses = { completed: '已完成', partial: '部分完成', unprocessed:
 .suggest-list li{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:2px;padding:3px 0;border-top:1px solid #f0ede4}.suggest-list li:first-child{border-top:none}
 .suggest-row{display:flex;align-items:center;gap:8px;min-width:0;padding:5px 2px;cursor:pointer;font-size:12.5px;font-weight:500;color:var(--ink)}
 .suggest-row input{width:15px;height:15px;margin:0;flex-shrink:0;accent-color:var(--primary);cursor:pointer}
-.suggest-row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.suggest-row{align-items:flex-start}.suggest-row input{margin-top:3px}
+.suggest-text{display:flex;flex-direction:column;min-width:0}
+.suggest-title{display:flex;align-items:center;gap:6px;overflow:hidden;white-space:nowrap}
+.suggest-title em{flex-shrink:0;font-style:normal;font-size:10px;font-weight:500;line-height:1;padding:3px 6px;border-radius:9px;background:var(--primary-soft);color:var(--primary)}
+.suggest-text small{font-size:11.5px;font-weight:400;line-height:1.6;color:var(--muted);margin-top:1px}
+.suggest-detail b{display:block;font-size:10.5px;font-weight:600;color:var(--muted);margin-bottom:2px}
+.suggest-other{display:flex;align-items:center;gap:6px;margin-top:6px;padding:0 4px 0 10px;border:1px dashed #e2ddd0;border-radius:8px}
+.suggest-other input{flex:1;min-width:0;height:32px;border:none;outline:none;background:none;font-size:12px;color:var(--ink)}
+.suggest-other:focus-within{border-style:solid;border-color:var(--primary)}
+.suggest-other button{font-size:11.5px;flex-shrink:0}
 .suggest-list li.off .suggest-row{color:var(--muted)}
 .suggest-icon{width:26px;height:26px;display:grid;place-items:center;border-radius:7px;color:var(--subtle)}.suggest-icon:hover:not(:disabled){background:var(--quiet);color:var(--ink)}
 .suggest-icon svg{transition:transform .15s}.suggest-icon.open svg{transform:rotate(180deg)}
