@@ -181,6 +181,16 @@ async def main(path, outdir):
                 await pg.screenshot(path=str(out / f'w{width}_{i}.png'), full_page=True)
                 if width == 1440:
                     await check_route(pg, route, out, w['pages'], errors)
+            # 每个菜单页再单独直接打开一次：预览会停在上次的页面，直接打开报的错这里才看得到
+            for route in rs:
+                if not route:
+                    continue
+                fresh = await b.new_page(viewport={'width': width, 'height': 900}); errs = []
+                fresh.on('pageerror', lambda e, errs=errs: errs.append(str(e)[:200]))
+                await fresh.goto(html.as_uri() + route); await fresh.wait_for_timeout(600)
+                for e in errs:
+                    errors.append(f'直接打开 {route}: {e}')
+                await fresh.close()
             w['all_errors'] = errors
             summary['widths'][width] = w
             await pg.close()
