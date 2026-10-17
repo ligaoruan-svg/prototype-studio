@@ -102,6 +102,49 @@ _TEMPLATE = r'''
       text:(el.innerText||el.textContent||'').trim().slice(0,500),outer_html:el.outerHTML.slice(0,5000),modal:modalOf(el),
       styles:Object.fromEntries(['color','background-color','font-size','border-radius','padding-top','padding-bottom','padding-left','padding-right','display'].map(k=>[k,cs.getPropertyValue(k)]))};
   }
+  // 编辑模式选中一个元素时多给一些：完整的样式、宽高是「适应内容 / 固定 / 填满」、往上往下的图层
+  const DETAIL_STYLES=['font-weight','line-height','letter-spacing','text-align','margin-top','margin-right','margin-bottom','margin-left',
+    'gap','flex-direction','justify-content','align-items','flex-wrap','width','height','opacity','box-shadow','flex-grow'];
+  function sizeMode(el,cs,axis){
+    if(cs.display==='inline'||cs.display==='contents')return 'hug';
+    const W=axis==='width',r=el.getBoundingClientRect()[axis],p=el.parentElement;if(!p||!r)return 'hug';
+    const pcs=getComputedStyle(p),pr=p.getBoundingClientRect()[axis],n=v=>parseFloat(v)||0;
+    const along=/flex/.test(pcs.display)&&(W?!/column/.test(pcs.flexDirection):/column/.test(pcs.flexDirection));
+    if(along&&n(cs.flexGrow)>0)return 'fill';
+    const inner=W?pr-n(pcs.paddingLeft)-n(pcs.paddingRight)-n(pcs.borderLeftWidth)-n(pcs.borderRightWidth)
+                 :pr-n(pcs.paddingTop)-n(pcs.paddingBottom)-n(pcs.borderTopWidth)-n(pcs.borderBottomWidth);
+    const outer=r+(W?n(cs.marginLeft)+n(cs.marginRight):n(cs.marginTop)+n(cs.marginBottom));
+    const fills=Math.abs(outer-inner)<1.5;
+    // 量一下「只包住内容」时有多大：临时改一下再原样放回去
+    const st=el.style,prev=st.getPropertyValue(axis),pri=st.getPropertyPriority(axis);let fit=r;
+    try{st.setProperty(axis,'fit-content','important');fit=el.getBoundingClientRect()[axis];}
+    finally{if(prev)st.setProperty(axis,prev,pri);else st.removeProperty(axis);}
+    const hugs=Math.abs(fit-r)<1.5;
+    if(W){if(fills&&(!hugs||/^(block|flex|grid|list-item|table)$/.test(cs.display)))return 'fill';return hugs?'hug':'fixed';}
+    if(hugs)return 'hug';return fills?'fill':'fixed';
+  }
+  function layerName(el){
+    const own=[...el.childNodes].filter(n=>n.nodeType===3).map(n=>n.textContent.trim()).join(' ').trim();
+    return {tag:el.tagName.toLowerCase(),cls:stableClasses(el)[0]||'',text:own.slice(0,24),kids:el.children.length};
+  }
+  const SKIP_LAYER=/^(SCRIPT|STYLE|TEMPLATE|LINK|META|NOSCRIPT)$/;
+  function layersOf(el){
+    const up=[];
+    for(let n=el.parentElement;n&&n!==document.documentElement;n=n.parentElement)up.unshift({selector:selectorFor(n),...layerName(n)});
+    const kids=[...el.children].filter(c=>!SKIP_LAYER.test(c.tagName)&&!c.closest('[data-pa-overlay]'));
+    return {up:up.slice(-8),cut:Math.max(0,up.length-8),down:kids.slice(0,40).map(c=>({selector:selectorFor(c),...layerName(c)})),more:Math.max(0,kids.length-40)};
+  }
+  function detail(el){
+    const base=describe(el),cs=getComputedStyle(el),hadStyle=el.hasAttribute('style');
+    for(const k of DETAIL_STYLES)base.styles[k]=cs.getPropertyValue(k);
+    base.styles['border-width']=cs.borderTopWidth;base.styles['border-style']=cs.borderTopStyle;base.styles['border-color']=cs.borderTopColor;
+    try{base.size={width:sizeMode(el,cs,'width'),height:sizeMode(el,cs,'height')};}catch{base.size={width:'fixed',height:'hug'};}
+    if(!hadStyle&&el.getAttribute('style')==='')el.removeAttribute('style');
+    const p=el.parentElement,pcs=p?getComputedStyle(p):null;
+    base.parent={display:pcs?.display||'',direction:pcs?.flexDirection||''};
+    base.layers=layersOf(el);
+    return base;
+  }
   function scrollState(){return {window:{x:scrollX,y:scrollY},containers:[...scrollContainers].filter(el=>el.isConnected).slice(0,40).map(el=>({selector:selectorFor(el),x:el.scrollLeft,y:el.scrollTop}))};}
   function restoreScroll(){
     const state=window.__paScrollSeed;if(!state)return;restoringScroll=true;
@@ -141,7 +184,7 @@ _TEMPLATE = r'''
   }
   function reportPicks(){
     if(!picked.length){send('SELECTION_CLEARED',{});return;}
-    if(picked.length===1){send('SELECTED',describe(picked[0]));return;}
+    if(picked.length===1){send('SELECTED',detail(picked[0]));return;}
     // 多选走和拉框同一条路：targets 数组、「已选中 N 个元素」、一次说清怎么改
     const targets=picked.map(describe);
     let ancestor=picked[0];
@@ -741,9 +784,11 @@ _TEMPLATE = r'''
       if(!m.selector&&dragBox)dragBox.style.display='none';
       try{const one=m.selector?document.querySelector(m.selector):null;
         picked=one?[one]:[];
-        if(one)send('SELECTED',{...describe(one),refresh:true});else if(m.selector)send('SELECTION_MISSING');
+        if(one)send('SELECTED',{...detail(one),refresh:true});else if(m.selector)send('SELECTION_MISSING');
         paint();}catch{}
     }
+    // 属性面板的图层列表上移过去：在页面上把那个元素框出来
+    if(m.type==='PA_HOVER'){if(mode!=='select')return;try{hover=m.selector?document.querySelector(m.selector):null;}catch{hover=null;}paint();return;}
     if(m.type==='PA_RENDER_MARKERS'){
       markers.forEach(m=>m.pin.remove());markers=[];
       (m.annotations||[]).forEach((a,i)=>{try{const el=document.querySelector(a.selector);if(!el)return;const pin=overlay('2px solid white');pin.textContent=i+1;pin.title=String(a.note||'').slice(0,120);Object.assign(pin.style,{width:'24px',height:'24px',borderRadius:'50% 50% 50% 4px',background:'#b8532f',color:'white',font:'600 11px system-ui',placeItems:'center',boxShadow:'0 2px 6px #0003'});markers.push({el,pin});}catch{}});paint();

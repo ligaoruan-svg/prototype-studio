@@ -77,7 +77,6 @@ const textEditable = computed(() => inspection.value?.editable ? !!inspection.va
 const undoCount = computed(() => page.value?.undo_count || 0)
 const colorNames = { '--color-primary': '主色', '--color-bg': '页面背景', '--color-surface': '表面色', '--color-text': '正文', '--color-muted': '辅助文字', '--color-border': '边框', '--color-danger': '警示', '--color-success': '成功' }
 const colors = computed(() => Object.entries({ ...sourceInfo.value.defaults, ...sourceInfo.value.tokens }).filter(([, v]) => /^#[\da-f]{3,8}$/i.test(v.trim())).map(([key, value]) => ({ key, value: value.trim(), label: colorNames[key] || key.replace(/^--/, '') })))
-const numericFields = [ { key: 'font-size', label: '字号', step: 2 }, { key: 'border-radius', label: '圆角', step: 2 }, { key: 'padding-top', label: '上内边距', step: 4 }, { key: 'padding-bottom', label: '下内边距', step: 4 }, { key: 'padding-left', label: '左内边距', step: 4 }, { key: 'padding-right', label: '右内边距', step: 4 } ]
 const codeText = computed(() => {
   const source = sourceInfo.value.source
   if (codeRegion.value === 'all') return source
@@ -455,22 +454,24 @@ async function checkAndCommit(candidate) {
 }
 
 
-async function edit(prop, value) {
+async function edit(prop, value, more = null) {
   if (locked.value || (!prop.startsWith('--') && (!canEdit.value || playing.value))) return
   const selector = selected.value?.selector || ''
   const dyn = dynEdit.value && !prop.startsWith('--')
   saving.value = true; error.value = ''; status.value = '修改中'
   // 同类元素一起改：预览里先把同类的都改上
-  send(dyn && prop !== 'text' ? { type: 'PA_PREVIEW', selector: selected.value.styleSel, all: true, prop, value: String(value) } : { type: 'PA_PREVIEW', selector, prop, value: String(value) })
+  const extra = prop === 'text' || prop.startsWith('--') ? {} : Object.fromEntries(Object.entries(more || {}).map(([k, v]) => [k, String(v)]))
+  for (const [p, v] of [[prop, String(value)], ...Object.entries(extra)])
+    send(dyn && p !== 'text' ? { type: 'PA_PREVIEW', selector: selected.value.styleSel, all: true, prop: p, value: v } : { type: 'PA_PREVIEW', selector, prop: p, value: v })
   const card = selected.value?.card
   let committed = false
   if (card || prop.startsWith('--')) cardPatch.value = { seq: ++patchSeq, prop, value: String(value), route: prop.startsWith('--') ? null : card.route, nodeId: prop.startsWith('--') ? null : card.nodeId, rels: card?.rels || [] }
   try {
-    const result = await post(endpoint('/edit'), { selector, prop, value: String(value), expected_hash: sourceInfo.value.hash,
+    const result = await post(endpoint('/edit'), { selector, prop, value: String(value), expected_hash: sourceInfo.value.hash, more: extra,
       ...(dyn ? (prop === 'text' ? { literal: selected.value.text } : { style_selector: selected.value.styleSel }) : {}) })
     if (dyn && prop === 'text' && result.changed) selected.value = { ...selected.value, text: String(value) }
     await checkAndCommit(result); committed = !!result.changed
-    if (committed && selected.value?.selector === selector && !prop.startsWith('--')) selected.value = { ...selected.value, styles: { ...(selected.value.styles || {}), [prop]: String(value) } }
+    if (committed && selected.value?.selector === selector && !prop.startsWith('--')) selected.value = { ...selected.value, styles: { ...(selected.value.styles || {}), [prop]: String(value), ...extra } }
     if (!result.changed) status.value = '没有新的改动'
     await refresh(false)
   } catch (e) {
@@ -490,13 +491,9 @@ async function edit(prop, value) {
 // 改完以后在预览里重新选中同一个元素，好让属性面板读到新值。
 // 多选、拉框、在展开卡片里选的不能这样做：预览只会退回成一个元素，甚至因为找不到而把选择清掉
 function reselect() { const s = selected.value; if (s && s.kind !== 'region' && !s.card && !(s.targets?.length > 1)) send({ type: 'PA_SELECT', selector: s.selector }) }
-function changeNumber(key, event) {
-  const raw = String(event.target.value ?? '').trim()
-  if (!raw) return   // 清空了不是想改成 0
-  const n = Number(raw)
-  if (!Number.isFinite(n) || n < 0 || n > 160) { toast('请输入 0–160 之间的数值'); return }
-  edit(key, `${n}px`)
-}
+// 属性面板的图层列表：点一下换成选那一层，移上去在页面上框出来
+function selectLayer(selector) { if (selector) send({ type: 'PA_SELECT', selector }) }
+function hoverLayer(selector) { send({ type: 'PA_HOVER', selector: selector || '' }) }
 async function undo(changeId = '') {
   if (locked.value || !undoCount.value) return
   saving.value = true; error.value = ''
@@ -908,16 +905,16 @@ onUnmounted(() => { window.removeEventListener('message', onMessage); window.rem
 // 拆出去的界面块（AppHeader / ConversationPanel / InspectorPanel / StudioDialog）用到的状态和函数：按原名交给它们
 provide('studio', {
   TOOLS, activeRun, addComponent, aiOnly, annotations, applySuggestion, boardOpen, brief,
-  busy, canEdit, canvasWidth, changeNumber, chatBox, chooseAnswer, choosePage, chooseProject,
+  busy, canEdit, canvasWidth, chatBox, chooseAnswer, choosePage, chooseProject,
   closeDialog, closeSelection, colors, commentDraft, commentToAI, componentInput, componentList, composer,
   composerIntent, copyMessage, createProject, currentRuns, device, dialog, dialogBusy, dialogError,
   dialogType, discussSuggestion, download, dragging, drawClear, drawing, dropImage, dynEdit,
   edit, editAndResend, elementLabel, fileInput, fileManagerRevision, filesChanged, forgetFromCard, formatTime,
   hideGuide, imageInput, importSpecTokens, input, inspection, keepInspector, lastResult, leftOpen,
-  loading, locked, memoryCount, messages, model, modelMenu, moreMenu, numericFields,
+  loading, locked, memoryCount, messages, model, modelMenu, moreMenu,
   openDialog, openLeft, openManagedProject, openMemory, page, pageId, pasteImage, pendingRef,
   pendingUser, playing, pointAt, previewDoc, project, projectName, projects, reference,
-  removeAnnotation, removeComponent, removeSkill, restore, rightOpen, runAgent, saveNote, saveSpec,
+  removeAnnotation, removeComponent, removeSkill, restore, rightOpen, runAgent, saveNote, saveSpec, selectLayer, hoverLayer, toast,
   saving, selected, selectionPlace, setMode, setTool, shotUrl, showBoard, showChat,
   showGuide, showPanel, showPreview, skillList, smallerRequest, sourceInfo, specDraft, specInput,
   specNotice, specSaved, specTab, stopAgent, switchModel, switchingModel, textEditable, textValue,

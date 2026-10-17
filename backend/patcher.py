@@ -244,12 +244,67 @@ def set_token(source, name, value):
     return append_block(source, f"/* #region tokens */\n:root {{ {name}: {value}; }}\n/* #endregion tokens */", "style")
 
 
+# 编辑模式能直接写的属性和各自允许的值。值都是封闭的写法（数字+px、设计变量、十六进制色、固定的几个词），
+# 写进 CSS 规则里不会带出别的声明或选择器
+_PX = r"\d{1,3}(?:\.\d{1,2})?px"
+_SIGNED_PX = r"-?" + _PX
+_COLOR = r"var\(--[\w-]+\)|#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6}|#[0-9a-fA-F]{8}"
+_SIZE = _PX + r"|fit-content|100%|auto"
+SHADOWS = {
+    "none",
+    "0 1px 2px rgba(0,0,0,.06)",
+    "0 4px 12px rgba(0,0,0,.08)",
+    "0 12px 32px rgba(0,0,0,.12)",
+}
+STYLE_VALUES = {
+    "color": _COLOR, "background-color": _COLOR + r"|transparent", "border-color": _COLOR,
+    "font-size": _PX, "font-weight": r"[1-9]00|normal|bold", "line-height": r"\d(?:\.\d{1,2})?|" + _PX + r"|normal",
+    "letter-spacing": _SIGNED_PX + r"|normal", "text-align": r"left|center|right|justify",
+    "border-radius": _PX + r"|50%", "border-width": _PX, "border-style": r"none|solid|dashed|dotted",
+    "padding-top": _PX, "padding-bottom": _PX, "padding-left": _PX, "padding-right": _PX,
+    "margin-top": _SIGNED_PX + r"|auto", "margin-bottom": _SIGNED_PX + r"|auto",
+    "margin-left": _SIGNED_PX + r"|auto", "margin-right": _SIGNED_PX + r"|auto",
+    "gap": _PX,
+    "display": r"none|revert|block|flex|grid|inline|inline-block|inline-flex",
+    "flex-direction": r"row|column", "flex-wrap": r"wrap|nowrap", "flex": r"1 1 0%|0 0 auto|none",
+    "justify-content": r"flex-start|center|flex-end|space-between|space-around",
+    "align-items": r"flex-start|center|flex-end|stretch|baseline",
+    "width": _SIZE, "height": _SIZE,
+    "opacity": r"0|1|0?\.\d{1,2}",
+}
+
+
+def style_value_ok(name, value):
+    if name == "box-shadow":
+        return value in SHADOWS
+    pattern = STYLE_VALUES.get(name)
+    return bool(pattern) and re.fullmatch(pattern, value) is not None
+
+
+def style_ops(source, action, selector, prop, value, more=None):
+    """一次手动修改可以带几条样式（比如横向排列 = display + flex-direction），写进同一个版本；
+    用到页面里还没有的设计变量先补上。"""
+    more = more or {}
+    pairs = [(prop, value), *((k, v) for k, v in more.items() if k != prop)]
+    if len(pairs) > 6 or any(k == 'text' or k.startswith('--') for k, _ in pairs[1:]):
+        raise PatchError('一次只能一起改几条样式')
+    ops, tokens = [], token_values(source)
+    for name, val in pairs:
+        match = re.fullmatch(r'var\((--[\w-]+)\)', val)
+        if match and match[1] not in tokens:
+            if match[1] not in DEFAULT_TOKENS:
+                raise PatchError('未知设计变量')
+            ops.append({'action': 'set_token', 'name': match[1], 'value': DEFAULT_TOKENS[match[1]]})
+            tokens = {**tokens, match[1]: DEFAULT_TOKENS[match[1]]}
+        ops.append({'action': action, 'selector': selector, 'name': name, 'value': val})
+    return ops
+
+
 def set_style(source, selector, name, value):
-    allowed = {"color", "background-color", "font-size", "border-radius", "padding-top", "padding-bottom", "padding-left", "padding-right", "display"}
-    if name not in allowed:
+    if name not in STYLE_VALUES and name != "box-shadow":
         raise PatchError("属性不在直接编辑范围内")
-    if not (re.fullmatch(r"var\(--[\w-]+\)", value) or re.fullmatch(r"\d{1,3}px", value) or value in {"none", "revert"}):
-        raise PatchError("请选择设计变量或有效尺寸")
+    if not style_value_ok(name, value):
+        raise PatchError("这个值不能直接写入，请换一个或交给 AI 修改")
     ident = r"[\w-]+"
     attribute = r'\[data-pid=(?:"' + ident + r'"|\x27' + ident + r'\x27|' + ident + r')\]'
     qualifier = r'(?:[.#]' + ident + '|' + attribute + r'|:nth-of-type\([1-9]\d*\))'

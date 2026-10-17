@@ -22,7 +22,7 @@ from .agent import run_agent
 from .atomicio import write_atomic
 from .bridge import build_bridge
 from .safety import host_name, zip_member_ok, to_utf8
-from .patcher import apply_operations, locate, outline, token_values, DEFAULT_TOKENS, PatchError, literal_count, replace_literal
+from .patcher import apply_operations, locate, outline, token_values, DEFAULT_TOKENS, PatchError, literal_count, replace_literal, style_ops
 from starlette.concurrency import run_in_threadpool
 from .deepseek_client import chat
 from .errors import WorkError, error_payload
@@ -127,6 +127,7 @@ class EditIn(BaseModel):
     expected_hash: str
     literal: str = ""          # 脚本生成的元素改文字：它原来的字，直接换源码里那一处
     style_selector: str = ""   # 脚本生成的元素改样式：同类元素的选择器，写一条 CSS 规则
+    more: dict[str, str] = {}  # 要一起改的其他样式（比如改成横向排列 = display + flex-direction），算一次修改
 
 
 class CommitIn(BaseModel):
@@ -932,13 +933,7 @@ def manual_edit(project_id: str, page_id: str, body: EditIn):
             result = replace_literal(source, body.literal, body.value)
             return transactions.stage(project_id, page_id, source, result, '微调文字', targets=[{'selector':body.selector}] if body.selector else [])
         elif body.style_selector:
-            ops = []
-            match = re.fullmatch(r'var\((--[\w-]+)\)', body.value)
-            if match and match[1] not in token_values(source):
-                if match[1] not in DEFAULT_TOKENS:
-                    raise PatchError('未知设计变量')
-                ops.append({'action':'set_token','name':match[1],'value':DEFAULT_TOKENS[match[1]]})
-            ops.append({'action':'set_rule','selector':body.style_selector,'name':body.prop,'value':body.value})
+            ops = style_ops(source, 'set_rule', body.style_selector, body.prop, body.value, body.more)
         else:
             node, _ = locate(source, body.selector)
             if body.prop == 'text':
@@ -946,13 +941,7 @@ def manual_edit(project_id: str, page_id: str, body: EditIn):
                     raise PatchError('该元素包含子结构，请选中具体文字或交给 AI 修改')
                 ops = [{'action':'set_text','selector':body.selector,'value':body.value}]
             else:
-                ops = []
-                match = re.fullmatch(r'var\((--[\w-]+)\)', body.value)
-                if match and match[1] not in token_values(source):
-                    if match[1] not in DEFAULT_TOKENS:
-                        raise PatchError('未知设计变量')
-                    ops.append({'action':'set_token','name':match[1],'value':DEFAULT_TOKENS[match[1]]})
-                ops.append({'action':'set_style','selector':body.selector,'name':body.prop,'value':body.value})
+                ops = style_ops(source, 'set_style', body.selector, body.prop, body.value, body.more)
         result, _ = apply_operations(source, ops)
         return transactions.stage(project_id, page_id, source, result, '微调', targets=[{'selector':body.selector}] if body.selector else [])
     except (PatchError, ValueError) as exc:
