@@ -634,8 +634,12 @@ async function stopAgent() {
 async function chooseAnswer({ option, clarification }) {
   await runAgent('原需求：' + clarification.request + '\n你的问题：' + clarification.question + '\n我的选择：' + option, '', { intent: clarification.intent || 'discuss' })
 }
-async function applySuggestion({ suggestion, discussion }) {
-  await runAgent('按已讨论的建议修改：' + suggestion.instruction, '', { intent: 'edit', includeAnnotations: false, selection: discussion.selection || null })
+// 讨论卡片上勾了几条就一起改：一条照原样发，几条编号列出来，模型逐条做完再汇报
+async function applySuggestion({ suggestion, suggestions, discussion }) {
+  const list = suggestions?.length ? suggestions : [suggestion]
+  const message = list.length === 1 ? '按已讨论的建议修改：' + list[0].instruction
+    : `按已讨论的建议修改，这 ${list.length} 条都要做：\n` + list.map((s, i) => `${i + 1}. ${s.label}：${s.instruction}`).join('\n')
+  await runAgent(message, '', { intent: 'edit', includeAnnotations: false, selection: discussion?.selection || null })
 }
 async function discussSuggestion(suggestion) {
   composerIntent.value = 'discuss'; input.value = '关于“' + suggestion.label + '”：'; await toAI()

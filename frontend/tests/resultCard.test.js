@@ -19,8 +19,10 @@ test('choosing a clarification option carries the question it answers', () => {
 })
 
 test('a discussion reply renders its answer and its suggestions', () => {
-  assert.match(source, /discussion\?\.suggestions\?\.length/)
-  assert.match(source, /\$emit\('apply', \{ suggestion, discussion \}\)/)
+  assert.match(source, /discussion\.value\?\.suggestions/)
+  assert.match(source, /emit\('apply', \{ suggestions: chosen\.value, discussion: discussion\.value \}\)/)
+  assert.match(source, /type="checkbox"/, '几条建议勾选后一次交给 AI')
+  assert.match(source, /v-if="opened\.has\(i\)" class="suggest-detail"/, '具体怎么改默认收起')
   assert.match(source, /discussion\.value\?\.answer/)
 })
 
