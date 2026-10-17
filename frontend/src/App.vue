@@ -120,10 +120,15 @@ watch(mode, value => {
 })
 // 演示：全屏、收起所有面板，只剩原型本身；Esc 或右上角退出
 const presenting = ref(false)
+// 演示时「退出」按钮别一直压在原型右上角：开始时露 2.5 秒，之后鼠标移到屏幕最上沿再出来
+const exitShown = ref(false)
+let exitTimer = 0
+function peekExit() { clearTimeout(exitTimer); exitShown.value = true }
+function hideExitSoon(delay = 1200) { clearTimeout(exitTimer); exitTimer = setTimeout(() => { exitShown.value = false }, delay) }
 function startPresent() {
   if (!page.value || !previewDoc.value) return
   if (boardOpen.value) showPreview()
-  closeSelection(); presenting.value = true; setMode('interact')
+  closeSelection(); presenting.value = true; setMode('interact'); peekExit(); hideExitSoon(2500)
   send({ type: 'PA_RENDER_MARKERS', annotations: [] })
   wentFullscreen = false
   document.documentElement.requestFullscreen?.().catch(() => {})   // 浏览器不让全屏也照样演示（只是没铺满屏幕）
@@ -933,7 +938,8 @@ provide('studio', {
 
 <template>
   <div class="studio" :class="{ presenting }">
-    <button v-if="presenting" class="present-exit" @click="stopPresent"><X :size="14" />退出演示 <kbd>Esc</kbd></button>
+    <div v-if="presenting" class="present-edge" @mouseenter="peekExit"></div>
+    <button v-if="presenting" class="present-exit" :class="{ shown: exitShown }" @click="stopPresent" @mouseenter="peekExit" @mouseleave="hideExitSoon"><X :size="14" />退出演示 <kbd>Esc</kbd></button>
     <AppHeader />
 
     <main class="workspace" :class="{ 'side-closed': !leftOpen && !rightOpen }">

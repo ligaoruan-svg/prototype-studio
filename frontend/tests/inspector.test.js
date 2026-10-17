@@ -29,3 +29,11 @@ test('横向排列是一次修改：display 和方向一起提交', () => {
   assert.match(panel, /edit\('display', 'flex', \{ 'flex-direction': key \}\)/)
   assert.match(app, /more: extra/)
 })
+
+test('全屏演示时画布占满整屏（出过两次空白：画布落进宽 0 的列里）', () => {
+  const css = readFileSync(new URL('../src/styles/style.css', import.meta.url), 'utf8')
+  assert.match(css, /\.studio\.presenting \.workspace \{ grid-template-columns: minmax\(0,1fr\) !important; \}/)
+  assert.match(css, /\.studio\.presenting \.workspace > \.canvas-panel \{ grid-column: 1 \/ -1 !important; \}/)
+  assert.match(css, /\.studio\.presenting \.stale-banner \{ display: none !important; \}/)
+  assert.match(app, /hideExitSoon\(2500\)/, '退出按钮露一下就收起，不一直压着原型')
+})

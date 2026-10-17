@@ -497,10 +497,16 @@ input[type=color]::-webkit-color-swatch { border: none; border-radius: 2px; }
 .studio.presenting .app-header, .studio.presenting .conversation-panel, .studio.presenting .inspector, .studio.presenting .canvas-status { display: none !important; }
 /* 两边面板 display:none 以后不占网格列，画布会落进第一列（宽 0）——演示时只留一列 */
 .studio.presenting .workspace { grid-template-columns: minmax(0,1fr) !important; }
+/* 画布平时钉在第 2 列；演示时只剩一列，要改钉到第 1 列，不然落进宽 0 的隐式列里，整屏空白 */
+.studio.presenting .workspace > .canvas-panel { grid-column: 1 / -1 !important; }
+.studio.presenting .mobile-scrim { display: none !important; }
 .studio.presenting .canvas-panel { padding: 0 !important; background: #1d1b18; }
 .studio.presenting .preview-shell { width: 100% !important; max-width: none !important; height: 100% !important; margin: 0 !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; }
-.present-exit { position: fixed; z-index: 60; top: 12px; right: 14px; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 9px; background: #1d1b18cc; color: #fff; font-size: 12px; backdrop-filter: blur(6px); opacity: .35; transition: opacity .15s; }
-.present-exit:hover { opacity: 1; }
+.present-exit { position: fixed; z-index: 60; top: 12px; left: 50%; transform: translate(-50%, -8px); display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 9px; background: #1d1b18e6; color: #fff; font-size: 12px; backdrop-filter: blur(6px); opacity: 0; pointer-events: none; transition: opacity .18s, transform .18s; }
+.present-exit.shown { opacity: 1; pointer-events: auto; transform: translate(-50%, 0); }
+.present-edge { position: fixed; z-index: 59; top: 0; left: 0; right: 0; height: 8px; }
+.studio.presenting .stale-banner { display: none !important; }
+
 .present-exit kbd { padding: 0 5px; border-radius: 4px; background: #ffffff26; font: 11px ui-monospace, monospace; }
 @media (max-width: 1240px) { .present-button > span { display: none; } .present-button { width: 34px; padding: 0; justify-content: center; } }
 .studio.presenting .canvas { padding: 0 !important; }
