@@ -1,0 +1,403 @@
+<!doctype html>
+<!-- 页面外壳：由原型工坊从「零碳园区_UI组件库.html」自动整理（样式、布局、菜单、路由、弹窗、抽屉、Toast 都在这里）。
+     新页面从这里起步，只需要写 /*PA:NAV*/ 菜单、/*PA:PAGES*/ 页面内容、/*PA:BIND*/ 交互绑定三处。 -->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>设备巡检计划</title>
+<style>
+:root{
+  --bg:#F3F5F7;
+  --card:#FFFFFF;
+  --line:#E7E9EE;
+  --line-strong:#D8DCE3;
+  --text-1:#1F2329;
+  --text-2:#4E5969;
+  --text-3:#86909C;
+  --primary:#1D5BFF;
+  --primary-hover:#1651E8;
+  --primary-weak:#EAF1FF;
+  --danger:#F53F3F;
+  --danger-hover:#E12F2F;
+  --del-hover:#FFECEC;
+  --head-bg:#FAFBFC;
+  --row-hover:#F7F9FC;
+  --menu-hover:#F5F7FA;
+  --sel-bg:#E6F2FF;
+  --service-bg:#EAF1FF;
+  --service-text:#1D5BFF;
+  --event-bg:#E8F8EE;
+  --event-text:#12A35C;
+  --other-bg:#FFF4E8;
+  --other-text:#E07B1F;
+  --mask:rgba(31,35,41,.45);
+  --toast:rgba(31,35,41,.92);
+  --toast-error:rgba(214,48,49,.95);
+  --empty-line:#C9CDD4;
+  --avatar-bg:#EEF1F5;
+  --avatar-ico:#A0A7B3;
+  --card-radius:8px;
+  --control-radius:6px;
+  --modal-radius:10px;
+  --card-shadow:0 1px 2px rgba(31,35,41,.04),0 4px 16px rgba(31,35,41,.05);
+  --modal-shadow:0 12px 40px rgba(31,35,41,.18);
+  --font-sans:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Helvetica Neue",Arial,sans-serif;
+  --font-mono:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text-1);font-family:var(--font-sans);font-size:12px;line-height:1.5;-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit}
+button{font-size:12px}
+a{color:inherit;text-decoration:none}
+svg{display:block}
+.app{min-height:100vh;display:flex;flex-direction:column}
+.topbar{height:56px;flex:0 0 56px;position:sticky;top:0;z-index:50;background:var(--card);border-bottom:1px solid var(--line);padding:0 22px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+.brand{display:flex;align-items:center;gap:10px;min-width:0}
+.brand-mark{width:28px;height:28px;border-radius:7px;background:var(--primary);display:grid;place-items:center;color:#fff;flex:0 0 auto}
+.brand-name{font-size:16px;font-weight:700;letter-spacing:1px;white-space:nowrap}
+.top-actions{display:flex;align-items:center;gap:8px}
+.shell{display:flex;align-items:flex-start;min-height:calc(100vh - 56px)}
+.sidebar{width:172px;flex:0 0 172px;position:sticky;top:56px;max-height:calc(100vh - 56px);overflow-y:auto;background:var(--card);border-right:1px solid var(--line);align-self:flex-start}
+.nav{padding:8px 0 18px}
+.nav-group{border-bottom:1px solid rgba(231,233,238,.65)}
+.nav-gh{width:100%;min-height:34px;padding:7px 16px;border:0;background:transparent;color:var(--text-2);display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;text-align:left;font-size:12.5px;font-weight:500}
+.nav-gh:hover{background:var(--menu-hover)}
+.nav-gh .nav-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chev{width:12px;height:12px;transition:transform .22s ease;flex:0 0 auto}
+.nav-gh.open .chev{transform:rotate(90deg)}
+.nav-kids{max-height:0;overflow:hidden;transition:max-height .22s ease}
+.nav-kids.open{max-height:360px}
+.nav-i{display:flex;align-items:center;gap:8px;position:relative;min-height:30px;padding:6px 16px 6px 38px;color:var(--text-2);font-size:12px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nav-i:hover{background:var(--menu-hover)}
+.nav-i.on{color:var(--primary);font-weight:500;background:var(--primary-weak)}
+.nav-i.on::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--primary)}
+.main{flex:1;min-width:0}
+.content{padding:12px 18px 20px;min-width:0}
+.breadcrumb{font-size:12px;color:var(--text-3);margin-bottom:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.page-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:14px}
+.page-head h1{margin:0;font-size:15px;line-height:1.4;font-weight:600;color:var(--text-1)}
+.page-head p{margin:5px 0 0;font-size:12px;color:var(--text-3)}
+.page-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--card-radius);box-shadow:var(--card-shadow);overflow:hidden}
+.card+.card{margin-top:14px}
+.card-hd{min-height:42px;padding:0 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px}
+.card-title{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;color:var(--text-1)}
+.card-title::before{content:"";width:3px;height:14px;border-radius:1px;background:var(--primary)}
+.card-desc{color:var(--text-3);font-size:11px}
+.card-bd{padding:14px}
+.grid{display:grid;gap:12px}
+.grid.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+.grid.three{grid-template-columns:repeat(3,minmax(0,1fr))}
+.grid.four{grid-template-columns:repeat(4,minmax(0,1fr))}
+.demo{border:1px solid var(--line);border-radius:var(--card-radius);background:var(--card);overflow:hidden}
+.demo-stage{min-height:76px;padding:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.demo-code{border-top:1px solid var(--line);padding:10px 12px;background:var(--head-bg);color:var(--text-2);font:11.5px/1.65 var(--font-mono);white-space:pre-wrap;word-break:break-word}
+.section{margin-bottom:14px}
+.section:last-child{margin-bottom:0}
+.section-hd{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 8px}
+.section-hd h2{font-size:14px;line-height:1.4;margin:0;font-weight:600}
+.section-hd code{font:11.5px var(--font-mono);color:var(--text-3)}
+.btn{height:30px;border:1px solid var(--line-strong);border-radius:var(--control-radius);background:#fff;color:var(--text-2);padding:0 12px;display:inline-flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;white-space:nowrap;transition:border-color .12s,color .12s,background .12s,transform .06s}
+.btn:hover{border-color:var(--primary);color:var(--primary)}
+.btn:active{transform:translateY(1px)}
+.btn.primary{background:var(--primary);border-color:var(--primary);color:#fff;font-weight:500}
+.btn.primary:hover{background:var(--primary-hover);border-color:var(--primary-hover);color:#fff}
+.btn.danger{color:var(--danger);border-color:var(--line-strong);background:#fff}
+.btn.danger:hover{color:var(--danger-hover);border-color:var(--danger)}
+.btn.danger-solid{background:var(--danger);border-color:var(--danger);color:#fff;font-weight:500}
+.btn.danger-solid:hover{background:var(--danger-hover);border-color:var(--danger-hover);color:#fff}
+.btn.loading{pointer-events:none;position:relative}
+.btn.loading .btn-spinner{width:12px;height:12px;border:1.5px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .7s linear infinite}
+.btn[disabled]{color:var(--text-3);background:var(--head-bg);border-color:var(--line);cursor:not-allowed;transform:none}
+.btn-ico{width:14px;height:14px;flex:0 0 auto}
+.icon-btn{width:30px;height:30px;border:1px solid var(--line-strong);border-radius:var(--control-radius);background:#fff;color:var(--text-2);display:grid;place-items:center;cursor:pointer}
+.icon-btn:hover{border-color:var(--primary);color:var(--primary)}
+.icon-btn svg{width:16px;height:16px}
+.btn:focus-visible,.icon-btn:focus-visible,input:focus,select:focus,textarea:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 2px rgba(29,91,255,.12)}
+.lnk{height:18px;line-height:16px;padding:1px 6px;border:0;border-radius:4px;background:transparent;color:var(--primary);font-size:12px;cursor:pointer;white-space:nowrap}
+.lnk:hover{background:var(--primary-weak)}
+.lnk.danger{color:var(--danger)}
+.lnk.danger:hover{background:var(--del-hover)}
+.lnk[disabled]{color:var(--text-3);cursor:not-allowed;background:transparent}
+.ops{height:19px;display:flex;align-items:flex-start;gap:6px;white-space:nowrap}
+.field{min-width:0}
+.field label{display:block;color:var(--text-2);font-size:12px;margin-bottom:6px}
+.req{color:var(--danger);margin-left:2px}
+.field input,.field select,.field textarea{width:100%;height:30px;border:1px solid var(--line-strong);border-radius:var(--control-radius);background:#fff;color:var(--text-2);padding:0 12px}
+.field select{padding-right:26px;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%2386909C' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m8 10 4 4 4-4'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 6px center;background-size:14px}
+.field textarea{min-height:64px;height:76px;padding:8px 12px;resize:vertical}
+.field input::placeholder,.field textarea::placeholder{color:var(--text-3)}
+.field .hint{font-size:11px;color:var(--text-3);margin-top:5px}
+.field .error{font-size:11px;color:var(--danger);margin-top:5px}
+.field.invalid input,.field.invalid select,.field.invalid textarea{border-color:var(--danger)}
+.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 12px}
+.field.full{grid-column:1/-1}
+.filter{display:grid;grid-template-columns:repeat(4,minmax(130px,1fr));gap:10px;align-items:end}
+.filter-actions{display:flex;align-items:center;gap:8px}
+.tag{display:inline-block;line-height:16px;padding:1px 7px;border-radius:999px;font-size:11px;white-space:nowrap}
+.tag.service{background:var(--service-bg);color:var(--service-text)}
+.tag.event{background:var(--event-bg);color:var(--event-text)}
+.tag.other{background:var(--other-bg);color:var(--other-text)}
+.tag.neutral{background:var(--head-bg);color:var(--text-2);border:1px solid var(--line)}
+.switch{width:34px;height:18px;border-radius:999px;border:0;background:var(--line-strong);position:relative;cursor:pointer;padding:0;display:inline-block}
+.switch::after{content:"";position:absolute;width:14px;height:14px;border-radius:50%;background:#fff;left:2px;top:2px;box-shadow:0 1px 3px rgba(31,35,41,.18);transition:left .15s}
+.switch.on{background:var(--primary)}
+.switch.on::after{left:18px}
+.badge{min-width:18px;height:18px;line-height:18px;padding:0 5px;border-radius:9px;background:var(--danger);color:#fff;font-size:11px;text-align:center;display:inline-block}
+.tw{width:100%;overflow-x:auto}
+table.data-table{width:100%;min-width:1010px;border-collapse:collapse;table-layout:fixed;background:#fff}
+.data-table th,.data-table td{padding-left:12px;padding-right:12px;border-bottom:1px solid var(--line);text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.data-table th{height:31px;padding-top:7px;padding-bottom:7px;line-height:16px;color:var(--text-3);font-weight:400;background:var(--head-bg)}
+.data-table td{height:36px;padding-top:8px;padding-bottom:8px;line-height:18px;color:var(--text-2)}
+.data-table tbody tr{height:36px;transition:background .12s}
+.data-table tbody tr:hover td{background:var(--row-hover)}
+.data-table td.t1{color:var(--text-1);font-weight:500}
+.code{font-family:var(--font-mono);font-size:11.5px;font-weight:400}
+.data-table .op-col{white-space:nowrap;overflow:visible}
+.pagination{border-top:1px solid var(--line);padding:10px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;color:var(--text-3)}
+.pager-left{white-space:nowrap}
+.pager-right{display:flex;align-items:center;gap:6px}
+.page-btn{min-width:30px;height:30px;border:1px solid var(--line-strong);border-radius:var(--control-radius);background:#fff;color:var(--text-2);padding:0 8px;cursor:pointer}
+.page-btn:hover{border-color:var(--primary);color:var(--primary)}
+.page-btn.on{background:var(--primary);border-color:var(--primary);color:#fff}
+.page-btn[disabled]{background:var(--head-bg);color:var(--text-3);border-color:var(--line);cursor:not-allowed}
+.empty{padding:34px 18px;text-align:center}
+.empty-icon{width:36px;height:36px;margin:0 auto 10px;color:var(--empty-line)}
+.empty h3{margin:0;font-size:14px;font-weight:600}
+.empty p{margin:5px 0 12px;color:var(--text-3)}
+.token-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.token{border:1px solid var(--line);border-radius:var(--card-radius);overflow:hidden;background:#fff}
+.swatch{height:54px;border-bottom:1px solid var(--line)}
+.token-info{padding:9px 10px}
+.token-info b{display:block;font-size:12px;font-weight:500;margin-bottom:3px}
+.token-info code{font:11.5px var(--font-mono);color:var(--text-3)}
+.metric-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.metric{border:1px solid var(--line);border-radius:var(--card-radius);padding:12px;background:#fff}
+.metric-label{color:var(--text-3);font-size:11px}
+.metric-value{font:600 22px/1.25 var(--font-mono);margin:7px 0 4px;color:var(--text-1)}
+.metric-foot{font-size:11px;color:var(--text-3)}
+.rule-list{display:grid;gap:8px}
+.rule{display:grid;grid-template-columns:26px minmax(0,1fr);gap:8px;align-items:start;padding:9px 10px;border:1px solid var(--line);border-radius:6px;background:#fff}
+.rule-no{width:20px;height:20px;border-radius:4px;background:var(--primary-weak);color:var(--primary);display:grid;place-items:center;font:600 11px var(--font-mono)}
+.rule b{display:block;font-size:12px;margin-bottom:2px}
+.rule span{color:var(--text-3);font-size:11px}
+.modal-mask{position:fixed;inset:0;z-index:100;background:var(--mask);display:flex;align-items:center;justify-content:center;padding:20px;animation:fadeIn .15s ease}
+.modal{width:440px;max-width:100%;max-height:calc(100vh - 40px);background:#fff;border-radius:var(--modal-radius);box-shadow:var(--modal-shadow);overflow:hidden;animation:popIn .18s ease;display:flex;flex-direction:column}
+.modal.wide{width:640px}
+.modal-hd{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px}
+.modal-hd b{font-size:14px;font-weight:600}
+.modal-bd{padding:20px;overflow:auto}
+.modal-ft{padding:14px 20px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:10px}
+.confirm-copy{display:grid;grid-template-columns:36px minmax(0,1fr);gap:12px;align-items:start}
+.confirm-ico{width:36px;height:36px;border-radius:50%;background:var(--del-hover);color:var(--danger);display:grid;place-items:center}
+.confirm-ico svg{width:18px;height:18px}
+.confirm-copy h3{margin:0 0 5px;font-size:14px;font-weight:600;color:var(--text-1)}
+.confirm-copy p{margin:0;color:var(--text-2);line-height:1.7}
+.drawer-mask{position:fixed;inset:0;z-index:110;background:var(--mask);animation:fadeIn .15s ease}
+.drawer-panel{position:absolute;top:0;right:0;width:min(560px,92vw);height:100%;background:#fff;box-shadow:-12px 0 36px rgba(31,35,41,.18);display:flex;flex-direction:column;animation:drawerIn .2s ease}
+.drawer-hd{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px}
+.drawer-hd b{font-size:14px;font-weight:600}
+.drawer-bd{padding:20px;overflow:auto;flex:1}
+.drawer-ft{padding:14px 20px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:10px}
+.toast-host{position:fixed;left:50%;top:70px;transform:translateX(-50%);z-index:160;pointer-events:none}
+.toast{background:var(--toast);color:#fff;padding:9px 18px;border-radius:6px;font-size:12px;white-space:nowrap;box-shadow:var(--card-shadow);animation:fadeIn .15s ease}
+.toast.error{background:var(--toast-error)}
+.size-demo{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.size-card{border:1px solid var(--line);border-radius:8px;padding:12px;background:#fff}
+.measure{height:30px;border:1px dashed var(--line-strong);border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--text-3);font-family:var(--font-mono);margin-top:8px}
+.status-line{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.kv{display:grid;grid-template-columns:120px minmax(0,1fr);row-gap:10px;column-gap:12px}
+.kv dt{color:var(--text-3)}
+.kv dd{margin:0;color:var(--text-2)}
+.mobile-menu{display:none}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes drawerIn{from{transform:translateX(24px);opacity:.5}to{transform:translateX(0);opacity:1}}
+@keyframes popIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
+@media(max-width:1100px){.grid.four,.token-grid,.metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.filter{grid-template-columns:repeat(2,minmax(130px,1fr))}}
+@media(max-width:960px){.drawer-panel{width:100vw}.shell{flex-direction:column}.sidebar{position:sticky;top:56px;width:100%;flex:0 0 auto;max-height:none;border-right:0;border-bottom:1px solid var(--line);overflow-x:auto;overflow-y:hidden}.nav{display:flex;padding:0 8px;min-width:max-content}.nav-group{border-bottom:0;border-right:1px solid var(--line)}.nav-gh{min-width:140px}.nav-group{display:flex;align-items:stretch}.nav-gh{min-width:104px;width:auto;justify-content:center}.nav-gh .chev{display:none}.nav-kids,.nav-kids.open{position:static;visibility:visible;pointer-events:auto;max-height:none;display:flex;overflow:visible}.nav-i{padding:6px 12px;min-height:34px}.nav-i.on::before{left:8px;right:8px;top:auto;bottom:0;width:auto;height:2px}.content{padding:12px 14px 20px}.top-actions .top-copy{display:none}.grid.two,.grid.three,.grid.four,.token-grid,.metric-grid,.size-demo,.form-grid,.filter{grid-template-columns:1fr}.page-head{flex-direction:column}.page-actions{justify-content:flex-start}.mobile-menu{display:grid}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="layerHost"></div>
+<div id="toastHost" class="toast-host"></div>
+<script>
+const SVG={
+  leaf:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 4c-7 0-12 3-14.5 8.5C4 16 6 20 10 20c5.5 0 9-6 10-16Z"/><path d="M5 19c2-5 6-8 11-10"/></svg>`,
+  chevron:`<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>`,
+  plus:`<svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>`,
+  search:`<svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>`,
+  reset:`<svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>`,
+  close:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 6 12 12M18 6 6 18"/></svg>`,
+  prev:`<svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>`,
+  next:`<svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>`,
+  empty:`<svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16v12H4z"/><path d="m8 11 3 3 5-5"/></svg>`,
+  alert:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2.8 19h18.4L12 3Z"/><path d="M12 9v4"/><path d="M12 16h.01"/></svg>`
+};
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const code=s=>`<div class="demo-code">${esc(s)}</div>`;
+
+const ZeroUI={
+  Button:({label,kind='',icon='',id='',disabled=false,loading=false})=>`<button type="button" class="btn ${kind} ${loading?'loading':''}" ${id?`id="${esc(id)}"`:''} ${(disabled||loading)?'disabled':''}>${loading?'<span class="btn-spinner" aria-hidden="true"></span>':(icon||'')}${esc(label)}</button>`,
+  IconButton:({icon,title,id=''})=>`<button type="button" class="icon-btn" title="${esc(title)}" aria-label="${esc(title)}" ${id?`id="${esc(id)}"`:''}>${icon}</button>`,
+  Tag:({text,kind='service'})=>`<span class="tag ${kind}">${esc(text)}</span>`,
+  Field:({label,type='text',placeholder='',value='',options=[],required=false,hint='',invalid='',full=false,id='',disabled=false,readonly=false})=>`<div class="field ${full?'full':''} ${invalid?'invalid':''}"><label ${id?`for="${esc(id)}"`:''}>${esc(label)}${required?'<span class="req">*</span>':''}</label>${type==='select'?`<select ${id?`id="${esc(id)}"`:''} ${disabled?'disabled':''}>${options.map(x=>`<option ${x===value?'selected':''}>${esc(x)}</option>`).join('')}</select>`:type==='textarea'?`<textarea ${id?`id="${esc(id)}"`:''} placeholder="${esc(placeholder)}" ${disabled?'disabled':''} ${readonly?'readonly':''}>${esc(value)}</textarea>`:`<input ${id?`id="${esc(id)}"`:''} type="${esc(type)}" value="${esc(value)}" placeholder="${esc(placeholder)}" ${disabled?'disabled':''} ${readonly?'readonly':''}>`}${invalid?`<div class="error">${esc(invalid)}</div>`:hint?`<div class="hint">${esc(hint)}</div>`:''}</div>`,
+  Pager:({total=26,page=1,pageSize=10})=>{const pages=Math.max(1,Math.ceil(total/pageSize));return `<div class="pagination" data-pager data-page="${page}" data-pages="${pages}"><div class="pager-left">共 ${total} 条，每页 ${pageSize} 条</div><div class="pager-right"><button type="button" class="page-btn" data-page-go="${page-1}" ${page<=1?'disabled':''}>${SVG.prev}</button><button type="button" class="page-btn on">${page}</button>${page<pages?`<button type="button" class="page-btn" data-page-go="${page+1}">${page+1}</button>`:''}<button type="button" class="page-btn" data-page-go="${page+1}" ${page>=pages?'disabled':''}>${SVG.next}</button></div></div>`},
+  Empty:({title='暂无数据',text='当前还没有可展示的数据。',action='立即新增'})=>`<div class="empty">${SVG.empty}<h3>${esc(title)}</h3><p>${esc(text)}</p>${ZeroUI.Button({label:action,kind:'primary',icon:SVG.plus,id:'emptyAction'})}</div>`,
+  Toast:(message,type='')=>{const host=document.getElementById('toastHost');if(!host)return;clearTimeout(ZeroUI._toastTimer);host.innerHTML=`<div class="toast ${type==='error'?'error':''}" role="status">${esc(message)}</div>`;ZeroUI._toastTimer=setTimeout(()=>host.innerHTML='',2200)},
+  Modal:({title='新增配置',wide=false,body='',confirm='确定',cancel='取消',footer='double',confirmKind='primary'})=>`<div class="modal-mask" id="activeModal"><section class="modal ${wide?'wide':''}" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="modal-hd"><b>${esc(title)}</b>${ZeroUI.IconButton({icon:SVG.close,title:'关闭',id:'modalClose'})}</div><div class="modal-bd">${body}</div>${footer==='none'?'':`<div class="modal-ft">${footer==='double'?ZeroUI.Button({label:cancel,id:'modalCancel'}):''}${ZeroUI.Button({label:confirm,kind:confirmKind,id:'modalConfirm'})}</div>`}</section></div>`,
+  ConfirmModal:({title='确认操作',message='此操作执行后将立即生效。',confirm='确定',danger=false})=>ZeroUI.Modal({title,body:`<div class="confirm-copy"><div class="confirm-ico">${SVG.alert}</div><div><h3>${esc(title)}</h3><p>${esc(message)}</p></div></div>`,confirm,cancel:'取消',footer:'double',confirmKind:danger?'danger-solid':'primary'}),
+  Drawer:({title='详情',body='',confirm='保存',cancel='取消',footer='double'})=>`<div class="drawer-mask" id="activeDrawer"><section class="drawer-panel" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="drawer-hd"><b>${esc(title)}</b>${ZeroUI.IconButton({icon:SVG.close,title:'关闭',id:'drawerClose'})}</div><div class="drawer-bd">${body}</div>${footer==='none'?'':`<div class="drawer-ft">${footer==='double'?ZeroUI.Button({label:cancel,id:'drawerCancel'}):''}${ZeroUI.Button({label:confirm,kind:'primary',id:'drawerConfirm'})}</div>`}</section></div>`,
+  _lockLayer(trigger){ZeroUI._lastTrigger=trigger||document.activeElement;ZeroUI._prevOverflow=document.body.style.overflow;document.body.style.overflow='hidden'},
+  _unlockLayer(){document.body.style.overflow=ZeroUI._prevOverflow||'';const t=ZeroUI._lastTrigger;ZeroUI._lastTrigger=null;if(t&&typeof t.focus==='function')setTimeout(()=>t.focus(),0)},
+  openModal:(html,onConfirm,trigger)=>{const host=document.getElementById('layerHost');ZeroUI._lockLayer(trigger);host.innerHTML=html;const mask=document.getElementById('activeModal');const close=()=>{host.innerHTML='';document.removeEventListener('keydown',escClose);ZeroUI._unlockLayer()};const escClose=e=>{if(e.key==='Escape')close()};const closeBtn=document.getElementById('modalClose');if(closeBtn)closeBtn.onclick=close;const cancelBtn=document.getElementById('modalCancel');if(cancelBtn)cancelBtn.onclick=close;mask.addEventListener('click',e=>{if(e.target===mask)close()});const confirmBtn=document.getElementById('modalConfirm');if(confirmBtn)confirmBtn.onclick=()=>{if(onConfirm)onConfirm(close,confirmBtn);else close()};document.addEventListener('keydown',escClose);setTimeout(()=>{const target=mask.querySelector('input:not([disabled]),select:not([disabled]),textarea:not([disabled]),button');if(target)target.focus()},0)},
+  openDrawer:(html,onConfirm,trigger)=>{const host=document.getElementById('layerHost');ZeroUI._lockLayer(trigger);host.innerHTML=html;const mask=document.getElementById('activeDrawer');const close=()=>{host.innerHTML='';document.removeEventListener('keydown',escClose);ZeroUI._unlockLayer()};const escClose=e=>{if(e.key==='Escape')close()};document.getElementById('drawerClose').onclick=close;const cancelBtn=document.getElementById('drawerCancel');if(cancelBtn)cancelBtn.onclick=close;mask.addEventListener('click',e=>{if(e.target===mask)close()});const confirmBtn=document.getElementById('drawerConfirm');if(confirmBtn)confirmBtn.onclick=()=>{if(onConfirm)onConfirm(close,confirmBtn);else close()};document.addEventListener('keydown',escClose)}
+};
+
+// ===== 业务菜单：只在这里配置（单一来源）。一级分组 + 二级页面，key 就是 URL hash =====
+const NAV=[/*PA:NAV*/
+  {key:'equip',label:'设备管理',items:[{key:'plan',label:'巡检计划'}]}
+];
+const navState={open:{}};
+const moduleDesc='零碳园区管理平台';
+NAV.forEach(g=>navState.open[g.key]=false);
+
+const Demo=({children,source})=>`<div class="demo"><div class="demo-stage">${children}</div>${code(source)}</div>`;
+const Section=({title,name,body})=>`<section class="section"><div class="section-hd"><h2>${esc(title)}</h2><code>${esc(name)}</code></div>${body}</section>`;
+const Card=({title,desc='',body='',extra=''})=>`<section class="card"><div class="card-hd"><div><div class="card-title">${esc(title)}</div>${desc?`<div class="card-desc">${esc(desc)}</div>`:''}</div>${extra}</div><div class="card-bd">${body}</div></section>`;
+
+const TODAY='2026-10-17';
+const ROUTES={
+  'RT-01':{name:'主变压器线',devices:[['EQ-009','1#主变压器','变配电室'],['EQ-010','2#主变压器','变配电室'],['EQ-001','1#园区主电表','东区配电房'],['EQ-002','2#园区主电表','西区配电房']]},
+  'RT-02':{name:'光伏发电线',devices:[['EQ-003','光伏逆变器 A','屋顶光伏区'],['EQ-011','光伏逆变器 B','屋顶光伏区'],['EQ-012','汇流箱 03','屋顶光伏区']]},
+  'RT-03':{name:'综合楼水电线',devices:[['EQ-005','1#水表','综合楼 1F'],['EQ-008','2#水表','综合楼 2F'],['EQ-013','空调主机','综合楼 B1'],['EQ-014','照明配电箱','综合楼 3F'],['EQ-006','环境监测仪','中央广场']]},
+  'RT-04':{name:'充电桩与燃气线',devices:[['EQ-007','充电桩计量柜','停车场 B2'],['EQ-004','燃气计量表','锅炉房']]}
+};
+const PEOPLE=['张三','李四','王五','赵六','孙七'];
+const STATUS={todo:{t:'待执行',k:'neutral'},doing:{t:'进行中',k:'service'},done:{t:'已完成',k:'event'},late:{t:'已逾期',k:'other'}};
+let plans=[
+  {id:'XJ-20261017-01',name:'主变压器日常巡检',route:'RT-01',owner:'张三',date:'2026-10-17',status:'doing',note:'重点看油温和异响'},
+  {id:'XJ-20261017-02',name:'光伏逆变器例行检查',route:'RT-02',owner:'李四',date:'2026-10-17',status:'todo',note:''},
+  {id:'XJ-20261016-03',name:'综合楼水电周检',route:'RT-03',owner:'王五',date:'2026-10-16',status:'done',note:'2F 水表读数偏高，已报修'},
+  {id:'XJ-20261015-01',name:'充电桩计量月检',route:'RT-04',owner:'赵六',date:'2026-10-15',status:'late',note:''},
+  {id:'XJ-20261014-02',name:'主电表读数核对',route:'RT-01',owner:'孙七',date:'2026-10-14',status:'done',note:''},
+  {id:'XJ-20261013-01',name:'光伏汇流箱清洁检查',route:'RT-02',owner:'李四',date:'2026-10-13',status:'late',note:'雨天顺延'},
+  {id:'XJ-20261018-01',name:'综合楼空调主机巡检',route:'RT-03',owner:'王五',date:'2026-10-18',status:'todo',note:''},
+  {id:'XJ-20261010-02',name:'燃气计量表安全检查',route:'RT-04',owner:'赵六',date:'2026-10-10',status:'done',note:''},
+  {id:'XJ-20261008-01',name:'变配电室季度巡检',route:'RT-01',owner:'张三',date:'2026-10-08',status:'done',note:'红外测温正常'},
+  {id:'XJ-20261020-01',name:'环境监测仪校准',route:'RT-03',owner:'孙七',date:'2026-10-20',status:'todo',note:''},
+  {id:'XJ-20261021-02',name:'光伏发电量月度复核',route:'RT-02',owner:'李四',date:'2026-10-21',status:'todo',note:''}
+];
+const PAGE_SIZE=8;
+const state={f:{route:'',owner:'',status:'',from:'',to:''},page:1};
+const metric=(label,value,foot,color='')=>`<div class="metric"><div class="metric-label">${esc(label)}</div><div class="metric-value" ${color?`style="color:${color}"`:''}>${esc(value)}</div><div class="metric-foot">${esc(foot)}</div></div>`;
+function filtered(){const f=state.f;return plans.filter(p=>(!f.route||p.route===f.route)&&(!f.owner||p.owner===f.owner)&&(!f.status||p.status===f.status)&&(!f.from||p.date>=f.from)&&(!f.to||p.date<=f.to)).sort((a,b)=>b.date.localeCompare(a.date))}
+function openForm(p,trigger){
+  const routeOpts=Object.entries(ROUTES).map(([k,r])=>k+' '+r.name);
+  const body=`<div class="form-grid">
+    ${ZeroUI.Field({label:'计划名称',id:'pName',value:p?.name||'',placeholder:'如：主变压器日常巡检',required:true,full:true})}
+    ${ZeroUI.Field({label:'巡检路线',id:'pRoute',type:'select',options:routeOpts,value:p?p.route+' '+ROUTES[p.route].name:routeOpts[0],required:true})}
+    ${ZeroUI.Field({label:'负责人',id:'pOwner',type:'select',options:PEOPLE,value:p?.owner||PEOPLE[0],required:true})}
+    ${ZeroUI.Field({label:'计划日期',id:'pDate',type:'date',value:p?.date||TODAY,required:true})}
+    ${ZeroUI.Field({label:'状态',id:'pStatus',type:'select',options:Object.values(STATUS).map(s=>s.t),value:p?STATUS[p.status].t:'待执行'})}
+    ${ZeroUI.Field({label:'备注',id:'pNote',type:'textarea',value:p?.note||'',placeholder:'巡检重点、注意事项（选填）',full:true})}
+  </div><p class="hint" id="pDevices" style="color:var(--text-3);margin:12px 0 0"></p>`;
+  ZeroUI.openModal(ZeroUI.Modal({title:p?'编辑巡检计划':'新增巡检计划',wide:true,body,confirm:p?'保存':'创建'}),(close,btn)=>{
+    const $=id=>document.getElementById(id),name=$('pName').value.trim();
+    const field=$('pName').closest('.field');field.querySelector('.error')?.remove();field.classList.remove('invalid');
+    if(!name){field.classList.add('invalid');field.insertAdjacentHTML('beforeend','<div class="error">请填写计划名称</div>');$('pName').focus();return}
+    if(!$('pDate').value){ZeroUI.Toast('请选择计划日期','error');return}
+    btn.classList.add('loading');btn.disabled=true;btn.insertAdjacentHTML('afterbegin','<span class="btn-spinner" aria-hidden="true"></span>');
+    setTimeout(()=>{
+      const data={name,route:$('pRoute').value.split(' ')[0],owner:$('pOwner').value,date:$('pDate').value,status:Object.keys(STATUS).find(k=>STATUS[k].t===$('pStatus').value),note:$('pNote').value.trim()};
+      if(p){Object.assign(p,data);ZeroUI.Toast('已保存 '+p.id)}
+      else{const id='XJ-'+data.date.replace(/-/g,'')+'-'+String(plans.filter(x=>x.date===data.date).length+1).padStart(2,'0');plans.unshift({id,...data});state.f={route:'',owner:'',status:'',from:'',to:''};state.page=1;ZeroUI.Toast('已创建计划 '+id)}
+      close();Router.render();
+    },400);
+  },trigger);
+  const sync=()=>{const r=ROUTES[document.getElementById('pRoute').value.split(' ')[0]];document.getElementById('pDevices').textContent=`这条路线经过 ${r.devices.length} 台设备：${r.devices.map(d=>d[1]).join('、')}`};
+  document.getElementById('pRoute').onchange=sync;sync();
+}
+function openDetail(p,trigger){
+  const r=ROUTES[p.route];
+  const body=`<dl class="kv"><dt>计划编号</dt><dd class="code">${esc(p.id)}</dd><dt>计划名称</dt><dd>${esc(p.name)}</dd><dt>巡检路线</dt><dd>${esc(p.route)} ${esc(r.name)}</dd><dt>负责人</dt><dd>${esc(p.owner)}</dd><dt>计划日期</dt><dd>${esc(p.date)}</dd><dt>状态</dt><dd>${ZeroUI.Tag({text:STATUS[p.status].t,kind:STATUS[p.status].k})}</dd><dt>备注</dt><dd>${esc(p.note||'—')}</dd></dl>
+    <div class="section-hd" style="margin:18px 0 8px"><h2>巡检设备（${r.devices.length} 台，按顺序）</h2></div>
+    <table class="data-table" style="min-width:0"><colgroup><col style="width:56px"><col style="width:100px"><col><col style="width:120px"></colgroup><thead><tr><th>顺序</th><th>设备编号</th><th>设备名称</th><th>位置</th></tr></thead>
+    <tbody>${r.devices.map((d,i)=>`<tr><td>${i+1}</td><td class="code">${esc(d[0])}</td><td class="t1">${esc(d[1])}</td><td>${esc(d[2])}</td></tr>`).join('')}</tbody></table>`;
+  ZeroUI.openModal(ZeroUI.Modal({title:'巡检计划详情',wide:true,body,confirm:'关闭',footer:'single'}),null,trigger);
+}
+
+// ===== 业务页面：每个二级菜单一项，返回这一页的 HTML（用 pageShell 包一层）=====
+const Pages={/*PA:PAGES*/
+  plan(){
+    const list=filtered(),pages=Math.max(1,Math.ceil(list.length/PAGE_SIZE));if(state.page>pages)state.page=pages;
+    const rows=list.slice((state.page-1)*PAGE_SIZE,state.page*PAGE_SIZE);
+    const month=plans.filter(p=>p.date.startsWith(TODAY.slice(0,7))),done=month.filter(p=>p.status==='done').length;
+    const todayLeft=plans.filter(p=>p.date===TODAY&&(p.status==='todo'||p.status==='doing')).length;
+    const late=plans.filter(p=>p.status==='late').length;
+    const metrics=`<div class="metric-grid" style="margin-bottom:14px">
+      ${metric('计划总数',plans.length,`本月 ${month.length} 条`)}
+      ${metric('今日待巡',todayLeft,`今天共 ${plans.filter(p=>p.date===TODAY).length} 条计划`)}
+      ${metric('已逾期',late,late?'请尽快安排补巡':'暂无逾期',late?'var(--danger)':'')}
+      ${metric('本月完成率',month.length?Math.round(done/month.length*100)+'%':'—',`已完成 ${done} / ${month.length}`)}
+    </div>`;
+    const opt=(arr,v)=>arr.map(([val,label])=>`<option value="${esc(val)}" ${val===v?'selected':''}>${esc(label)}</option>`).join('');
+    const filter=`<div class="filter" style="grid-template-columns:repeat(3,minmax(130px,1fr)) minmax(250px,1.4fr)">
+      <div class="field"><label for="fRoute">巡检路线</label><select id="fRoute">${opt([['','全部路线'],...Object.entries(ROUTES).map(([k,r])=>[k,k+' '+r.name])],state.f.route)}</select></div>
+      <div class="field"><label for="fOwner">负责人</label><select id="fOwner">${opt([['','全部'],...PEOPLE.map(x=>[x,x])],state.f.owner)}</select></div>
+      <div class="field"><label for="fStatus">状态</label><select id="fStatus">${opt([['','全部状态'],...Object.entries(STATUS).map(([k,s])=>[k,s.t])],state.f.status)}</select></div>
+      <div class="field"><label for="fFrom">计划日期</label><div style="display:flex;align-items:center;gap:6px"><input id="fFrom" type="date" value="${state.f.from}"><span style="color:var(--text-3)">至</span><input id="fTo" type="date" value="${state.f.to}"></div></div>
+    </div>
+    <div class="filter-actions" style="justify-content:flex-end;margin-top:10px">${ZeroUI.Button({label:'重置',icon:SVG.reset,id:'fReset'})}${ZeroUI.Button({label:'查询',icon:SVG.search,id:'fSearch'})}</div>`;
+    const table=rows.length?`<div class="tw"><table class="data-table"><colgroup><col style="width:150px"><col style="width:180px"><col style="width:170px"><col style="width:90px"><col style="width:110px"><col style="width:80px"><col style="width:90px"><col style="width:140px"></colgroup>
+      <thead><tr><th>计划编号</th><th>计划名称</th><th>巡检路线</th><th>负责人</th><th>计划日期</th><th>设备数</th><th>状态</th><th>操作</th></tr></thead>
+      <tbody>${rows.map(p=>`<tr><td class="code">${esc(p.id)}</td><td class="t1" title="${esc(p.name)}">${esc(p.name)}</td><td>${esc(p.route)} ${esc(ROUTES[p.route].name)}</td><td>${esc(p.owner)}</td><td>${esc(p.date)}</td><td>${ROUTES[p.route].devices.length}</td><td>${ZeroUI.Tag({text:STATUS[p.status].t,kind:STATUS[p.status].k})}</td>
+        <td class="op-col"><div class="ops"><button type="button" class="lnk" data-act="view" data-id="${esc(p.id)}">详情</button><button type="button" class="lnk" data-act="edit" data-id="${esc(p.id)}">编辑</button><button type="button" class="lnk danger" data-act="del" data-id="${esc(p.id)}">删除</button></div></td></tr>`).join('')}</tbody></table></div>
+      <div class="pagination"><div class="pager-left">共 ${list.length} 条，每页 ${PAGE_SIZE} 条</div><div class="pager-right"><button type="button" class="page-btn" data-go="${state.page-1}" ${state.page<=1?'disabled':''} aria-label="上一页">${SVG.prev}</button>${Array.from({length:pages},(_,i)=>`<button type="button" class="page-btn ${i+1===state.page?'on':''}" data-go="${i+1}">${i+1}</button>`).join('')}<button type="button" class="page-btn" data-go="${state.page+1}" ${state.page>=pages?'disabled':''} aria-label="下一页">${SVG.next}</button></div></div>`
+      :`<div class="empty">${SVG.empty}<h3>没有符合条件的计划</h3><p>换个筛选条件，或者清空筛选看全部计划。</p>${ZeroUI.Button({label:'清空筛选',id:'emptyReset'})}</div>`;
+    return pageShell('巡检计划','按路线安排设备巡检，跟踪每条计划的执行情况',
+      metrics+`<section class="card"><div class="card-bd">${filter}</div></section><section class="card" style="margin-top:14px">${table}</section>`,
+      ZeroUI.Button({label:'新增计划',kind:'primary',icon:SVG.plus,id:'addPlan'}));
+  }
+};
+function pageShell(title,desc,body,actions=''){
+  const meta=NAV.flatMap(g=>g.items.map(i=>({...i,group:g.label}))).find(i=>i.key===Router.current());
+  return `<div class="breadcrumb">${esc(meta?meta.group:'')} / ${esc(title)}</div><div class="page-head"><div><h1>${esc(title)}</h1>${desc?`<p>${esc(desc)}</p>`:''}</div><div class="page-actions">${actions}</div></div>${body}`;
+}
+const Router={
+  current(){const key=location.hash.replace(/^#/,'');return NAV.flatMap(x=>x.items).some(x=>x.key===key)?key:NAV[0].items[0].key},
+  syncOpen(page){const group=NAV.find(g=>g.items.some(i=>i.key===page));if(group)navState.open[group.key]=true},
+  render(){const page=this.current();this.syncOpen(page);renderNav(page);const meta=NAV.flatMap(g=>g.items.map(i=>({...i,group:g.label}))).find(i=>i.key===page);document.getElementById('crumbTop').textContent=`${meta.group} / ${meta.label}`;document.getElementById('content').innerHTML=(Pages[page]||(()=>pageShell(meta.label,'',ZeroUI.Empty({title:'建设中',text:'这一页还没有内容。',action:'返回首页'}))))();bindPage(page)}
+};
+function renderNav(page){document.getElementById('nav').innerHTML=NAV.map(g=>{const open=!!navState.open[g.key];return `<div class="nav-group"><button type="button" class="nav-gh ${open?'open':''}" data-group="${g.key}"><span class="nav-label">${esc(g.label)}</span>${SVG.chevron}</button><div class="nav-kids ${open?'open':''}">${g.items.map(i=>`<a href="#${i.key}" class="nav-i ${i.key===page?'on':''}">${esc(i.label)}</a>`).join('')}</div></div>`}).join('');document.querySelectorAll('[data-group]').forEach(el=>el.onclick=()=>{const key=el.dataset.group;navState.open[key]=!navState.open[key];renderNav(Router.current())})}
+
+// ===== 每页的交互绑定：页面渲染完会调用一次，按 page 分开写 =====
+function bindPage(page){/*PA:BIND*/
+  if(page==='plan'){
+    const $=id=>document.getElementById(id);
+    const read=()=>({route:$('fRoute').value,owner:$('fOwner').value,status:$('fStatus').value,from:$('fFrom').value,to:$('fTo').value});
+    $('fSearch').onclick=()=>{state.f=read();state.page=1;Router.render();ZeroUI.Toast(`找到 ${filtered().length} 条计划`)};
+    $('fReset').onclick=()=>{state.f={route:'',owner:'',status:'',from:'',to:''};state.page=1;Router.render()};
+    if($('emptyReset'))$('emptyReset').onclick=()=>$('fReset').onclick();
+    $('addPlan').onclick=e=>openForm(null,e.currentTarget);
+    document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>{state.page=+b.dataset.go;Router.render()});
+    document.querySelectorAll('[data-act]').forEach(b=>b.onclick=e=>{
+      const p=plans.find(x=>x.id===b.dataset.id);if(!p)return;
+      if(b.dataset.act==='view')openDetail(p,e.currentTarget);
+      if(b.dataset.act==='edit')openForm(p,e.currentTarget);
+      if(b.dataset.act==='del')ZeroUI.openModal(ZeroUI.ConfirmModal({title:'删除这条巡检计划？',message:`「${p.name}」（${p.id}）删除后不可恢复，已生成的巡检记录会保留。`,confirm:'删除',danger:true}),close=>{plans=plans.filter(x=>x!==p);close();Router.render();ZeroUI.Toast('已删除计划 '+p.id)},e.currentTarget);
+    });
+  }
+  const empty=document.getElementById('emptyAction');if(empty)empty.onclick=()=>{location.hash='#'+NAV[0].items[0].key};
+}
+function renderLayout(){document.getElementById('app').innerHTML=`<div class="app"><header class="topbar"><div class="brand"><div class="brand-mark">${SVG.leaf}</div><div class="brand-name">零碳园区管理平台</div></div><div class="top-actions"><span class="top-copy" id="crumbTop" style="color:var(--text-3)"></span></div></header><div class="shell"><aside class="sidebar"><nav class="nav" id="nav"></nav></aside><main class="main"><section class="content" id="content"></section></main></div></div>`;}
+renderLayout();
+window.addEventListener('hashchange',()=>Router.render());
+if(!location.hash)location.hash='#'+NAV[0].items[0].key;
+Router.render();
+</script>
+</body>
+</html>
