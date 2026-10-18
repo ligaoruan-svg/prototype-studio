@@ -10,17 +10,25 @@ if [ -z "$https_proxy$HTTPS_PROXY$all_proxy$ALL_PROXY" ]; then
           else if (se && sh) printf "export all_proxy=socks5h://%s:%s\n", sh, sp }')"
 fi
 echo "检查能不能连上 GitHub…"
-if ! ok_github 8; then
+SAVED_PROXY_FILE="build/.github-proxy"   # 上次连通用的代理，先试它（build/ 不上传）
+try_proxy() { curl -s --max-time "${2:-10}" -x "$1" -o /dev/null https://api.github.com; }
+use_proxy() { export https_proxy="$1" http_proxy="$1"; mkdir -p build; echo "$1" > "$SAVED_PROXY_FILE"; }
+connected=""
+ok_github 10 && connected=1
+if [ -z "$connected" ]; then
   unset https_proxy http_proxy all_proxy
-  for port in 7890 7897 7891 1087 1080 8889 10809 10808 33210 6152; do
-    if curl -s --max-time 4 -x "http://127.0.0.1:$port" -o /dev/null https://api.github.com; then
-      export https_proxy="http://127.0.0.1:$port" http_proxy="http://127.0.0.1:$port"; break
-    fi
+  candidates="$(cat "$SAVED_PROXY_FILE" 2>/dev/null)"
+  for port in 7897 7890 7891 1087 1080 8889 10809 10808 33210 6152; do candidates="$candidates http://127.0.0.1:$port"; done
+  for round in 1 2; do   # 代理有时第一下慢，多给一轮、多等一会
+    for proxy in $candidates; do
+      if try_proxy "$proxy" $((round * 8)); then use_proxy "$proxy"; connected=1; break 2; fi
+    done
+    [ "$round" = 1 ] && echo "（还没连上，再试一轮…）"
   done
 fi
-ok_github 10 || fail "终端连不上 GitHub（浏览器能上是因为走了代理，终端没走）。
-  - 用 Clash / ClashX / Surge 这类工具的：打开「系统代理」或「增强模式 / TUN 模式」，再双击一次这个脚本
-  - 或者把代理软件里「复制终端代理命令」复制出来，告诉 Claude 端口号"
+[ -n "$connected" ] || fail "终端连不上 GitHub（浏览器能上是因为走了代理，终端没走）。
+  - 先确认代理软件（Clash Verge 之类）开着、节点能用，再双击一次这个脚本
+  - 还不行：打开代理软件的「系统代理」或「TUN 模式」，或者把它显示的端口号告诉 Claude"
 [ -n "$https_proxy$all_proxy" ] && echo "（通过本机代理 ${https_proxy:-$all_proxy} 连 GitHub）"
 
 # 1. GitHub 命令行工具：登录走浏览器，不用自己弄令牌
