@@ -9,7 +9,7 @@
 
 本地运行 · 模型用你自己的 · 中文 / English
 
-[下载](#下载安装) · [功能](#它能做什么) · [从源码运行](#从源码运行) · [自己打包](#自己打包) · [English](#english)
+[下载](#下载安装) · [功能](#它能做什么) · [从源码运行](#从源码运行) · [自己打包](#自己打包) · [反馈](#反馈与联系) · [English](#english)
 
 ![原型工坊：左边和 AI 聊，右边是可点击的原型](docs/images/chat.png)
 
@@ -136,6 +136,13 @@ cd frontend && npm test
 界面文案写的是中文原文，英文在 `frontend/src/locales/en.js`；新加的中文没有英文翻译时测试会报出来。
 加一种语言 = 加一份 `locales/xx.js`，再在 `src/lib/i18n.js` 的 `LANGUAGES` 里登记。
 
+## 反馈与联系
+
+这是我个人做的项目（[@ligaoruan-svg](https://github.com/ligaoruan-svg)）。用着有问题、哪里不满意、想要什么功能，都欢迎告诉我，我来改：
+
+- **提 Issue**：[在这里新建](../../issues/new)，报 bug、提建议都行。附上截图和你当时对 AI 说的那句话，我能更快定位
+- **发邮件**：[rusnligao@gmail.com](mailto:rusnligao@gmail.com)
+
 ## 许可证
 
 [AGPL-3.0](LICENSE)。可以自由使用、修改和再分发；修改后的版本分发出去或者做成网络服务给别人用，也要以同样的许可证公开源码。
@@ -162,5 +169,7 @@ clicking through every button, and every change is a version you can roll back.
 "More info" → "Run anyway". On first launch, bind your own model (endpoint, model name, API key).
 
 **From source**: see [从源码运行](#从源码运行) above — `pip install -e .`, build the frontend, then `make dev`.
+
+**Feedback**: something broken or not to your liking? [Open an issue](../../issues/new) or email [rusnligao@gmail.com](mailto:rusnligao@gmail.com) — I'll fix it.
 
 Licensed under [AGPL-3.0](LICENSE).
