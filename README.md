@@ -9,6 +9,8 @@
 
 本地运行 · 模型用你自己的 · 中文 / English
 
+产品经理 [@ligaoruan-svg](https://github.com/ligaoruan-svg) 个人作品 · 有问题或建议请联系 [rusnligao@gmail.com](mailto:rusnligao@gmail.com)
+
 [下载](#下载安装) · [功能](#它能做什么) · [从源码运行](#从源码运行) · [自己打包](#自己打包) · [反馈](#反馈与联系) · [English](#english)
 
 ![原型工坊：左边和 AI 聊，右边是可点击的原型](docs/images/chat.png)
