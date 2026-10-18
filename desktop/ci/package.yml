@@ -1,4 +1,4 @@
-# 放到 .github/workflows/package.yml 才会生效（用 GitHub 自动打包时再挪过去）
+# 上传GitHub打包.command 会把它复制到 .github/workflows/package.yml
 # 在 GitHub 的干净机器上同时打 Windows 和 Mac 两个安装包。
 # 用法：代码推到 GitHub 后，打开仓库的 Actions →「打包安装包」→ Run workflow；
 # 跑完在那次运行的页面底部下载 原型工坊-Windows / 原型工坊-Mac。
