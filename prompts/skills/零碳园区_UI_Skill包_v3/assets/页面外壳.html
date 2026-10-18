@@ -161,6 +161,7 @@ table.data-table{width:100%;min-width:1010px;border-collapse:collapse;table-layo
 .page-btn{min-width:30px;height:30px;border:1px solid var(--line-strong);border-radius:var(--control-radius);background:#fff;color:var(--text-2);padding:0 8px;cursor:pointer}
 .page-btn:hover{border-color:var(--primary);color:var(--primary)}
 .page-btn.on{background:var(--primary);border-color:var(--primary);color:#fff}
+.pager-gap{color:var(--text-3);padding:0 2px}
 .page-btn[disabled]{background:var(--head-bg);color:var(--text-3);border-color:var(--line);cursor:not-allowed}
 .empty{padding:34px 18px;text-align:center}
 .empty-icon{width:36px;height:36px;margin:0 auto 10px;color:var(--empty-line)}
@@ -245,7 +246,7 @@ const ZeroUI={
   IconButton:({icon,title,id=''})=>`<button type="button" class="icon-btn" title="${esc(title)}" aria-label="${esc(title)}" ${id?`id="${esc(id)}"`:''}>${icon}</button>`,
   Tag:({text,kind='service'})=>`<span class="tag ${kind}">${esc(text)}</span>`,
   Field:({label,type='text',placeholder='',value='',options=[],required=false,hint='',invalid='',full=false,id='',disabled=false,readonly=false})=>`<div class="field ${full?'full':''} ${invalid?'invalid':''}"><label ${id?`for="${esc(id)}"`:''}>${esc(label)}${required?'<span class="req">*</span>':''}</label>${type==='select'?`<select ${id?`id="${esc(id)}"`:''} ${disabled?'disabled':''}>${options.map(x=>`<option ${x===value?'selected':''}>${esc(x)}</option>`).join('')}</select>`:type==='textarea'?`<textarea ${id?`id="${esc(id)}"`:''} placeholder="${esc(placeholder)}" ${disabled?'disabled':''} ${readonly?'readonly':''}>${esc(value)}</textarea>`:`<input ${id?`id="${esc(id)}"`:''} type="${esc(type)}" value="${esc(value)}" placeholder="${esc(placeholder)}" ${disabled?'disabled':''} ${readonly?'readonly':''}>`}${invalid?`<div class="error">${esc(invalid)}</div>`:hint?`<div class="hint">${esc(hint)}</div>`:''}</div>`,
-  Pager:({total=26,page=1,pageSize=10})=>{const pages=Math.max(1,Math.ceil(total/pageSize));return `<div class="pagination" data-pager data-page="${page}" data-pages="${pages}"><div class="pager-left">共 ${total} 条，每页 ${pageSize} 条</div><div class="pager-right"><button type="button" class="page-btn" data-page-go="${page-1}" ${page<=1?'disabled':''}>${SVG.prev}</button><button type="button" class="page-btn on">${page}</button>${page<pages?`<button type="button" class="page-btn" data-page-go="${page+1}">${page+1}</button>`:''}<button type="button" class="page-btn" data-page-go="${page+1}" ${page>=pages?'disabled':''}>${SVG.next}</button></div></div>`},
+  Pager:({total=26,page=1,pageSize=10})=>{const pages=Math.max(1,Math.ceil(total/pageSize));return `<div class="pagination" data-pager data-page="${page}" data-pages="${pages}"><div class="pager-left">共 ${total} 条，每页 ${pageSize} 条</div><div class="pager-right"><button type="button" class="page-btn" data-page-go="${page-1}" ${page<=1?'disabled':''}>${SVG.prev}</button>${Array.from({length:pages},(_,i)=>i+1).filter(n=>pages<=7||n===1||n===pages||Math.abs(n-page)<=1).map((n,i,a)=>`${i&&n-a[i-1]>1?'<span class="pager-gap">…</span>':''}<button type="button" class="page-btn ${n===page?'on':''}" ${n===page?'aria-current="page"':`data-page-go="${n}"`}>${n}</button>`).join('')}<button type="button" class="page-btn" data-page-go="${page+1}" ${page>=pages?'disabled':''}>${SVG.next}</button></div></div>`},
   Empty:({title='暂无数据',text='当前还没有可展示的数据。',action='立即新增'})=>`<div class="empty">${SVG.empty}<h3>${esc(title)}</h3><p>${esc(text)}</p>${ZeroUI.Button({label:action,kind:'primary',icon:SVG.plus,id:'emptyAction'})}</div>`,
   Toast:(message,type='')=>{const host=document.getElementById('toastHost');if(!host)return;clearTimeout(ZeroUI._toastTimer);host.innerHTML=`<div class="toast ${type==='error'?'error':''}" role="status">${esc(message)}</div>`;ZeroUI._toastTimer=setTimeout(()=>host.innerHTML='',2200)},
   Modal:({title='新增配置',wide=false,body='',confirm='确定',cancel='取消',footer='double',confirmKind='primary'})=>`<div class="modal-mask" id="activeModal"><section class="modal ${wide?'wide':''}" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="modal-hd"><b>${esc(title)}</b>${ZeroUI.IconButton({icon:SVG.close,title:'关闭',id:'modalClose'})}</div><div class="modal-bd">${body}</div>${footer==='none'?'':`<div class="modal-ft">${footer==='double'?ZeroUI.Button({label:cancel,id:'modalCancel'}):''}${ZeroUI.Button({label:confirm,kind:confirmKind,id:'modalConfirm'})}</div>`}</section></div>`,
@@ -284,15 +285,21 @@ const Router={
 };
 function renderNav(page){document.getElementById('nav').innerHTML=NAV.map(g=>{const open=!!navState.open[g.key];return `<div class="nav-group"><button type="button" class="nav-gh ${open?'open':''}" data-group="${g.key}"><span class="nav-label">${esc(g.label)}</span>${SVG.chevron}</button><div class="nav-kids ${open?'open':''}">${g.items.map(i=>`<a href="#${i.key}" class="nav-i ${i.key===page?'on':''}">${esc(i.label)}</a>`).join('')}</div></div>`}).join('');document.querySelectorAll('[data-group]').forEach(el=>el.onclick=()=>{const key=el.dataset.group;navState.open[key]=!navState.open[key];renderNav(Router.current())})}
 
+// ===== 交互只对当前页生效，两种写法任选 =====
+// 1. 在下面的 bindPage(page) 里按 page 给元素设 onclick（每次换页、重画都会重新绑）
+// 2. 事件委托：PageEvents.on('页面key','click','选择器',(el,e)=>{...})，只在那一页触发
+// 不要在 document 上挂 click 监听：它对所有页面一直生效，翻页、按钮会串到别的页面。
+// 每页的状态（页码、筛选条件）也各放各的：const planState={page:1,...}，不要几页共用一个变量
+const PageEvents={_list:[],on(page,type,selector,fn){this._list.push({page,type,selector,fn})}};
+['click','change','input','keydown'].forEach(type=>document.addEventListener(type,e=>{const page=Router.current();for(const h of PageEvents._list){if(h.type!==type||h.page!==page)continue;const el=e.target.closest&&e.target.closest(h.selector);if(el)h.fn(el,e)}}));
 // ===== 每页的交互绑定：页面渲染完会调用一次，按 page 分开写 =====
 function bindPage(page){/*PA:BIND*/
   const empty=document.getElementById('emptyAction');if(empty)empty.onclick=()=>{location.hash='#'+NAV[0].items[0].key};
 }
 function renderLayout(){document.getElementById('app').innerHTML=`<div class="app"><header class="topbar"><div class="brand"><div class="brand-mark">${SVG.leaf}</div><div class="brand-name">零碳园区管理平台</div></div><div class="top-actions"><span class="top-copy" id="crumbTop" style="color:var(--text-3)"></span></div></header><div class="shell"><aside class="sidebar"><nav class="nav" id="nav"></nav></aside><main class="main"><section class="content" id="content"></section></main></div></div>`;}
-renderLayout();
-window.addEventListener('hashchange',()=>Router.render());
-if(!location.hash)location.hash='#'+NAV[0].items[0].key;
-Router.render();
+// 等整页的脚本都加载完再渲染：每页的函数常写在后面单独的 <script> 里，提前渲染会报「xxxPage is not defined」
+function boot(){renderLayout();window.addEventListener('hashchange',()=>Router.render());if(!location.hash)location.hash='#'+NAV[0].items[0].key;Router.render();}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
 </script>
 </body>
 </html>

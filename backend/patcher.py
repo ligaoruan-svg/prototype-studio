@@ -448,6 +448,13 @@ def verify_source(source: str, assertions: list[dict] | None = None) -> dict:
     pids = [n["data-pid"] for n in soup.select("[data-pid]")]
     if len(set(pids)) != len(pids):
         issues.append("data-pid 不能重复")
+    # 从页面外壳起步的页面：交互要绑在当前页上。document 级的 click 监听对所有页面一直生效，
+    # 翻页、按钮会串到别的页面（实测：巡检计划翻到第 2 页，碳配额也跟着到第 2 页）
+    if "/*PA:BIND*/" in source:
+        hits = len(re.findall(r"document\.addEventListener\(\s*['\"](?:click|change|input)['\"]", source))
+        if hits:
+            issues.append(f"全局点击监听：有 {hits} 处 document.addEventListener('click'…)，会串到别的页面；"
+                          "交互写进 bindPage(page) 按 page 分开，或用 PageEvents.on('页面key', 'click', 选择器, 处理函数)")
     syntax_checked = bool(shutil.which("node"))
     for i, tag in enumerate(soup.find_all("script"), 1):
         kind = tag.get("type", "").lower()

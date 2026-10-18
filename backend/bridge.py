@@ -707,6 +707,60 @@ _TEMPLATE = r'''
     const v=[...document.querySelectorAll('input,select,textarea')].slice(0,300).map(e=>e.type==='checkbox'||e.type==='radio'?(e.checked?1:0):String(e.value).slice(0,20)).join('\u0001');
     return location.hash+'\u0002'+t+'\u0002'+v;
   }
+  // ===== 做完自检：像人验收那样把每个菜单页的按钮点一遍（只在后台副本里跑，点了什么都不算数）=====
+  // 报错、点了没反应、弹窗关不掉、翻页串到别的页、一屏几个主按钮、表格编号重复、页面横向超出、外壳占位没删
+  async function selfTest(){
+    const t0=Date.now(),issues=[],seenIssue=new Set();let clicked=0;
+    const add=(kind,text)=>{if(seenIssue.has(text)||issues.length>=24)return;seenIssue.add(text);issues.push({kind,text});};
+    const errSince=at=>recentErrors.filter(e=>e.at>=at).map(e=>e.message);
+    const routes=routesOf();const list=routes.length?routes:[{hash:location.hash,title:pageTitle()}];
+    const nameOf=h=>(list.find(r=>r.hash===h)||{}).title||h||'这一页';
+    const outside=el=>!layers().some(l=>l.contains(el));
+    const content=()=>document.querySelector('#content,main,[role=main]')||document.body;
+    const rowsSig=()=>[...content().querySelectorAll('table tbody tr')].filter(r=>vis(r)&&outside(r)).map(r=>r.innerText).join('|');
+    const go=async h=>{if(h&&location.hash!==h){location.hash=h;await sleep(320);}};
+    const pager2=()=>[...content().querySelectorAll('button,a,[data-page-go],[data-go]')].find(b=>vis(b)&&outside(b)&&/^\s*2\s*$/.test(b.innerText||''));
+    // 先记下每页刚打开时的表格，再在一页翻到第 2 页，看别的页有没有跟着变（各页的页码、筛选要各管各的）
+    const base={};for(const r of list){await go(r.hash);base[r.hash]=rowsSig();}
+    for(const r of list){
+      if(list.length<2||Date.now()-t0>20000)break;
+      await go(r.hash);const two=pager2();if(!two)continue;
+      two.click();await sleep(260);
+      for(const o of list){if(o.hash===r.hash)continue;await go(o.hash);if(rowsSig()!==base[o.hash])add('交互',`在「${nameOf(r.hash)}」翻到第 2 页后，「${nameOf(o.hash)}」的表格也变了：每页的页码、筛选要各管各的，交互只绑在本页（bindPage 里按 page 分开），不要 document.addEventListener 管所有页面`);}
+      await go(r.hash);const one=[...content().querySelectorAll('button,a,[data-page-go],[data-go]')].find(b=>vis(b)&&/^\s*1\s*$/.test(b.innerText||''));if(one){one.click();await sleep(200);}
+      break;
+    }
+    for(const r of list){
+      if(Date.now()-t0>32000)break;
+      await go(r.hash);const name=nameOf(r.hash),root=content();
+      if(/在这里写这一页的内容/.test(root.innerText||''))add('规范',`外壳自带的占位页「${name}」还在，菜单里也还挂着：没用就从 NAV 和 Pages 里删掉`);
+      const primaries=[...root.querySelectorAll('.btn.primary,button.primary,.btn-primary')].filter(el=>vis(el)&&outside(el));
+      if(primaries.length>1)add('规范',`「${name}」同一屏有 ${primaries.length} 个实心主按钮（${primaries.map(el=>(el.innerText||'').trim()).join('、')}），规范要求一个操作区最多一个，其余用描边按钮`);
+      const ids=[...root.querySelectorAll('table tbody tr td:first-child')].filter(vis).map(td=>(td.innerText||'').trim()).filter(t=>t.length>2);
+      const dup=[...new Set(ids.filter((x,i)=>ids.indexOf(x)!==i))];
+      if(dup.length)add('数据',`「${name}」表格第一列有重复编号：${dup.slice(0,3).join('、')}（编号要唯一，新增时也不能撞号）`);
+      if(document.documentElement.scrollWidth>innerWidth+2)add('布局',`「${name}」页面横向超出 ${document.documentElement.scrollWidth-innerWidth}px，宽度不够时表格要在自己的容器里滚动`);
+      const tried=new Set();
+      const candidates=()=>[...root.querySelectorAll(REAL_CONTROL+',[data-act],[data-action],.lnk')].filter(el=>root.isConnected&&vis(el)&&!el.disabled&&outside(el)&&!inSkipZone(el)&&!inChrome(el));
+      for(let k=0;k<40&&Date.now()-t0<32000;k++){
+        if(location.hash!==r.hash&&r.hash)await go(r.hash);
+        const b=candidates().find(el=>!tried.has(labelOf(el)));if(!b)break;
+        const label=labelOf(b);tried.add(label);
+        // 已经是当前状态的（当前页码、已选中的「日」、没东西可重置）点了本来就不会变，不算没反应
+        const current=b.matches('[aria-current]:not([aria-current=false]),[aria-selected=true],[aria-pressed=true]')||ACTIVE.test(String(b.className));
+        if(current||/^(重置|查询|搜索|刷新|清空)/.test(label.replace(/^表格行 · /,'')))continue;
+        const snap=snapshot(),sig=stateSig(),fb=feedback(),at=Date.now(),hash=location.hash;
+        try{b.click();}catch{}
+        await sleep(280);clicked++;
+        const errs=errSince(at);if(errs.length)add('报错',`「${name}」点「${label}」报错：${errs[0]}`);
+        const open=topOpen(snap);
+        if(open){if(!await closeAll(snap))add('交互',`「${name}」点「${label}」打开的弹窗关不掉（没有关闭按钮，或者按 Esc、点取消都没反应）`);}
+        else if(stateSig()===sig&&feedback()===fb&&location.hash===hash&&!errs.length)add('交互',`「${name}」的「${label}」点了没有任何反应（要么接上真实行为，要么给一个演示提示）`);
+      }
+    }
+    await go(list[0].hash);
+    return {issues,clicked,routes:list,ms:Date.now()-t0};
+  }
   let probeBase=null,probeSig='';
   async function probeInit(full){
     await sleep(50);probeBase=snapshot();probeSig=pageSig();
@@ -777,6 +831,7 @@ _TEMPLATE = r'''
     if(m.type==='PA_PROBE_ROUTES'){send('PROBE_REPLY',{id:m.id,routes:routesOf(),current:location.hash,currentTitle:activeNav()||pageTitle()});return;}
     if(m.type==='PA_PROBE_NAV'){const home=location.hash,homeTitle=activeNav()||pageTitle();discoverNav().then(routes=>send('PROBE_REPLY',{id:m.id,routes,current:home,currentTitle:homeTitle}),()=>send('PROBE_REPLY',{id:m.id,routes:[]}));return;}
     if(m.type==='PA_PROBE_INIT'){if(Array.isArray(m.routes))knownRoutes=m.routes;probeInit(!!m.full).then(r=>send('PROBE_REPLY',{id:m.id,...r}),err=>send('PROBE_REPLY',{id:m.id,ok:false,error:String(err)}));return;}
+    if(m.type==='PA_SELFTEST'){selfTest().then(r=>send('PROBE_REPLY',{id:m.id,...r}),err=>send('PROBE_REPLY',{id:m.id,issues:[],error:String(err)}));return;}
     if(m.type==='PA_PROBE_TRY'){probeTry(m.path||[],m.step).then(r=>send('PROBE_REPLY',{id:m.id,...r}),err=>send('PROBE_REPLY',{id:m.id,ok:false,error:String(err),needReload:true}));return;}
     if(m.type==='PA_REPLAY'){replay(m.path||[]).then(r=>send('REPLAYED',r),()=>send('REPLAYED',{ok:false,at:0}));return;}
     if(m.type==='PA_SET_MODE'){if(m.mode!==mode)clearInk();mode=m.mode;hover=null;dragStart=null;dragging=false;if(m.mode==='interact')picked=[];if(dragBox)dragBox.style.display='none';paint();}

@@ -677,7 +677,7 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
                                        "用 replace_source_text 替换占位：\n"
                                        "1. /*PA:NAV*/ 后面那行菜单配置 → 这次要的一级分组和二级页面（key 就是 URL hash）\n"
                                        "2. /*PA:PAGES*/ 后面的 home(){...} → 每个二级页面一个方法，返回 pageShell(标题, 说明, 内容HTML, 右上按钮HTML)\n"
-                                       "3. /*PA:BIND*/ 函数体 → 按 page 绑定这一页的按钮、筛选、行操作\n"
+                                       "3. /*PA:BIND*/ 函数体 → 按 page 绑定这一页的按钮、筛选、行操作（或 PageEvents.on(page, …)；不要 document.addEventListener，会串页）\n"
                                        "组件直接用 ZeroUI.Button / Tag / Field / Pager / Empty / Toast / Modal / ConfirmModal / Drawer / openModal / openDrawer 和 Card()，"
                                        "签名见系统提示里的要点。样式类沿用外壳里的（card、metric-grid、data-table、lnk、tw 等），不要另写一套 CSS。"
                                        "尽量一两次 apply_operations 把整页内容写完，不要拆成十几次小改。"),

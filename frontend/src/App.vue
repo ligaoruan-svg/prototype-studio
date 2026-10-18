@@ -12,6 +12,7 @@ import { buildExpandExport } from './lib/expandExport.js'
 import { previewMessage, PREVIEW_SANDBOX } from './lib/previewMessage.js'
 import { preparePreviewDocument } from './lib/previewDocument.js'
 import { consumeAgentStream, responseError } from './lib/streamAgent.js'
+import { selfTest, selfTestRequest } from './lib/probe.js'
 
 const projects = ref([]), project = ref(null), pageId = ref('')
 const sourceInfo = ref({ source: '', hash: '', tokens: {}, defaults: {}, regions: [] })
@@ -119,6 +120,8 @@ watch(mode, value => {
   if (value !== 'interact' && tool.value === 'browse') tool.value = 'edit'
 })
 // 演示：全屏、收起所有面板，只剩原型本身；Esc 或右上角退出
+// 每次修改的自检结果（按 change_id 挂到对应的结果卡片上；只在这次打开期间有）
+const selftests = ref({})
 const presenting = ref(false)
 // 演示时「退出」按钮别一直压在原型右上角：开始时露 2.5 秒，之后鼠标移到屏幕最上沿再出来
 const exitShown = ref(false)
@@ -563,6 +566,7 @@ async function runAgent(text = '', runtimeFeedback = '', options = {}) {
   busy.value = true; error.value = ''; pendingUser.value = message
   // 截图跟着这一条发出去就算用过了：从输入框上方拿掉，挂到这条消息上；停止或失败再放回来
   const sentRef = reference.value
+  let followUp = ''   // 自检发现问题：这次结束后自动再修一轮（只一轮，修完再查一遍，不再自动修）
   pendingRef.value = sentRef
   if (!text || input.value.trim() === message) input.value = ''
   reference.value = null
@@ -598,6 +602,20 @@ async function runAgent(text = '', runtimeFeedback = '', options = {}) {
     })
     current.result = result
     if (result.changed) { current.status = 'checking'; Object.assign(result, await checkAndCommit(result)); current.committed = true }
+    // 做完自检：改动不小（新做一页、一大块）时，像验收那样把每页按钮点一遍，有问题自动交回去修一轮
+    if (result.changed && current.intent !== 'discuss' && (options.selfReview || (result.diff?.additions || 0) >= 30 || (result.change_count || 0) >= 6)) {
+      status.value = '自检中 · 把每页的按钮点一遍'
+      current.steps.push({ id: 'selftest', label: '做完自检：把每页的按钮点一遍', state: 'running' })
+      const step = current.steps[current.steps.length - 1], html = previewDoc.value
+      const report = await selfTest({ makeDoc: route => makeProbeDoc(route, html), width: canvasWidth.value || 1200 })
+      result.selftest = { ...report, round: options.selfReview ? 2 : 1 }
+      if (result.change_id) selftests.value = { ...selftests.value, [result.change_id]: result.selftest }
+      step.state = 'done'
+      step.label = report.skipped ? '自检没跑完：' + report.skipped
+        : report.issues.length ? `自检发现 ${report.issues.length} 个问题${options.selfReview ? '' : '，接着自动修一轮'}`
+        : `自检通过：${report.routes} 个页面、${report.clicked} 个按钮都点过`
+      if (report.issues.length && !options.selfReview) followUp = selfTestRequest(report.issues)
+    }
     else status.value = result.clarification ? '等待你确认' : result.discussion ? '讨论完成 · 未修改文件' : '没有改动页面'
     lastResult.value = result
     await refresh(false); projects.value = await api('/api/projects')
@@ -626,6 +644,7 @@ async function runAgent(text = '', runtimeFeedback = '', options = {}) {
   } finally {
     current.finished = Date.now(); busy.value = false; pendingUser.value = ''; pendingRef.value = null
     await nextTick(); if (chatBox.value) chatBox.value.scrollTop = chatBox.value.scrollHeight
+    if (followUp) setTimeout(() => runAgent(followUp, '', { intent: 'edit', includeAnnotations: false, selection: null, selfReview: true }), 0)
   }
 }
 // 停止：告诉后台在下一步之前停下。已经改好的部分照常检查、保存，可以一键撤销；还没改就什么都不动
@@ -927,7 +946,7 @@ provide('studio', {
   loading, locked, memoryCount, messages, model, modelMenu, moreMenu,
   openDialog, openLeft, openManagedProject, openMemory, page, pageId, pasteImage, pendingRef,
   pendingUser, playing, pointAt, previewDoc, project, projectName, projects, reference,
-  removeAnnotation, removeComponent, removeSkill, restore, rightOpen, runAgent, saveNote, saveSpec, customSuggestion, selectLayer, hoverLayer, toast,
+  removeAnnotation, removeComponent, removeSkill, restore, rightOpen, runAgent, saveNote, saveSpec, customSuggestion, selftests, selectLayer, hoverLayer, toast,
   saving, selected, selectionPlace, setMode, setTool, shotUrl, showBoard, showChat,
   showGuide, showPanel, showPreview, skillList, smallerRequest, sourceInfo, specDraft, specInput,
   specNotice, specSaved, specTab, stopAgent, switchModel, switchingModel, textEditable, textValue,

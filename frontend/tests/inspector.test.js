@@ -37,3 +37,13 @@ test('全屏演示时画布占满整屏（出过两次空白：画布落进宽 0
   assert.match(css, /\.studio\.presenting \.stale-banner \{ display: none !important; \}/)
   assert.match(app, /hideExitSoon\(2500\)/, '退出按钮露一下就收起，不一直压着原型')
 })
+
+test('做完自检：改动大时把每页按钮点一遍，有问题自动交回去修一轮（只一轮）', () => {
+  const probe = readFileSync(new URL('../src/lib/probe.js', import.meta.url), 'utf8')
+  assert.match(probe, /rpc\('PA_SELFTEST'/)
+  assert.match(probe, /直接打开「\$\{r\.title\}」就报错/, '每页单独直接打开一次')
+  assert.match(bridge, /m\.type==='PA_SELFTEST'/)
+  assert.match(bridge, /翻到第 2 页后/, '查串页')
+  assert.match(app, /if \(report\.issues\.length && !options\.selfReview\) followUp = selfTestRequest\(report\.issues\)/)
+  assert.match(app, /selfReview: true/)
+})

@@ -40,7 +40,7 @@ function probeFrame(doc, width, height, routes = []) {
   // 每试一个按钮从 0.3 秒拖到 3 秒，等待超时就成了「没反应」。放在屏幕里、完全透明、点不到、垫在最底层
   Object.assign(frame.style, { position: 'fixed', left: '0', top: '0', width: width + 'px', height: height + 'px', border: '0', opacity: '0', pointerEvents: 'none', zIndex: '-1' })
   let seq = 0, onLoaded = null
-  const waiters = new Map()
+  const waiters = new Map(), errors = []   // 副本里冒出来的报错：自检要用（直接打开某一页就报错的那种）
   const listener = event => {
     if (event.source !== frame.contentWindow) return
     const data = event.data || {}
@@ -48,6 +48,7 @@ function probeFrame(doc, width, height, routes = []) {
     // LOADED 之后原型自己还会渲染一会儿（路由、初始数据），稍等再动手
     if (data.type === 'LOADED' && onLoaded) { const done = onLoaded; onLoaded = null; setTimeout(done, 450) }
     if (data.type === 'PROBE_REPLY' && waiters.has(data.id)) { waiters.get(data.id)(data); waiters.delete(data.id) }
+    if (data.type === 'RUNTIME_ERROR' && data.message && !errors.includes(data.message)) errors.push(String(data.message).slice(0, 300))
   }
   const load = () => new Promise((resolve, reject) => {
     const timer = setTimeout(() => { onLoaded = null; reject(new Error('原型加载超时')) }, 20_000)
@@ -73,7 +74,7 @@ function probeFrame(doc, width, height, routes = []) {
   }
   window.addEventListener('message', listener)
   document.body.appendChild(frame)
-  return { load, rpc, attempt, routes, get reloads() { return reloads }, dispose() { window.removeEventListener('message', listener); frame.remove() } }
+  return { load, rpc, attempt, routes, errors, get reloads() { return reloads }, dispose() { window.removeEventListener('message', listener); frame.remove() } }
 }
 
 async function begin(probe, width, height) {
@@ -246,4 +247,34 @@ export async function discoverRoutes({ doc, width = 1150, height = 800 }) {
     const routes = nav.routes?.length ? withHome(nav.routes, nav.current || '', nav.currentTitle) : reply.routes || []
     return { routes, current: reply.current || nav.current || '' }
   } finally { probe.dispose() }
+}
+
+// 做完自检：在后台副本里把每个菜单页的按钮点一遍（bridge 里的 selfTest），再把每页单独直接打开一次——
+// 「先渲染、后定义函数」这种错，只有直接打开那一页才冒出来。返回给人看、也能原样交给 AI 修的问题清单
+const wait = ms => new Promise(r => setTimeout(r, ms))
+export async function selfTest({ makeDoc, width = 1200, height = 800, maxRoutes = 10 }) {
+  const main = probeFrame(makeDoc(''), width, height)
+  try {
+    await main.load()
+    const loadErrors = [...main.errors]
+    const reply = await main.rpc('PA_SELFTEST', {}, 45_000)
+    if (reply.timeout) return { issues: [], clicked: 0, routes: 0, skipped: '自检超时' }
+    const issues = [...(reply.issues || [])]
+    loadErrors.forEach(e => issues.unshift({ kind: '报错', text: '页面一打开就报错：' + e }))
+    for (const r of (reply.routes || []).filter(r => r.hash).slice(0, maxRoutes)) {
+      const frame = probeFrame(makeDoc(r.hash), width, height)
+      try { await frame.load(); await wait(250); frame.errors.forEach(e => issues.unshift({ kind: '报错', text: `直接打开「${r.title}」就报错：${e}` })) }
+      catch { /* 打不开的页不在这里报：上面点一遍时已经看过 */ }
+      finally { frame.dispose() }
+    }
+    const seen = new Set()
+    return { issues: issues.filter(i => !seen.has(i.text) && seen.add(i.text)), clicked: reply.clicked || 0, routes: (reply.routes || []).length }
+  } catch (e) {
+    return { issues: [], clicked: 0, routes: 0, skipped: String(e?.message || e) }
+  } finally { main.dispose() }
+}
+// 交给 AI 修的那段话
+export function selfTestRequest(issues) {
+  return '【自检】程序把每个菜单页的按钮都点了一遍，发现下面这些问题。逐条修掉，只改有问题的地方，别动其他内容：\n'
+    + issues.map((it, i) => `${i + 1}. ${it.text}`).join('\n')
 }
