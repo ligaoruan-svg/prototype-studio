@@ -65,12 +65,31 @@ def get(token):
     return entry
 
 
+def failed_draft(token, project_id, page_id):
+    """运行检查没过的那一版（还没保存）：页面没被别的操作改过时，交给 AI 在它的基础上修。"""
+    item = PENDING.get(token or "")
+    if not item or not item.get("failed") or item["expires"] < time.time():
+        return None
+    if item["project_id"] != project_id or item["page_id"] != page_id:
+        return None
+    if digest(storage.read_page(project_id, page_id)) != digest(item["before"]):
+        return None
+    return item
+
+
 def commit(token, runtime_errors, runtime_checked):
     with LOCK:
         item = get(token)
         if not runtime_checked: raise PatchError("尚未完成检查")
         if runtime_errors:
-            del PENDING[token]
+            # 不扔掉：AI 接着在这一版上修报错（以前直接丢，修复只能从头再做一遍，又是几十万 token）。
+            # 同时存一份到 runs/，事后能看到底是哪段代码报的错
+            item["failed"] = [str(e)[:500] for e in runtime_errors][:10]
+            item["expires"] = time.time() + 1800
+            try:
+                storage.save_failed_candidate(item["project_id"], item["after"], item["failed"], item.get("reason", ""))
+            except Exception:
+                pass
             raise PatchError("运行检查失败，已保留上一版："+"；".join(runtime_errors)[:1500])
         pid,page_id = item["project_id"],item["page_id"]
         current = storage.read_page(pid,page_id)

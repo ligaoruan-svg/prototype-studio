@@ -435,15 +435,35 @@ def _trace_rounds(trace: list[dict]) -> list[dict]:
     return rounds
 
 
+def shell_api(shell: str) -> dict:
+    """外壳里现成能用的：组件函数和参数、页面函数、样式类。放进 start_from_shell 的返回里，模型不用再翻源码看怎么写。"""
+    objects = re.findall(r"^\s{2}(\w+):\(\{([^}]*)\}", shell, re.M)          # Button:({label,kind…})=>
+    plain = re.findall(r"^\s{2}(\w+):\((\w[^)]*)\)=>", shell, re.M)          # Toast:(message,type='')=>
+    helpers = re.findall(r"^const (\w+)=\(\{([^}]*)\}\)=>", shell, re.M)
+    funcs = re.findall(r"^function (\w+)\(([^)]*)\)", shell, re.M)
+    css = sorted(set(re.findall(r"(?:^|[},])\.([a-z][\w-]*)", shell.split("</style>")[0], re.M)))
+    sig = lambda args: re.sub(r"=('[^']*'|`[^`]*`|\[\]|\{\}|[\w.]+)", "", args).replace(" ", "")
+    return {"ZeroUI": [f"ZeroUI.{n}({{{sig(a)}}})" for n, a in objects if not n.startswith("_")]
+                      + [f"ZeroUI.{n}({sig(a)})" for n, a in plain if not n.startswith("_")],
+            "helpers": [f"{n}({{{sig(a)}}})" for n, a in helpers] + [f"{n}({a})" for n, a in funcs if n in {"pageShell", "bindPage"}],
+            "events": "PageEvents.on('页面key','click','选择器',(el,e)=>{...})：只在那一页触发",
+            "notes": ["ZeroUI.openModal(ZeroUI.Modal({...}), (close, 确定按钮)=>{...}, 触发按钮)：校验不过就 return，不调 close",
+                      "改完数据后 Router.render() 重画当前页；每页的状态放自己的对象里（const planState={page:1}）",
+                      "不要 location.reload()、不要在 document 上挂 click 监听"],
+            "css": css[:120]}
+
+
 def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, model: str,
               base_url: str = "https://api.deepseek.com", selection: dict | None = None,
               runtime_feedback: str = "", reference: dict | None = None,
               max_tokens: int = 32000, context_budget: int = 200_000, max_rounds: int = 24,
               on_event=None, intent: str = 'auto', include_annotations: bool = True,
-              stream: bool = True, should_stop=None, scene: dict | None = None, trace: list | None = None) -> dict[str, Any]:
+              stream: bool = True, should_stop=None, scene: dict | None = None, trace: list | None = None,
+              start_source: str | None = None) -> dict[str, Any]:
     emit = on_event or (lambda event: None)
     trace = [] if trace is None else trace
     plan: list[dict] = []   # 当前计划：程序按每轮的修改自动往前推，不用模型一轮轮调 update_plan
+    shell_fresh = None   # 刚放进来、还没写内容的外壳：这时候不让翻源码
     intent = resolve_intent(user_message, intent)
     read_only = intent == 'discuss'
     tools = [spec for spec in TOOL_SPECS if not (read_only and spec['function']['name'] in {'apply_operations', 'report_result', 'update_plan', 'start_from_shell'})]
@@ -464,6 +484,10 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
     for ann in anns:
         ann['name'] = element_name(ann)
     source = working_source = storage.read_page(project_id, page_id)
+    # 修上一版的报错：从那一版（改好了、但运行检查没过、还没保存）接着改，提交时仍和已保存的页面比
+    repairing = bool(start_source) and start_source != source
+    if repairing:
+        working_source = start_source
     # 点选 / 框选的目标先在源码里对好行号：AI 第一眼就知道去哪几行看，不用一段段翻
     for ann in anns:
         ann['source_lines'] = locate_lines(source, ann)
@@ -477,9 +501,12 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
     # 也会被页面骨架带着跑，答成一份页面状态报告。
     background = (f"当前项目：{meta.get('name')}\n当前页面：{page.get('title')} / v{page.get('version')}\n"
                   f"保存的修改意见：\n{annotation_text}\n定位目标：\n{target_text}\n"
-                  f"页面骨架：{json.dumps(outline(source),ensure_ascii=False)}" + scene_text(scene))
+                  f"页面骨架：{json.dumps(outline(working_source),ensure_ascii=False)}" + scene_text(scene))
     if runtime_feedback and not read_only:
         background += f"\n上次检查错误：{runtime_feedback[:2000]}"
+    if repairing:
+        background += ("\n现在的页面是你上一次改好、但运行检查报错、还没保存的那一版（已经包含你上次写的全部内容）。"
+                       "只修上面的报错，不要从头再做，也不要重新调 start_from_shell。")
     kickoff = ("以下是背景资料，只在和用户这轮问的事情相关时才用：\n" + background
                + "\n\n———\n用户这轮说的是：\n" + user_message)
     if memory.looks_like_rule(user_message):
@@ -499,7 +526,7 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
     failures = argument_failures = truncations = 0
     incomplete = None
     read_regions, report, question, discussion = set(), None, None, None
-    changed, final_text = False, ""
+    changed, final_text = repairing, ""
     # 只读工具的调用指纹，用来识别"同一段又读一遍"；以及连续多少轮只看不动。
     read_seen, idle_rounds = set(), 0
     nudged = text_nudges = 0   # 「只读不改」的提醒发过几次；只说不调工具被催过几次
@@ -668,6 +695,10 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
                     raise PatchError(f"现在不能用 {fn}；只能用这些：{'、'.join(sorted(offered))}")
                 if read_only and fn in {'apply_operations', 'report_result', 'update_plan', 'start_from_shell'}:
                     output = {'ok':False,'code':'read_only','error':'当前只讨论设计，不允许修改或汇报已修改。请用 answer_user 回答并给出待确认建议。'}
+                elif fn in SOURCE_READS and shell_fresh is not None and working_source == shell_fresh:
+                    # 实测：外壳放好后模型要翻十来轮源码找位置、看函数怎么写，轮次就这么烧光了。外壳内容它不用读
+                    output = {'ok':False,'code':'shell_fresh','error':("外壳刚放好，里面是什么上一步已经告诉你了（组件函数、样式类、三处位置）。"
+                              "不用读源码：直接一次 apply_operations，用 {action:'shell_add', nav, pages, bind, script} 把这页写完。")}
                 elif fn == "inspect_page":
                     from bs4 import BeautifulSoup
                     soup = BeautifulSoup(working_source,"html.parser")
@@ -719,6 +750,7 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
                     if not check["ok"]:
                         raise PatchError("页面外壳本身没通过检查：" + "；".join(check["issues"]))
                     working_source = shell; changed = working_source != source; source_version += 1
+                    shell_fresh = shell
                     read_seen.clear(); read_regions.clear()
                     all_operations.append({"action": "start_from_shell", "skill": skill_name, "path": rel})
                     output = {"ok": True, "chars": len(shell),
@@ -732,7 +764,8 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
                                        "组件直接用 ZeroUI.Button / Tag / Field / Pager / Empty / Toast / Modal / ConfirmModal / Drawer / openModal / openDrawer 和 Card()，"
                                        "签名见系统提示里的要点。样式类沿用外壳里的（card、metric-grid、data-table、lnk、tw 等），不要另写一套 CSS。"
                                        "尽量一两次 apply_operations 把整页内容写完，不要拆成十几次小改。"),
-                              "placeholders": [m for m in ("/*PA:NAV*/", "/*PA:PAGES*/", "/*PA:BIND*/") if m in shell]}
+                              "placeholders": [m for m in ("/*PA:NAV*/", "/*PA:PAGES*/", "/*PA:BIND*/") if m in shell],
+                              "api": shell_api(shell)}
                 elif fn == "search_skill_file":
                     try:
                         whole = skills.read_file(str(args.get("name","")), str(args.get("path","")))

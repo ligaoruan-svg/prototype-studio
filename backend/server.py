@@ -118,6 +118,7 @@ class AgentIn(BaseModel):
     scene: dict | None = None   # 预览现场：停在哪页、最近点过什么、报过什么错
     intent: str = Field(default='auto', pattern='^(auto|discuss|edit)$')
     include_annotations: bool = True
+    repair_pending: str = ''   # 运行检查没过的那一版：在它的基础上修报错，不从头再做
 
 
 class EditIn(BaseModel):
@@ -767,6 +768,7 @@ def agent_stream(project_id: str, body: AgentIn):
     events = queue.Queue()
     run_id = uuid.uuid4().hex[:12]
     stop = RUNS[run_id] = threading.Event()
+    draft = transactions.failed_draft(body.repair_pending, project_id, body.page_id) if body.repair_pending else None
     def work():
         try:
             result = run_agent(project_id, body.page_id, body.message, key, body.model or settings['model'],
@@ -774,7 +776,8 @@ def agent_stream(project_id: str, body: AgentIn):
                                settings['max_tokens'], settings.get('context_budget', 200_000),
                                settings.get('max_rounds', 24),
                                on_event=events.put, intent=body.intent, include_annotations=body.include_annotations, scene=body.scene,
-                               stream=settings.get('stream', True), should_stop=stop.is_set)
+                               stream=settings.get('stream', True), should_stop=stop.is_set,
+                               start_source=(draft or {}).get('after'))
             events.put({'type':'complete','result':result})
             synthesize_later(project_id)
         except Exception as exc:

@@ -561,3 +561,18 @@ def save_run_trace(project_id: str, trace: dict) -> None:
             old.unlink()
         except OSError:
             pass
+
+
+def save_failed_candidate(project_id: str, html: str, errors: list, reason: str = "") -> None:
+    """运行检查没过的候选版本：连同报错存到 runs/，最多留 10 份。"""
+    folder = project_dir(project_id) / "runs"
+    folder.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:6]
+    (folder / f"failed-{stamp}.html").write_text(html, encoding="utf-8")
+    (folder / f"failed-{stamp}.json").write_text(json.dumps({"errors": errors, "reason": reason[:200]}, ensure_ascii=False, indent=1), encoding="utf-8")
+    for old in sorted(folder.glob("failed-*.html"))[:-10]:
+        for p in (old, old.with_suffix(".json")):
+            try:
+                p.unlink()
+            except OSError:
+                pass

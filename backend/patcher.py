@@ -490,6 +490,8 @@ def verify_source(source: str, assertions: list[dict] | None = None) -> dict:
         if hits:
             issues.append(f"全局点击监听：有 {hits} 处 document.addEventListener('click'…)，会串到别的页面；"
                           "交互写进 bindPage(page) 按 page 分开，或用 PageEvents.on('页面key', 'click', 选择器, 处理函数)")
+    if "/*PA:BIND*/" in source and re.search(r"location\.(?:reload|replace|assign)\(|location\.href\s*=|window\.location\s*=", source):
+        issues.append("页面跳转：不要 location.reload() / location.href=…，在预览里会变成「网页无法连接」；重画用 Router.render()，换页用 location.hash")
     syntax_checked = bool(shutil.which("node"))
     for i, tag in enumerate(soup.find_all("script"), 1):
         kind = tag.get("type", "").lower()
@@ -502,6 +504,15 @@ def verify_source(source: str, assertions: list[dict] | None = None) -> dict:
                 issues.append(f"脚本 {i} 语法检查未完成")
             elif problem:
                 issues.append(f"脚本 {i} 语法错误：{problem}")
+    # 几段 <script> 共用一个全局作用域：两段里都写了 const planDevices，单看每段都没错，
+    # 一运行第二段整段报错（Identifier has already been declared），页面就空了。拼起来再查一次
+    classic = [str(tag.string) for tag in soup.find_all("script") if tag.string and not tag.get("src")
+               and tag.get("type", "").lower() in {"", "text/javascript", "application/javascript"}]
+    if syntax_checked and len(classic) > 1 and not any("语法错误" in i for i in issues):
+        problem = _script_issue("", "\n;\n".join(classic))
+        dup = re.search(r"Identifier '([\w$]+)' has already been declared", problem or "")
+        if dup:
+            issues.append(f"脚本之间重复声明：{dup[1]} 在两段 <script> 里都声明了（const / let / class 不能重名），删掉多余的那一份或改个名字")
     for item in assertions or []:
         try:
             matches = soup.select(item.get("selector", ""))

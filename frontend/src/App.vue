@@ -61,6 +61,19 @@ let patchSeq = 0
 const boardMounted = ref(false)   // 展开第一次打开后就一直留着，卡片不用每次重新载入
 const boardOpen = ref(false), boardFocus = ref(null), boardRoute = ref(''), pendingReplay = ref(null), openedModal = ref(null)
 let reloadNonce = 0
+// 预览框载入以后没等到原型的 READY：多半被页面脚本带到了别处（表单提交、location.reload 在 srcdoc 里会变成浏览器错误页）。
+// 重新载入一次源码，别让人对着一张「网页无法连接」
+// READY 在 DOMContentLoaded 就发了，比 iframe 的 load 早：看「上一次 load 以来」有没有收到过
+let lastReadyAt = 0, lastLoadAt = 0, rescued = 0
+function previewLoaded() {
+  const since = lastLoadAt; lastLoadAt = Date.now()
+  setTimeout(() => {
+    if (lastReadyAt > since || !previewDoc.value) { rescued = 0; return }
+    if (rescued++ >= 2) return
+    previewDoc.value = previewDoc.value.replace(/\n<!-- pa-open \d+ -->$/, '') + `\n<!-- pa-open ${++reloadNonce} -->`
+    toast('预览被页面脚本带走了，已重新载入')
+  }, 2500)
+}
 const currentRuns = computed(() => runs.value.filter(r => r.pageId === pageId.value && r.projectId === project.value?.id && !['complete', 'dismissed'].includes(r.status)))
 let toastTimer, loadSequence = 0
 
@@ -381,6 +394,7 @@ async function onMessage(event) {
   const data = event.data || {}
   if (data.source !== 'prototype-agent' || data.projectId !== project.value?.id || data.pageId !== pageId.value) return
   if (data.type === 'READY') {
+    lastReadyAt = Date.now()
     send({ type: 'PA_SET_MODE', mode: mode.value })
     send({ type: 'PA_SET_DRAG', enabled: tool.value === 'comment' })
     send({ type: 'PA_RENDER_MARKERS', annotations: visiblePins() })
@@ -455,8 +469,11 @@ async function checkAndCommit(candidate) {
     status.value = '已保存 · 刚刚'
     return committed
   } catch (e) {
-    pendingHighlights.value = []; previewDoc.value = previousDoc; runtimeErrors.value = baseline
+    pendingHighlights.value = []; runtimeErrors.value = baseline
+    // 候选版本把预览框带到了别处（浏览器错误页），只恢复同一份源码 iframe 不会重载：加个记号强制重载
+    previewDoc.value = previousDoc ? previousDoc.replace(/\n<!-- pa-open \d+ -->$/, '') + `\n<!-- pa-open ${++reloadNonce} -->` : previousDoc
     dropPresync(candidate.pending_id)
+    if (e && typeof e === 'object') e.pending = candidate.pending_id   // 这一版后台还留着：修报错时在它上面接着改
     throw e
   }
 }
@@ -500,6 +517,11 @@ async function edit(prop, value, more = null) {
 // 多选、拉框、在展开卡片里选的不能这样做：预览只会退回成一个元素，甚至因为找不到而把选择清掉
 function reselect() { const s = selected.value; if (s && s.kind !== 'region' && !s.card && !(s.targets?.length > 1)) send({ type: 'PA_SELECT', selector: s.selector }) }
 // 属性面板的图层列表：点一下换成选那一层，移上去在页面上框出来
+// 「让 AI 修复」：后台还留着那一版就在它上面修，没有了（过期、页面被改过）才按原需求重做
+function repairRun(run) {
+  if (run.error?.pending) return runAgent('【修复】刚才那一版运行检查报错了，在它的基础上修掉报错，别的不要动，也不要从头再做。', run.error.detail, { ...run.options, includeAnnotations: false, selection: null, repairPending: run.error.pending })
+  return runAgent(run.request, run.error?.detail || '', run.options)
+}
 function selectLayer(selector) { if (selector) send({ type: 'PA_SELECT', selector }) }
 function hoverLayer(selector) { send({ type: 'PA_HOVER', selector: selector || '' }) }
 async function undo(changeId = '') {
@@ -567,14 +589,14 @@ async function runAgent(text = '', runtimeFeedback = '', options = {}) {
   // 截图跟着这一条发出去就算用过了：从输入框上方拿掉，挂到这条消息上；停止或失败再放回来
   const sentRef = reference.value
   // 自检发现问题：这次结束后自动再修一轮；修完再查，如果修出了新的报错，再修第二轮，之后不再自动修
-  let followUp = '', followRound = 0
+  let followUp = '', followRound = 0, followFeedback = '', followOptions = null
   const selfRound = options.selfReview || 0
   pendingRef.value = sentRef
   if (!text || input.value.trim() === message) input.value = ''
   reference.value = null
   lastResult.value = null; status.value = intent === 'edit' ? '正在读页面' : '思考中'; leftOpen.value = true
   try {
-    const response = await fetch('/api/projects/' + project.value.id + '/agent/stream', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ page_id: pageId.value, message, selection: target, runtime_feedback: runtimeFeedback, reference: sentRef, scene: previewScene(), intent, include_annotations: options.includeAnnotations !== false }) })
+    const response = await fetch('/api/projects/' + project.value.id + '/agent/stream', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ page_id: pageId.value, message, selection: target, runtime_feedback: runtimeFeedback, reference: sentRef, scene: previewScene(), intent, include_annotations: options.includeAnnotations !== false, repair_pending: options.repairPending || '' }) })
     const result = await consumeAgentStream(response, event => {
       if (event.type === 'started' && event.run_id) current.runId = event.run_id
       // 模型服务忙：后台自动等几秒重试，这里只记一笔，让人知道不是卡住了
@@ -640,7 +662,14 @@ async function runAgent(text = '', runtimeFeedback = '', options = {}) {
     }
     current.status = 'failed'
     current.steps.filter(s => s.state === 'running').forEach(s => { s.state = 'error'; s.error = '本次处理已停止' })
-    current.error = { code: e.code || 'network', message: e.message, detail: e.detail || e.message }
+    current.error = { code: e.code || 'network', message: e.message, detail: e.detail || e.message, pending: e.pending || '' }
+    // 改完运行检查报错：自动带着报错、在那一版上修一次（不从头再做）；修完还报错才交给你
+    if (e.code === 'validation' && e.pending && !options.repairPending) {
+      followUp = '【自动修复】刚才那一版运行检查报错了，在它的基础上修掉报错，别的不要动，也不要从头再做。'
+      followFeedback = e.detail || e.message
+      followOptions = { intent: 'edit', includeAnnotations: false, selection: null, repairPending: e.pending }
+      current.error.message = '改完运行检查报错，正在自动修复'
+    }
     if (!input.value.trim()) input.value = message
     if (!reference.value && sentRef) reference.value = sentRef
     status.value = current.intent === 'discuss' ? '本次回复未完成 · 可以重试' : '本次修改未保存'
@@ -648,7 +677,7 @@ async function runAgent(text = '', runtimeFeedback = '', options = {}) {
   } finally {
     current.finished = Date.now(); busy.value = false; pendingUser.value = ''; pendingRef.value = null
     await nextTick(); if (chatBox.value) chatBox.value.scrollTop = chatBox.value.scrollHeight
-    if (followUp) setTimeout(() => runAgent(followUp, '', { intent: 'edit', includeAnnotations: false, selection: null, selfReview: followRound }), 0)
+    if (followUp) setTimeout(() => runAgent(followUp, followFeedback, followOptions || { intent: 'edit', includeAnnotations: false, selection: null, selfReview: followRound }), 0)
   }
 }
 // 停止：告诉后台在下一步之前停下。已经改好的部分照常检查、保存，可以一键撤销；还没改就什么都不动
@@ -950,7 +979,7 @@ provide('studio', {
   loading, locked, memoryCount, messages, model, modelMenu, moreMenu,
   openDialog, openLeft, openManagedProject, openMemory, page, pageId, pasteImage, pendingRef,
   pendingUser, playing, pointAt, previewDoc, project, projectName, projects, reference,
-  removeAnnotation, removeComponent, removeSkill, restore, rightOpen, runAgent, saveNote, saveSpec, customSuggestion, selftests, selectLayer, hoverLayer, toast,
+  removeAnnotation, removeComponent, removeSkill, restore, rightOpen, runAgent, saveNote, saveSpec, customSuggestion, selftests, repairRun, selectLayer, hoverLayer, toast,
   saving, selected, selectionPlace, setMode, setTool, shotUrl, showBoard, showChat,
   showGuide, showPanel, showPreview, skillList, smallerRequest, sourceInfo, specDraft, specInput,
   specNotice, specSaved, specTab, stopAgent, switchModel, switchingModel, textEditable, textValue,
@@ -973,7 +1002,7 @@ provide('studio', {
         <div v-if="view === 'preview'" class="canvas" :class="device">
 
           <ExpandBoard v-if="boardMounted" :class="{ 'view-hidden': !boardOpen }" :aria-hidden="!boardOpen" v-model:focus="boardFocus" v-model:route="boardRoute" :notes="annotations" :patch="cardPatch" :page-name="page?.title" :selection="selected" :mode="mode" @open="openFromBoard" @select="pickFromBoard" @clear="closeSelection" @mode="setMode" @export="requestExport" />
-          <div class="preview-shell" :class="{ 'is-selecting': mode !== 'interact', 'view-hidden': boardOpen }" :aria-hidden="boardOpen"><iframe v-if="previewDoc" ref="previewFrame" title="原型预览" :srcdoc="previewDoc" :sandbox="PREVIEW_SANDBOX"></iframe><div v-else class="empty-canvas"><div class="empty-emblem"><PanelsTopLeft :size="30" :stroke-width="1.4" /></div><h1>给想法一个可操作的样子</h1><p>从已有的 HTML 开始修改，<br>或描述需求，让 AI 帮你搭建第一版。</p><div><button class="primary" @click="openDialog('new')"><Plus :size="16" />新建原型</button><button class="outline" @click="fileInput.click()"><Upload :size="16" />导入原型</button></div><span>支持 HTML、包含多页面的 ZIP</span></div><div v-if="drawing && tool === 'comment' && !boardOpen" class="draw-bar" @keydown.esc.stop="drawClear"><PenLine :size="15" /><input ref="drawInput" v-model="drawNote" maxlength="1000" :placeholder="`给画的 ${drawing.count} 笔写一句说明，比如：这块改成卡片布局`" aria-label="标记说明" @keydown.enter.exact.prevent="drawSend" @keydown.meta.enter.prevent="drawSend"><button class="icon-button" title="撤销一笔" aria-label="撤销一笔" :disabled="!drawing.count || drawBusy" @click="send({ type: 'PA_DRAW_UNDO' })"><Undo2 :size="15" /></button><button class="icon-button" title="重做" aria-label="重做" :disabled="!drawing.redo || drawBusy" @click="send({ type: 'PA_DRAW_REDO' })"><Redo2 :size="15" /></button><button class="quiet" :disabled="drawBusy" @click="drawClear">取消</button><button class="outline" title="先记下，攒几条一起改" :disabled="drawBusy || locked || !drawNote.trim()" @click="drawSave">记下</button><button class="primary" title="回车发送" :disabled="drawBusy || locked || !drawNote.trim()" @click="drawSend"><LoaderCircle v-if="drawBusy" :size="14" class="spin" /><span v-else>发送</span></button></div><div v-if="loading" class="loading-veil"><LoaderCircle class="spin" :size="25" /><span>正在加载原型…</span></div></div>
+          <div class="preview-shell" :class="{ 'is-selecting': mode !== 'interact', 'view-hidden': boardOpen }" :aria-hidden="boardOpen"><iframe v-if="previewDoc" ref="previewFrame" title="原型预览" :srcdoc="previewDoc" :sandbox="PREVIEW_SANDBOX" @load="previewLoaded"></iframe><div v-else class="empty-canvas"><div class="empty-emblem"><PanelsTopLeft :size="30" :stroke-width="1.4" /></div><h1>给想法一个可操作的样子</h1><p>从已有的 HTML 开始修改，<br>或描述需求，让 AI 帮你搭建第一版。</p><div><button class="primary" @click="openDialog('new')"><Plus :size="16" />新建原型</button><button class="outline" @click="fileInput.click()"><Upload :size="16" />导入原型</button></div><span>支持 HTML、包含多页面的 ZIP</span></div><div v-if="drawing && tool === 'comment' && !boardOpen" class="draw-bar" @keydown.esc.stop="drawClear"><PenLine :size="15" /><input ref="drawInput" v-model="drawNote" maxlength="1000" :placeholder="`给画的 ${drawing.count} 笔写一句说明，比如：这块改成卡片布局`" aria-label="标记说明" @keydown.enter.exact.prevent="drawSend" @keydown.meta.enter.prevent="drawSend"><button class="icon-button" title="撤销一笔" aria-label="撤销一笔" :disabled="!drawing.count || drawBusy" @click="send({ type: 'PA_DRAW_UNDO' })"><Undo2 :size="15" /></button><button class="icon-button" title="重做" aria-label="重做" :disabled="!drawing.redo || drawBusy" @click="send({ type: 'PA_DRAW_REDO' })"><Redo2 :size="15" /></button><button class="quiet" :disabled="drawBusy" @click="drawClear">取消</button><button class="outline" title="先记下，攒几条一起改" :disabled="drawBusy || locked || !drawNote.trim()" @click="drawSave">记下</button><button class="primary" title="回车发送" :disabled="drawBusy || locked || !drawNote.trim()" @click="drawSend"><LoaderCircle v-if="drawBusy" :size="14" class="spin" /><span v-else>发送</span></button></div><div v-if="loading" class="loading-veil"><LoaderCircle class="spin" :size="25" /><span>正在加载原型…</span></div></div>
           
         </div>
         <div v-else class="code-panel"><div class="code-toolbar"><Braces :size="15" /><select aria-label="源码区域" v-model="codeRegion"><option value="all">完整文件 · 只读</option><option v-for="region in sourceInfo.regions" :key="region.name" :value="region.name">{{ region.label || '自定义区域' }}</option></select><span>{{ codeText.split('\n').length }} 行</span><button class="quiet" @click="copySource"><Check v-if="codeCopied" :size="14" /><Copy v-else :size="14" />{{ codeCopied ? '已复制' : '复制' }}</button></div><div class="source-scroll"><pre class="line-numbers" aria-hidden="true">{{ lineNumbers }}</pre><pre class="source-code"><code>{{ codeText }}</code></pre></div></div>

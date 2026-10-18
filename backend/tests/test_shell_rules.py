@@ -67,5 +67,18 @@ class 往外壳里加页面(unittest.TestCase):
             apply_operations('<html><head></head><body></body></html>', [self.OP])
 
 
+class 外壳页面的其他规矩(unittest.TestCase):
+    def test_不许整页跳转(self):
+        bad = SHELL.replace('</body>', "<script>function reset(){location.reload()}</script></body>")
+        self.assertTrue(any('页面跳转' in i for i in new_issues(verify_source(SHELL), verify_source(bad))))
+
+    def test_外壳接口摘要(self):
+        from backend.agent import shell_api
+        api = shell_api(SHELL)
+        self.assertIn('ZeroUI.Toast(message,type)', api['ZeroUI'])
+        self.assertIn('ZeroUI.Button({label,kind,icon,id,disabled,loading})', api['ZeroUI'])
+        self.assertIn('data-table', api['css'])
+
+
 if __name__ == '__main__':
     unittest.main()

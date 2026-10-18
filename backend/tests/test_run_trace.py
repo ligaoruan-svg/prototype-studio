@@ -83,5 +83,23 @@ class 运行记录(unittest.TestCase):
         self.assertIn('只剩 3 轮', joined)
 
 
+    def test_外壳刚放好不让翻源码(self):
+        from backend import skill_digest
+        shell = (ROOT / 'prompts/skills/零碳园区_UI_Skill包_v3/assets/页面外壳.html').read_text(encoding='utf-8')
+        old = skill_digest.find_shell
+        skill_digest.find_shell = lambda: ('零碳', 'assets/页面外壳.html', shell)
+        try:
+            add = ('apply_operations', {'operations': [{'action': 'shell_add', 'nav': "{key:'q',label:'配额',items:[{key:'quota',label:'配额'}]}",
+                                                         'pages': "quota(){return pageShell('配额','','<p>配额</p>')}"}]})
+            self.script(msg(('start_from_shell', {})), msg(('search_source', {'query': 'PA:NAV'})), msg(add))
+            out = self.run_agent()
+        finally:
+            skill_digest.find_shell = old
+        t = self.traces()[-1]
+        self.assertFalse(t['rounds'][1]['calls'][0]['ok'], '刚放好外壳就去翻源码：拦下')
+        self.assertTrue(t['rounds'][2]['calls'][0]['ok'])
+        self.assertTrue(out['changed'])
+
+
 if __name__ == '__main__':
     unittest.main()
