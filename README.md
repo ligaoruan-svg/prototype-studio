@@ -138,7 +138,7 @@ cd frontend && npm test
 
 ## 反馈与联系
 
-这是我个人做的项目（[@ligaoruan-svg](https://github.com/ligaoruan-svg)）。用着有问题、哪里不满意、想要什么功能，都欢迎告诉我，我来改：
+我是一名产品经理，这是我个人做的项目（[@ligaoruan-svg](https://github.com/ligaoruan-svg)）。天天画原型、改原型，受够了来回找人改页面，就做了这个工具。用着有问题、哪里不满意、想要什么功能，都欢迎告诉我，我来改：
 
 - **提 Issue**：[在这里新建](../../issues/new)，报 bug、提建议都行。附上截图和你当时对 AI 说的那句话，我能更快定位
 - **发邮件**：[rusnligao@gmail.com](mailto:rusnligao@gmail.com)
@@ -170,6 +170,6 @@ clicking through every button, and every change is a version you can roll back.
 
 **From source**: see [从源码运行](#从源码运行) above — `pip install -e .`, build the frontend, then `make dev`.
 
-**Feedback**: something broken or not to your liking? [Open an issue](../../issues/new) or email [rusnligao@gmail.com](mailto:rusnligao@gmail.com) — I'll fix it.
+**About**: built by a product manager ([@ligaoruan-svg](https://github.com/ligaoruan-svg)) who draws and revises prototypes every day. **Feedback**: something broken or not to your liking? [Open an issue](../../issues/new) or email [rusnligao@gmail.com](mailto:rusnligao@gmail.com) — I'll fix it.
 
 Licensed under [AGPL-3.0](LICENSE).
