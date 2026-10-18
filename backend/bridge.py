@@ -739,6 +739,14 @@ _TEMPLATE = r'''
       const ids=[...root.querySelectorAll('table tbody tr td:first-child')].filter(vis).map(td=>(td.innerText||'').trim()).filter(t=>t.length>2);
       const dup=[...new Set(ids.filter((x,i)=>ids.indexOf(x)!==i))];
       if(dup.length)add('数据',`「${name}」表格第一列有重复编号：${dup.slice(0,3).join('、')}（编号要唯一，新增时也不能撞号）`);
+      // 表格比卡片宽、外面又没有能横向滚的容器：右边几列被裁掉，看不到也滚不到
+      for(const tb of [...root.querySelectorAll('table')].filter(vis).filter(outside)){
+        const tr=tb.getBoundingClientRect();let scroller=false,clip=null;
+        for(let n=tb.parentElement;n&&n!==document.body;n=n.parentElement){const cs=getComputedStyle(n);
+          if(/auto|scroll/.test(cs.overflowX)&&n.scrollWidth>n.clientWidth+1){scroller=true;break;}
+          if(/hidden|clip/.test(cs.overflowX)&&n.getBoundingClientRect().right<tr.right-2){clip=n;break;}}
+        if(!scroller&&clip){add('布局',`「${name}」的表格比所在卡片宽 ${Math.round(tr.right-clip.getBoundingClientRect().right)}px，右边几列被裁掉了、也滚不到：表格要包在 <div class="tw"> 里`);break;}
+      }
       if(document.documentElement.scrollWidth>innerWidth+2)add('布局',`「${name}」页面横向超出 ${document.documentElement.scrollWidth-innerWidth}px，宽度不够时表格要在自己的容器里滚动`);
       const tried=new Set();
       const candidates=()=>[...root.querySelectorAll(REAL_CONTROL+',[data-act],[data-action],.lnk')].filter(el=>root.isConnected&&vis(el)&&!el.disabled&&outside(el)&&!inSkipZone(el)&&!inChrome(el));

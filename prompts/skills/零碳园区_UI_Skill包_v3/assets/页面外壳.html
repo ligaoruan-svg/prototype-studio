@@ -145,7 +145,8 @@ svg{display:block}
 .switch.on{background:var(--primary)}
 .switch.on::after{left:18px}
 .badge{min-width:18px;height:18px;line-height:18px;padding:0 5px;border-radius:9px;background:var(--danger);color:#fff;font-size:11px;text-align:center;display:inline-block}
-.tw{width:100%;overflow-x:auto}
+/* 表格放不下就在自己的容器里横向滚：别的叫法（table-wrap 等）也认，直接放在卡片里的表格卡片自己滚，不会被卡片的圆角裁掉 */
+.tw,.table-wrap,.table-wrapper,.table-container,.table-scroll{width:100%;overflow-x:auto}.card-bd,.card:has(>table){overflow-x:auto}
 table.data-table{width:100%;min-width:1010px;border-collapse:collapse;table-layout:fixed;background:#fff}
 .data-table th,.data-table td{padding-left:12px;padding-right:12px;border-bottom:1px solid var(--line);text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .data-table th{height:31px;padding-top:7px;padding-bottom:7px;line-height:16px;color:var(--text-3);font-weight:400;background:var(--head-bg)}

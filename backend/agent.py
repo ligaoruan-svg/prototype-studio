@@ -449,7 +449,8 @@ def shell_api(shell: str) -> dict:
             "events": "PageEvents.on('页面key','click','选择器',(el,e)=>{...})：只在那一页触发",
             "notes": ["ZeroUI.openModal(ZeroUI.Modal({...}), (close, 确定按钮)=>{...}, 触发按钮)：校验不过就 return，不调 close",
                       "改完数据后 Router.render() 重画当前页；每页的状态放自己的对象里（const planState={page:1}）",
-                      "不要 location.reload()、不要在 document 上挂 click 监听"],
+                      "不要 location.reload()、不要在 document 上挂 click 监听",
+                      "表格包在 <div class=\"tw\"> 里（宽了会横向滚动），不要自己起 table-wrap 之类的类名"],
             "css": css[:120]}
 
 
