@@ -51,7 +51,10 @@ fi
 # 3. 发版本
 TAG="v$VERSION"
 if git ls-remote --tags origin "refs/tags/$TAG" | grep -q .; then
-  echo "标签 $TAG 已经发过，这次不重新打包（要发新版先改 backend/config.py 里的 VERSION）"
+  echo "标签 $TAG 已经发过。"
+  if ask "重新打包这个版本的安装包，替换 Releases 上的附件？"; then
+    for _ in $(seq 1 12); do gh workflow run package.yml --ref "$TAG" >/dev/null 2>&1 && { echo "✓ 已开始重新打包（大约 15 分钟），打完自动替换"; break; }; sleep 5; done
+  fi
 else
   echo "打标签 $TAG：GitHub 会打 Mac / Windows 安装包并发到 Releases（大约 15 分钟）…"
   git tag -a "$TAG" -m "原型工坊 $VERSION" 2>/dev/null

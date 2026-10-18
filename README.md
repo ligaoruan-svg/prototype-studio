@@ -44,9 +44,9 @@
 
 | 系统 | 文件 | 安装 |
 |---|---|---|
-| macOS 11+（Apple 芯片） | `原型工坊-版本号.dmg` | 打开后把「原型工坊」拖进「应用程序」 |
-| Windows 10 / 11（64 位） | `原型工坊-版本号-Windows安装程序.exe` | 双击安装，开始菜单和桌面会有图标 |
-| Windows 免安装 | `原型工坊-版本号-Windows便携版.zip` | 解压后双击 `PrototypeStudio.exe` |
+| macOS 11+（Apple 芯片） | `PrototypeStudio-版本号-macOS.dmg` | 打开后把「原型工坊」拖进「应用程序」 |
+| Windows 10 / 11（64 位） | `PrototypeStudio-版本号-Windows-Setup.exe` | 双击安装，开始菜单和桌面会有图标 |
+| Windows 免安装 | `PrototypeStudio-版本号-Windows-Portable.zip` | 解压后双击 `PrototypeStudio.exe` |
 
 应用没有做开发者签名，**第一次打开**会被系统拦一下：
 
