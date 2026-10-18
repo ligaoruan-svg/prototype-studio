@@ -87,8 +87,19 @@ read -r -p "装到「应用程序」文件夹？[Y/n] " answer
 case "$answer" in
   [nN]*) open -R "$APP" ;;
   *)
+    # 先把旧的停掉、删掉，不然新版装不进去：
+    # 正在开着的原型工坊.app、终端里跑着的浏览器版服务（5173 端口），以及「应用程序」里的旧版本
+    echo "停掉旧版本…"
     osascript -e 'quit app "原型工坊"' >/dev/null 2>&1
-    rm -rf "/Applications/原型工坊.app"
+    sleep 1
+    pkill -f "原型工坊.app/Contents/MacOS/PrototypeStudio" >/dev/null 2>&1
+    lsof -ti tcp:5173 2>/dev/null | xargs kill 2>/dev/null
+    if [ -e "/Applications/原型工坊.app" ]; then
+      echo "删掉旧的 原型工坊.app…"
+      rm -rf "/Applications/原型工坊.app" 2>/dev/null || \
+        osascript -e 'do shell script "rm -rf /Applications/原型工坊.app" with administrator privileges' >/dev/null 2>&1
+      [ -e "/Applications/原型工坊.app" ] && fail "旧版本删不掉：在「应用程序」里把 原型工坊 拖进废纸篓，再双击一次这个脚本"
+    fi
     if ditto "$APP" "/Applications/原型工坊.app"; then
       echo "已装好，可以在「启动台」或「应用程序」里打开 原型工坊。"
       open "/Applications/原型工坊.app"
