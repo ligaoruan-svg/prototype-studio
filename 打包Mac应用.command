@@ -41,18 +41,45 @@ APP="release/原型工坊.app"
 rm -rf "$APP"
 ditto build/dist/PrototypeStudio.app "$APP" || fail "复制应用失败"
 
-# 第一次装：把现在用的项目、模型设置、设计规范、组件和 skill 复制过去（只复制，不动原来的）
+# 应用里不能带你的东西：没有项目、没有模型设置。拿你本机的密钥去整个 .app 里找一遍，找到就不发
+echo "检查应用里有没有带上你的密钥…"
+[ -d "$APP/Contents/Resources/data" ] && fail "应用里混进了 data 文件夹（项目和模型设置），已停止"
+python3 - "$APP" <<'PY' || fail "应用里发现了你的 API 密钥，已停止。不要把这个 .app 发给别人"
+import json, os, sys
+keys = set()
+for path in ("data/config.json",):
+    try:
+        data = json.load(open(path, encoding="utf-8"))
+    except (OSError, ValueError):
+        continue
+    keys |= {data.get("api_key") or ""} | {p.get("api_key") or "" for p in data.get("profiles", [])}
+keys = {k.encode() for k in keys if len(k) >= 8}
+for root, _, files in os.walk(sys.argv[1]):
+    for name in files:
+        try:
+            blob = open(os.path.join(root, name), "rb").read()
+        except OSError:
+            continue
+        if any(k in blob for k in keys):
+            print("  在这里找到了：", os.path.join(root, name)); sys.exit(1)
+PY
+
+# 你自己这台电脑第一次装：把现有的项目、设计规范、组件和 skill 复制过去（只复制，不动原来的）。
+# 模型设置和密钥不复制——应用第一次打开会请你绑定，和别人拿到这个应用时一样
 SUPPORT="$HOME/Library/Application Support/原型工坊"
-if [ ! -e "$SUPPORT/data" ] && [ -d data ]; then
-  echo "把现有的项目和模型设置复制到应用里…"
-  mkdir -p "$SUPPORT/prompts"
-  ditto data "$SUPPORT/data"
+if [ ! -e "$SUPPORT/data" ] && [ -d data/projects ]; then
+  read -r -p "把现在的项目复制到应用里？（模型要在应用里重新绑定）[Y/n] " copy
+  case "$copy" in [nN]*) ;; *)
+  mkdir -p "$SUPPORT/prompts" "$SUPPORT/data"
+  ditto data/projects "$SUPPORT/data/projects"
   [ -f prompts/design-spec.md ] && cp prompts/design-spec.md "$SUPPORT/prompts/"
   for x in skills components; do [ -d "prompts/$x" ] && ditto "prompts/$x" "$SUPPORT/prompts/$x"; done
+  ;; esac
 fi
 
 echo ""
 echo "打好了：$APP"
+echo "这个应用里没有你的项目和模型设置，可以直接发给别人；对方打开后绑定他自己的模型。"
 read -r -p "装到「应用程序」文件夹？[Y/n] " answer
 case "$answer" in
   [nN]*) open -R "$APP" ;;

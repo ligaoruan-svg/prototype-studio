@@ -82,3 +82,31 @@ class 绑定多个模型(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class 全新安装(unittest.TestCase):
+    """发给别人的应用里不带任何人的模型：打开时一个都没绑，要用的人自己绑"""
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.old = config.CONFIG_FILE
+        config.CONFIG_FILE = Path(self.tmp.name) / "config.json"
+
+    def tearDown(self):
+        config.CONFIG_FILE = self.old
+        self.tmp.cleanup()
+
+    def test_没有配置文件时一个模型都没有(self):
+        out = config.public()
+        self.assertFalse(out["has_key"])
+        self.assertEqual(out["profiles"], [])
+
+    def test_自己绑第一个模型(self):
+        out = config.save_profile({**BASE, "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                                   "model": "qwen-plus", "api_key": "sk-own"}, activate=True)
+        self.assertTrue(out["has_key"])
+        self.assertEqual([p["model"] for p in out["profiles"]], ["qwen-plus"])
+        self.assertEqual(out["model"], "qwen-plus")
+
+    def test_第一个也要填密钥(self):
+        with self.assertRaises(ValueError):
+            config.save_profile({**BASE, "api_key": ""}, activate=True)

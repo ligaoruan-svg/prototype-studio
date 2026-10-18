@@ -42,7 +42,8 @@ def _profiles(data: dict) -> list[dict]:
     """老配置没有清单：把当前这一套当成唯一一个。没有 id 的补上（按地址 + 模型算，刷新后不变）。"""
     import hashlib
     items = [dict(p) for p in data.get("profiles", []) if p.get("model") and p.get("base_url")]
-    if not any(_same(p, data) for p in items):
+    # 全新安装（没绑过、也没填过密钥）列表是空的：不能把程序里的默认值当成「已经绑了一个模型」给人看
+    if not any(_same(p, data) for p in items) and (items or data.get("api_key")):
         items.append({k: data[k] for k in PROFILE_KEYS})
     for p in items:
         p.setdefault("id", "md" + hashlib.sha1(f"{p['base_url']}|{p['model']}".encode("utf-8")).hexdigest()[:6])
@@ -113,7 +114,7 @@ def save_profile(values: dict, profile_id: str = "", activate: bool = False):
     prev = next((p for p in items if p["id"] == profile_id), None) if profile_id else None
     if profile_id and not prev:
         raise ValueError("没有这个模型，可能已经删掉了")
-    current = next((p for p in items if _same(p, data)), items[0])
+    current = next((p for p in items if _same(p, data)), items[0] if items else {k: data[k] for k in PROFILE_KEYS})
     entry = _clean(values, prev or current)
     key = str(values.get("api_key") or "").strip()
     if key:
