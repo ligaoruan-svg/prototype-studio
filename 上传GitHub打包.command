@@ -97,10 +97,16 @@ BEFORE=$(last_run)
 # 刚上传的打包配置，GitHub 要过一会儿才认得到（马上启动会报 404），多试几次
 started=""
 for _ in $(seq 1 12); do
-  if gh workflow run package.yml --ref "$BRANCH" 2>/dev/null; then started=1; break; fi
+  if why=$(gh workflow run package.yml --ref "$BRANCH" 2>&1); then started=1; break; fi
   sleep 5
 done
-[ -n "$started" ] || fail "没能启动打包（仓库的 Actions 可能被关了：到仓库网页的 Settings → Actions 打开）"
+if [ -z "$started" ]; then
+  echo "GitHub 的原话：$why"
+  echo "仓库里现在认到的打包流程："; gh workflow list --all 2>&1 | sed 's/^/  /'
+  REPO_URL=$(gh repo view --json url -q .url 2>/dev/null)
+  open "$REPO_URL/actions" 2>/dev/null
+  fail "没能启动打包。已在浏览器打开仓库的 Actions 页面，截图发给 Claude"
+fi
 RUN=""
 for _ in $(seq 1 30); do   # 新的一次运行要过几秒才查得到；别拿成上一次的
   sleep 3; RUN=$(last_run)
