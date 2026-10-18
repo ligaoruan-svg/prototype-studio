@@ -71,13 +71,31 @@ class DesktopTest(unittest.TestCase):
 
     def test_app_bundle_carries_nothing_personal(self):
         # 应用要能发给别人：项目、模型设置、自己装的 skill 和组件都不打进 .app
-        spec_text = (ROOT / 'desktop' / 'prototype_studio.spec').read_text('utf-8')
-        datas = spec_text[spec_text.index('datas = ['):spec_text.index('hidden =')]
-        for personal in ("'data'", "'skills'", "'components'", "os.path.join(ROOT, 'prompts'), 'prompts'"):
-            self.assertNotIn(personal, datas)
+        for spec_name in ('prototype_studio.spec', 'prototype_studio_win.spec'):
+            spec_text = (ROOT / 'desktop' / spec_name).read_text('utf-8')
+            datas = spec_text[spec_text.index('datas = ['):spec_text.index('hidden =')]
+            for personal in ("'data'", "'skills'", "'components'", "os.path.join(ROOT, 'prompts'), 'prompts'"):
+                self.assertNotIn(personal, datas, spec_name)
         script = (ROOT / '打包Mac应用.command').read_text('utf-8')
-        self.assertIn('应用里发现了你的 API 密钥', script)
+        self.assertIn('desktop/release_check.py "$APP"', script)
+        self.assertIn("desktop/release_check.py', str(app)", (ROOT / 'desktop' / 'build_windows.py').read_text('utf-8'))
         self.assertNotIn('ditto data "$SUPPORT/data"', script)   # 模型设置不复制
+
+
+    def test_release_check_finds_personal_stuff(self):
+        spec2 = importlib.util.spec_from_file_location('release_check', ROOT / 'desktop' / 'release_check.py')
+        rc = importlib.util.module_from_spec(spec2); spec2.loader.exec_module(rc)
+        with tempfile.TemporaryDirectory() as tmp:
+            app = Path(tmp) / 'App'
+            (app / 'prompts').mkdir(parents=True)
+            (app / 'prompts' / 'agent-system.md').write_text('规则', 'utf-8')
+            rc.own_keys = lambda: {b'sk-secret-123456'}
+            self.assertEqual(rc.check(app), [])
+            (app / 'lib.bin').write_bytes(b'xx sk-secret-123456 xx')
+            (app / 'prompts' / 'skills').mkdir()
+            (app / 'data' / 'projects').mkdir(parents=True)
+            found = '\n'.join(rc.check(app))
+            self.assertIn('API 密钥', found); self.assertIn('skills', found); self.assertIn('data', found)
 
 
 if __name__ == '__main__':

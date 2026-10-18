@@ -445,7 +445,7 @@ def _script_issue(kind: str, code: str) -> str | None:
     if not node:
         return None
     try:
-        result = subprocess.run([node, "--check", "--input-type=" + ("module" if kind == "module" else "commonjs")], input=code, text=True, capture_output=True, timeout=8)
+        result = subprocess.run([node, "--check", "--input-type=" + ("module" if kind == "module" else "commonjs")], input=code, text=True, encoding="utf-8", errors="replace", capture_output=True, timeout=8)
     except (OSError, subprocess.TimeoutExpired):
         return "unchecked"
     return result.stderr[:900] if result.returncode else ""

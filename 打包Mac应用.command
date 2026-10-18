@@ -2,7 +2,9 @@
 # 双击这个文件，打出一个能放进「应用程序」的 原型工坊.app。
 # 第一次要下载打包工具，需要联网，大概三五分钟；以后改了代码再双击一次就是新版本。
 cd "$(dirname "$0")" || exit 1
-fail() { echo ""; echo "打包没成功：$1"; read -r -p "按回车关闭"; exit 1; }
+# 在 GitHub Actions 这类自动打包的机器上（环境变量 CI 有值）不问问题、不装到本机
+fail() { echo ""; echo "打包没成功：$1"; [ -z "$CI" ] && read -r -p "按回车关闭"; exit 1; }
+ask() { if [ -n "$CI" ]; then REPLY="n"; else read -r -p "$1" REPLY; fi; }
 
 echo "== 打包 原型工坊.app =="
 command -v python3 >/dev/null || fail "没找到 python3，先装 Python 3.10 以上版本"
@@ -47,25 +49,7 @@ echo "检查应用里有没有带上你的密钥…"
 for x in skills components; do
   [ -d "$APP/Contents/Resources/prompts/$x" ] && fail "应用里混进了你装的 $x，已停止"
 done
-python3 - "$APP" <<'PY' || fail "应用里发现了你的 API 密钥，已停止。不要把这个 .app 发给别人"
-import json, os, sys
-keys = set()
-for path in ("data/config.json",):
-    try:
-        data = json.load(open(path, encoding="utf-8"))
-    except (OSError, ValueError):
-        continue
-    keys |= {data.get("api_key") or ""} | {p.get("api_key") or "" for p in data.get("profiles", [])}
-keys = {k.encode() for k in keys if len(k) >= 8}
-for root, _, files in os.walk(sys.argv[1]):
-    for name in files:
-        try:
-            blob = open(os.path.join(root, name), "rb").read()
-        except OSError:
-            continue
-        if any(k in blob for k in keys):
-            print("  在这里找到了：", os.path.join(root, name)); sys.exit(1)
-PY
+python3 desktop/release_check.py "$APP" || fail "应用里发现了你的项目、skill 或 API 密钥，已停止。不要把这个 .app 发给别人"
 
 # 安装包：发给别人的就是这个 .dmg。对方双击打开，把「原型工坊」拖到「应用程序」就装好了
 VERSION=$(python3 -c 'import re;print(re.search(r"VERSION = \"([^\"]+)\"", open("backend/config.py", encoding="utf-8").read()).group(1))')
@@ -80,8 +64,8 @@ rm -rf build/dmg
 # 模型设置和密钥不复制——应用第一次打开会请你绑定，和别人拿到这个应用时一样
 SUPPORT="$HOME/Library/Application Support/原型工坊"
 if [ ! -e "$SUPPORT/data" ] && [ -d data/projects ]; then
-  read -r -p "把现在的项目复制到应用里？（模型要在应用里重新绑定）[Y/n] " copy
-  case "$copy" in [nN]*) ;; *)
+  ask "把现在的项目复制到应用里？（模型要在应用里重新绑定）[Y/n] "
+  case "$REPLY" in [nN]*) ;; *)
   mkdir -p "$SUPPORT/prompts" "$SUPPORT/data"
   ditto data/projects "$SUPPORT/data/projects"
   [ -f prompts/design-spec.md ] && cp prompts/design-spec.md "$SUPPORT/prompts/"
@@ -95,9 +79,9 @@ echo "  安装包（发给别人用这个）：$DMG"
 echo "  应用本体：$APP"
 echo "安装包是空的：没有你的项目、模型、组件和 skill。对方打开 .dmg，把「原型工坊」拖进「应用程序」，"
 echo "第一次打开如果提示「无法验证开发者」：右键点 原型工坊 →「打开」，或在「系统设置 → 隐私与安全性」里点「仍要打开」。"
-read -r -p "装到「应用程序」文件夹？[Y/n] " answer
-case "$answer" in
-  [nN]*) open -R "$DMG" ;;
+ask "装到「应用程序」文件夹？[Y/n] "
+case "$REPLY" in
+  [nN]*) ;;
   *)
     # 先把旧的停掉、删掉，不然新版装不进去：
     # 正在开着的原型工坊.app、终端里跑着的浏览器版服务（5173 端口），以及「应用程序」里的旧版本
@@ -119,5 +103,7 @@ case "$answer" in
       echo "没有写入「应用程序」的权限，已在访达里选中，拖进去就行。"; open -R "$APP"
     fi ;;
 esac
-open -R "$DMG"   # 在访达里选中安装包，发给别人就拖这个文件
-read -r -p "按回车关闭"
+if [ -z "$CI" ]; then
+  open -R "$DMG"   # 在访达里选中安装包，发给别人就拖这个文件
+  read -r -p "按回车关闭"
+fi

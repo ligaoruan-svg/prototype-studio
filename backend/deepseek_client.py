@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -23,6 +24,11 @@ class StreamUnsupported(DeepSeekError):
     """端点不接受 stream + tools —— 可以退回一次性请求重试。"""
 
 
+def _use_curl() -> bool:
+    """Windows 自带的 curl 版本参差（老的 Win10 没有 --fail-with-body），那边一律走 Python 自己的请求"""
+    return os.name != "nt" and bool(shutil.which("curl"))
+
+
 def _curl_request(api_key: str, payload: dict[str, Any], api_url: str, should_stop=None) -> dict[str, Any]:
     curl = shutil.which("curl")
     if not curl:
@@ -43,7 +49,8 @@ def _curl_request(api_key: str, payload: dict[str, Any], api_url: str, should_st
         # 四次都是付了费又扔掉的生成。现在和流式一样等 10 分钟，超时不重试；等的时候也看停止按钮
         process = subprocess.Popen(
             [curl, "--silent", "--show-error", "--fail-with-body", "--http1.1", "--config", "-"],
-            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            encoding="utf-8", errors="replace")   # Windows 默认按 GBK 解码，模型回的中文会变乱码
         out = err = ""
         try:
             deadline, feed = time.time() + 620, config
@@ -214,7 +221,8 @@ def _curl_stream(api_key, payload, api_url, on_delta, should_stop=None):
         )
         process = subprocess.Popen(
             [curl, "--silent", "--show-error", "--fail-with-body", "--http1.1", "--no-buffer", "--config", "-"],
-            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            encoding="utf-8", errors="replace")   # Windows 默认按 GBK 解码，模型回的中文会变乱码
         process.stdin.write(config)
         process.stdin.close()
         seen = []
@@ -336,12 +344,12 @@ def _chat_once(api_key, model, messages, tools, base_url, max_tokens, on_delta, 
     if on_delta:
         streamed = dict(payload, stream=True, stream_options={"include_usage": True})
         try:
-            if shutil.which("curl"):
+            if _use_curl():
                 return _curl_stream(api_key, streamed, api_url, on_delta, should_stop)
             return _urllib_stream(api_key, streamed, api_url, on_delta)
         except StreamUnsupported:
             # 接口不接受 stream + tools：本轮退回一次性返回，不逐字显示，但不失败。
             pass
-    if shutil.which("curl"):
+    if _use_curl():
         return _curl_request(api_key, payload, api_url, should_stop)
     return _urllib_request(api_key, payload, api_url)

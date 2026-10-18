@@ -36,6 +36,23 @@
 - 导出 HTML / ZIP / 展开图会弹出「存储为」对话框
 - 打不开时看 `~/Library/Application Support/原型工坊/logs/app.log`
 
+## Windows 版
+
+Windows 版要在 Windows 电脑上打（PyInstaller 不能跨系统打包）：
+
+1. 那台电脑装好 [Python 3.12](https://www.python.org/downloads/)（安装时勾选 *Add python.exe to PATH*）；
+   想要安装程序的话再装免费的 [Inno Setup 6](https://jrsoftware.org/isdl.php)，不装也能出便携版
+2. 把项目文件夹拷过去（**不要带 `data/`**），双击 **`打包Windows应用.bat`**
+3. 在 `release/` 里得到 `原型工坊-版本号-Windows安装程序.exe` 和 `原型工坊-版本号-Windows便携版.zip`
+
+数据放在 `%LOCALAPPDATA%\原型工坊`；卸载只删程序，数据留着。需要 Windows 10/11 64 位，
+界面用系统自带的 Edge WebView2（Win11 自带，Win10 绝大多数已装；没有的话应用会提示去微软官网装）。
+第一次打开如果提示「Windows 已保护你的电脑」：点「更多信息」→「仍要运行」。
+
+**没有 Windows 电脑**：把代码推到 GitHub（私有仓库也行），把 `desktop/ci/package.yml` 挪到
+`.github/workflows/package.yml`，在仓库的 Actions 里点「打包安装包」，GitHub 的机器会同时打出 Windows 安装程序和 Mac 的 .dmg
+（Mac 版用官方 Python，macOS 11 以上都能开）。GitHub 上没有你的 `data/`，打出来天然是空的。
+
 ## 本机运行（macOS，浏览器版）
 
 在 Finder 里**双击 `启动原型工坊.command`**。首次运行会自动建虚拟环境、装依赖、起服务并打开浏览器；

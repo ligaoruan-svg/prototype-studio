@@ -1,7 +1,8 @@
 """原型工坊桌面版：在本机起服务，开一个原生窗口装界面——双击就用，不用开终端和浏览器。
 
-- 打成 .app 后，项目、模型设置、记忆都放在 ~/Library/Application Support/原型工坊，
-  .app 本身只读，升级时整个替换也不会丢东西
+- 打包后，项目、模型设置、记忆都放在每个用户自己的应用数据目录：
+  Mac 是 ~/Library/Application Support/原型工坊，Windows 是 %LOCALAPPDATA%\\原型工坊。
+  程序本身只读，升级时整个替换也不会丢东西
 - 从源码直接跑（python3 desktop/app.py）用的还是项目目录里的 data/，方便调试
 - 关掉窗口就退出，后台服务一起停
 """
@@ -21,21 +22,38 @@ from pathlib import Path
 
 APP_NAME = '原型工坊'
 FROZEN = getattr(sys, 'frozen', False)
-SUPPORT = Path.home() / 'Library' / 'Application Support' / APP_NAME
+WINDOWS = os.name == 'nt'
+# 用户数据放系统给每个用户的应用数据目录：Mac 在「应用程序支持」，Windows 在 %LOCALAPPDATA%
+if WINDOWS:
+    SUPPORT = Path(os.environ.get('LOCALAPPDATA') or Path.home() / 'AppData' / 'Local') / APP_NAME
+else:
+    SUPPORT = Path.home() / 'Library' / 'Application Support' / APP_NAME
 if FROZEN:
     os.environ.setdefault('PROTOTYPE_STUDIO_HOME', str(SUPPORT))
 else:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 HOME = Path(os.environ.get('PROTOTYPE_STUDIO_HOME') or Path(__file__).resolve().parents[1])
 
-# 从「程序坞」打开的应用拿不到终端里的 PATH：node（脚本语法检查要用）多半装在这些地方
+# 从「程序坞」/开始菜单打开的应用拿不到终端里的 PATH：node（脚本语法检查要用，没有也能用）多半装在这些地方
 def _extend_path() -> None:
-    extra = ['/opt/homebrew/bin', '/usr/local/bin', str(Path.home() / '.volta' / 'bin')]
-    nvm = Path.home() / '.nvm' / 'versions' / 'node'
-    if nvm.is_dir():
-        extra += [str(p / 'bin') for p in sorted(nvm.iterdir(), reverse=True)]
-    parts = os.environ.get('PATH', '/usr/bin:/bin:/usr/sbin:/sbin').split(':')
-    os.environ['PATH'] = ':'.join(parts + [p for p in extra if p not in parts and Path(p).is_dir()])
+    if WINDOWS:
+        extra = [str(Path(os.environ.get(v, '')) / 'nodejs') for v in ('ProgramFiles', 'ProgramFiles(x86)') if os.environ.get(v)]
+    else:
+        extra = ['/opt/homebrew/bin', '/usr/local/bin', str(Path.home() / '.volta' / 'bin')]
+        nvm = Path.home() / '.nvm' / 'versions' / 'node'
+        if nvm.is_dir():
+            extra += [str(p / 'bin') for p in sorted(nvm.iterdir(), reverse=True)]
+    parts = os.environ.get('PATH', '' if WINDOWS else '/usr/bin:/bin:/usr/sbin:/sbin').split(os.pathsep)
+    os.environ['PATH'] = os.pathsep.join(parts + [p for p in extra if p not in parts and Path(p).is_dir()])
+
+
+def _fatal(message: str) -> None:
+    """连窗口都开不了的时候（Windows 缺 WebView2）弹系统对话框，不能双击了没反应"""
+    if WINDOWS:
+        import ctypes
+        ctypes.windll.user32.MessageBoxW(None, message, APP_NAME, 0x10)
+    else:
+        print(message, file=sys.stderr)
 
 
 # .app 没有终端可以打印：输出都记到日志里，出问题时看 ~/Library/Application Support/原型工坊/logs/app.log
@@ -154,7 +172,14 @@ def main() -> None:
     bridge._window = webview.create_window(APP_NAME, f'http://127.0.0.1:{port}/', js_api=bridge,
                                           width=1440, height=900, min_size=(1080, 680),
                                           background_color='#FAF9F5', text_select=True)
-    webview.start(private_mode=False, storage_path=str(HOME / 'webview'))
+    # Windows 要用 Edge 内核（WebView2）。缺了 pywebview 会悄悄退回 IE 内核，界面根本跑不起来，所以指定死
+    options = {'gui': 'edgechromium'} if WINDOWS else {}
+    try:
+        webview.start(private_mode=False, storage_path=str(HOME / 'webview'), **options)
+    except Exception as exc:
+        logging.exception('window failed')
+        _fatal('窗口打不开：' + str(exc) + ('\n\n这台电脑可能缺少 Microsoft Edge WebView2 运行库，'
+                                           '到微软官网搜索「WebView2 Runtime」下载安装后再打开。' if WINDOWS else ''))
     server.should_exit = True
 
 

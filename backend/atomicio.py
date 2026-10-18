@@ -35,13 +35,14 @@ def write_atomic(path, data: str | bytes, mode: int | None = None) -> None:
                 mode = os.stat(path).st_mode & 0o777
             except OSError:
                 mode = 0o600
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
+        # O_BINARY：Windows 上不加会按文本模式写，换行被改成 \r\n
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_BINARY", 0), mode)
         with os.fdopen(fd, "wb") as out:
             out.write(raw)
             out.flush()
             os.fsync(out.fileno())
         os.chmod(tmp, mode)              # os.open 会被 umask 削权，这里补回来
-        os.replace(tmp, path)
+        _replace(tmp, path)
         _sync_dir(path.parent)           # 让这次改名本身也落盘
     except BaseException:
         try:
@@ -49,6 +50,18 @@ def write_atomic(path, data: str | bytes, mode: int | None = None) -> None:
         except OSError:
             pass
         raise
+
+
+def _replace(tmp: Path, path: Path) -> None:
+    """Windows 上目标文件正被别的线程读着时 os.replace 会报「拒绝访问」，稍等重试几次"""
+    for attempt in range(10):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if os.name != "nt" or attempt == 9:
+                raise
+            time.sleep(0.05 * (attempt + 1))
 
 
 def _sync_dir(directory: Path) -> None:

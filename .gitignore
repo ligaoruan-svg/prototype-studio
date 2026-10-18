@@ -18,3 +18,4 @@ Claude outputs/
 # 打包 Mac 应用
 .venv-build/
 build/
+.venv-build-win/
