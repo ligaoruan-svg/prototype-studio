@@ -5,6 +5,7 @@ import json
 import mimetypes
 import re
 import shutil
+import sys
 import zipfile
 import queue
 import threading
@@ -184,8 +185,10 @@ def _code_epoch() -> float:
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "version": config.VERSION, "service": "prototype-agent",
-            "started_epoch": config.STARTED_EPOCH, "code_epoch": _code_epoch()}
+    # 打包成桌面应用后代码就是装进去的那一份，不存在「改了代码没重启」，界面上不提示重启
+    packaged = bool(getattr(sys, "frozen", False))
+    return {"ok": True, "version": config.VERSION, "service": "prototype-agent", "packaged": packaged,
+            "started_epoch": config.STARTED_EPOCH, "code_epoch": 0 if packaged else _code_epoch()}
 
 
 @app.get("/api/config")

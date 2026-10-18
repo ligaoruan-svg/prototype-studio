@@ -962,7 +962,7 @@ watch(mode, () => send({ type: 'PA_SET_MODE', mode: mode.value }))
 // 后台在跑的是旧代码（改过没重启）：页面是新的、接口是旧的，新功能会报「Method Not Allowed」。挂一条提示说清楚怎么办
 const backendStale = ref(false)
 async function checkBackend() {
-  try { const h = await api('/api/health'); backendStale.value = !h.code_epoch ? true : h.code_epoch > h.started_epoch + 1 } catch { /* 连不上另有提示 */ }
+  try { const h = await api('/api/health'); backendStale.value = h.packaged ? false : !h.code_epoch ? true : h.code_epoch > h.started_epoch + 1 } catch { /* 连不上另有提示 */ }
 }
 onMounted(checkBackend)
 onMounted(async () => { window.addEventListener('message', onMessage); window.addEventListener('keydown', keydown); try { model.value = await api('/api/config'); await loadProjects(); if (!model.value.has_key && !model.value.profiles?.length) openDialog('settings') } catch (e) { error.value = e.message } })   // 第一次打开、一个模型都没绑：直接请他绑自己的

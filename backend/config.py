@@ -92,7 +92,8 @@ def _activate(data: dict, profile: dict) -> None:
 
 def public():
     data = load()
-    return {"version": VERSION, "started_at": STARTED_AT,
+    import sys
+    return {"version": VERSION, "started_at": STARTED_AT, "packaged": bool(getattr(sys, "frozen", False)),
             "base_url": data["base_url"], "model": data["model"], "has_key": bool(data["api_key"]),
             "supports_vision": data["supports_vision"], "max_tokens": data['max_tokens'], "stream": data['stream'],
             "context_budget": data['context_budget'], "max_rounds": data['max_rounds'],

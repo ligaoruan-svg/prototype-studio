@@ -105,7 +105,7 @@ function testOne(p) { act('test' + p.id, async () => tested(p.name || p.model, a
     <p v-else-if="done" class="model-done"><Check :size="12" />{{ $t(done) }}</p>
     <label class="vision-option pref"><input type="checkbox" :checked="keepInspector" @change="emit('update:keepInspector', $event.target.checked)">{{ $t('始终展开属性面板') }}</label>
     <div class="settings-note"><ShieldCheck :size="17" /><p>{{ $t('密钥只保存在本机服务配置里，不写进浏览器或原型文件。截图理解要用勾了「能看图片」的模型。测试连接会发一条短消息，可能产生少量费用。') }}</p></div>
-    <p class="field-hint">{{ $t('当前服务 v{0}，{1} 启动——改了后端代码要重启才生效。', [model.version || '?', model.started_at || $t('未知时间')]) }}</p>
+    <p v-if="!model.packaged" class="field-hint">{{ $t('当前服务 v{0}，{1} 启动——改了后端代码要重启才生效。', [model.version || '?', model.started_at || $t('未知时间')]) }}</p>
   </div>
 </template>
 <style scoped>

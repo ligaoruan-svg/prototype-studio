@@ -54,3 +54,20 @@ jobs:
         with:
           name: 原型工坊-Mac
           path: release/*.dmg
+
+  # 推 v* 标签时：两个平台都打完，自动发一个 Release，安装包挂在上面给别人下载
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, mac]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: dist, merge-multiple: true }
+      - name: 发布
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" \
+            --title "原型工坊 ${GITHUB_REF_NAME#v}" \
+            --notes "下载：macOS 用 .dmg（Apple 芯片，macOS 11 以上）；Windows 用安装程序 .exe，或免安装的便携版 .zip。第一次打开的说明见 README。"

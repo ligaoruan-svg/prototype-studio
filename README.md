@@ -1,196 +1,165 @@
-# 原型工坊 v6.0
+<div align="center">
 
-本地运行的原型**修改**工作台。导入已有 HTML / ZIP 原型，在页面里直接交互、点选、拉框，
-像聊天一样说清要怎么改；助手读取真实源码、执行精确补丁、校验通过后才保存新版本。
+<img src="desktop/icon.png" width="96" alt="原型工坊">
 
-只做修改，不做整套生成——它的价值在于「改得准、改错能退」，而不是「一句话出一套系统」。
+# 原型工坊 · Prototype Studio
 
-一切都在本机跑，模型走你自己配置的接口。
+**用说话的方式做可点击的 HTML 原型。** 一句话起一版，在页面上点一下、圈一下告诉 AI 改哪里，
+改完它自己把每个按钮点一遍检查，改错了随时退回。
 
-## 使用流程
+本地运行 · 模型用你自己的 · 中文 / English
 
-1. 导入已有原型（HTML，或包含多页面的 ZIP），或新建一个空白骨架从头写。
-2. 在画布上用「交互 / 点选 / 拉框」三种模式查看和定位（快捷键 H / V / B）。
-3. 选中后可以：在右侧属性面板直接微调（不调用模型），或在输入框写需求。
-4. 需求可以「直接修改」，也可以「先记下」攒成多条修改意见，一次性发送。
-5. 左侧对话区实时显示执行进度；完成后画布高亮改动位置，滚动位置保持不变。
-6. 结果卡片写明改了几处，可以展开前后对比，或一键「撤销这次修改」。
+[下载](#下载安装) · [功能](#它能做什么) · [从源码运行](#从源码运行) · [自己打包](#自己打包) · [English](#english)
 
-提问式的话（「这样设计怎么样？」）默认进入只讨论模式，不会动文件；也可以在输入框上方手动切换。
+![原型工坊：左边和 AI 聊，右边是可点击的原型](docs/images/chat.png)
 
-## 桌面应用（macOS，推荐）
+</div>
 
-在 Finder 里**双击 `打包Mac应用.command`**，几分钟后得到 `原型工坊.app`，脚本会问要不要装进「应用程序」。
-之后像别的软件一样从启动台打开：一个独立窗口，不用开终端和浏览器，关掉窗口就退出。
+## 它能做什么
 
-**发给别人**：同时会生成安装包 `release/原型工坊-版本号.dmg`。对方双击打开，把「原型工坊」拖进「应用程序」即可。
-应用没有做苹果开发者签名，对方第一次打开会提示「无法验证开发者」：右键点应用 →「打开」，或者到「系统设置 → 隐私与安全性」点「仍要打开」，之后就正常了。
+- **一句话起一版**：说「做个退款审核页面」，AI 先梳理业务（谁用、要看什么、要做什么操作），
+  再把菜单、列表、筛选、弹窗搭出来，不是一张空壳；导入了带页面外壳的 skill 包，就照你们的外壳来搭。
+- **指给它看再改**：在原型上**点一下**元素、**按住拖动圈一块**、或者**画几笔**写评论，AI 拿到的是准确的位置，
+  不用在源码里猜。几条意见可以先记下，攒齐了一次交给它。
+- **先聊清楚再动手**：问「这里还缺什么？」只讨论、不改文件，给你一张可勾选的建议清单，
+  勾上要做的一次交给 AI；都不想要就直接写你的想法。
+- **改完自己检查**：每次改动先过结构、脚本和启动检查才保存；改动大时会像用户一样把每页的按钮点一遍，
+  发现报错、关不掉的弹窗、翻页串到别的页面这类问题，自动交回去修一轮。
+- **不花 token 的直接修改**：切到「编辑」，选中元素就能改文字、颜色、字号、间距、宽高（适应 / 固定 / 填满），
+  马上生效，不调用 AI。
+- **一键展开所有弹窗**：「展开」把每个页面里能点开的弹窗、页签、子页面摊成一张图，评审时一眼看全，
+  也能导出成一个 HTML 发给别人。
+- **随时退回**：每次修改都是一个版本；AI 修改、手动微调、版本退回合成一条撤销时间线。
+- **记得你的约定**：说过一次「以后表格都带斑马纹」，它会记下来，这个项目的所有页面都照这个来。
+- **用你们公司的规范**：设计规范、组件库、skill 包都能导入，AI 照抄你们的结构，而不是每次自己发明一个。
+- **中文 / English**：界面在「···」菜单里一键切换；AI 用你提问的语言回复。
 
-- 第一次打包要联网下载打包工具（pywebview、PyInstaller，装在单独的 `.venv-build` 里）
-- **应用里不带任何人的模型和项目**，可以直接发给别人：第一次打开会弹出模型设置，每个人绑自己的服务商和密钥。
-  打包脚本最后会拿你本机的密钥把整个 .app 搜一遍，搜到就停下不让发
-- 项目、模型设置、记忆存在 `~/Library/Application Support/原型工坊`。在你自己电脑上第一次打包时会问要不要把现有项目
-  **复制**过去（原来的不动）；模型不复制，在应用里重新绑一次。以后升级 = 改完代码再双击一次打包脚本，数据不受影响
-- 应用里只有程序本身和默认设计规范。你的项目、模型、记忆、导入的组件库和 skill 包**都不打进去**，别人打开是空的；
-  他们要用自己公司的规范，在「···」→「设计规范」里导入
-- 导出 HTML / ZIP / 展开图会弹出「存储为」对话框
-- 打不开时看 `~/Library/Application Support/原型工坊/logs/app.log`
+| 直接改属性，不调用 AI | 展开这一页的所有弹窗 |
+|---|---|
+| ![编辑模式](docs/images/edit.png) | ![展开图](docs/images/expand.png) |
 
-## Windows 版
+## 下载安装
 
-Windows 版要在 Windows 电脑上打（PyInstaller 不能跨系统打包）：
+到 [Releases](../../releases/latest) 下载：
 
-1. 那台电脑装好 [Python 3.12](https://www.python.org/downloads/)（安装时勾选 *Add python.exe to PATH*）；
-   想要安装程序的话再装免费的 [Inno Setup 6](https://jrsoftware.org/isdl.php)，不装也能出便携版
-2. 把项目文件夹拷过去（**不要带 `data/`**），双击 **`打包Windows应用.bat`**
-3. 在 `release/` 里得到 `原型工坊-版本号-Windows安装程序.exe` 和 `原型工坊-版本号-Windows便携版.zip`
+| 系统 | 文件 | 安装 |
+|---|---|---|
+| macOS 11+（Apple 芯片） | `原型工坊-版本号.dmg` | 打开后把「原型工坊」拖进「应用程序」 |
+| Windows 10 / 11（64 位） | `原型工坊-版本号-Windows安装程序.exe` | 双击安装，开始菜单和桌面会有图标 |
+| Windows 免安装 | `原型工坊-版本号-Windows便携版.zip` | 解压后双击 `PrototypeStudio.exe` |
 
-数据放在 `%LOCALAPPDATA%\原型工坊`；卸载只删程序，数据留着。需要 Windows 10/11 64 位，
-界面用系统自带的 Edge WebView2（Win11 自带，Win10 绝大多数已装；没有的话应用会提示去微软官网装）。
-第一次打开如果提示「Windows 已保护你的电脑」：点「更多信息」→「仍要运行」。
+应用没有做开发者签名，**第一次打开**会被系统拦一下：
 
-**没有 Windows 电脑**：双击 **`上传GitHub打包.command`**。第一次会装 GitHub 命令行工具、在浏览器里登录，
-在你账号下建一个**私有**仓库 `prototype-studio` 并上传代码（不传 `data/`，上传前还会查一遍密钥），
-然后让 GitHub 的电脑同时打 Windows 安装程序和 Mac 的 .dmg，大约 10 分钟后自动下载到 `release/github`。
-这样打出来的 Mac 版用官方 Python，macOS 11 以上都能开。以后改了代码再双击一次就是新版本。
-（私有仓库每月有 2000 分钟免费额度，Mac 机器按 10 倍算，打一次大约用掉 150 分钟。）
+- **macOS**：提示「无法验证开发者」时，右键点应用 →「打开」；或到「系统设置 → 隐私与安全性」点「仍要打开」。
+- **Windows**：提示「Windows 已保护你的电脑」时，点「更多信息」→「仍要运行」。
 
-## 本机运行（macOS，浏览器版）
+不用装 Python、Node 或别的环境。Windows 用系统自带的 Edge WebView2（Win11 都有，Win10 基本都有）。
 
-在 Finder 里**双击 `启动原型工坊.command`**。首次运行会自动建虚拟环境、装依赖、起服务并打开浏览器；
-之后再双击就直接打开。关掉那个终端窗口即停止服务。已经在运行时再双击，只会打开浏览器，不会起第二个。
+### 第一次打开：绑定你自己的模型
 
-习惯命令行的话 `./scripts/start_mac.sh` 效果一样，或者手动：
+应用里不带任何模型和密钥。第一次打开会弹出「模型设置」，填三样东西：
+
+- **接口地址**：任何兼容 OpenAI Chat Completions 的服务都行，比如 DeepSeek、通义千问、智谱、豆包、OpenAI，或者公司内网的模型网关
+- **模型名称**：服务商控制台里的模型名
+- **API 密钥**
+
+模型**必须支持工具调用（function calling）**，否则只能聊天、不能改页面。「保存并测试」会帮你确认。
+要用截图理解，再勾上「能看图片」并选一个视觉模型。可以绑多个模型，在输入框下面一点就切换。
+
+## 隐私
+
+- 所有东西都在你电脑上：项目、版本、对话、记忆、模型设置。
+  Mac 在 `~/Library/Application Support/原型工坊`，Windows 在 `%LOCALAPPDATA%\原型工坊`。卸载应用不会删它们。
+- 除了你绑定的模型接口，不会把任何内容发到别处。
+- API 密钥只存在本机配置里，不写进浏览器存储，也不写进原型文件；报错信息里出现密钥会被替换成 `[密钥]`。
+- 安装包是空的：打包脚本会检查，确认没把打包人的项目、密钥、组件、skill 带进去。
+
+## 从源码运行
+
+需要 Python 3.10+ 和 Node.js 18+。
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .                 # 依赖声明在 pyproject.toml
-make dev                         # 等价于 uvicorn backend.server:app --port 5173
+git clone https://github.com/ligaoruan-svg/prototype-studio.git
+cd prototype-studio
+cd frontend && npm ci && node scripts/build-esm.mjs . && cd ..   # 构建界面
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e .
+make dev            # 浏览器打开 http://127.0.0.1:5173
 ```
 
-浏览器打开 <http://127.0.0.1:5173>，右上角齿轮里填模型接口地址、模型名称和 API 密钥。
+macOS 上也可以直接在访达里双击 `启动原型工坊.command`：第一次会自动建环境、装依赖、起服务并打开浏览器。
 
-发布包自带预构建前端（`frontend/dist`），日常使用不需要 npm；从源码仓库运行时先构建一次（见下文「开发前端」）。
+想用桌面窗口而不是浏览器：`pip install pywebview && python3 desktop/app.py`。
+
+## 自己打包
+
+| 想要 | 怎么做 |
+|---|---|
+| Mac 安装包 | 在 Mac 上双击 `打包Mac应用.command`，得到 `release/原型工坊-版本号.dmg` |
+| Windows 安装包 | 在 Windows 上装好 Python 3.12（可选再装 [Inno Setup 6](https://jrsoftware.org/isdl.php)），双击 `打包Windows应用.bat` |
+| 两个都要、只有 Mac | 双击 `上传GitHub打包.command`：代码传到你的 GitHub 仓库，GitHub Actions 同时打两个平台并下载回来 |
+| 发一个新版本 | 推一个 `v*` 标签（如 `v6.1`），Actions 会打包并发到 Releases |
+
+PyInstaller 不能跨系统打包，所以 Windows 版要么在 Windows 上打，要么交给 GitHub Actions。
+打包流程见 `desktop/`：`app.py` 是桌面外壳（本机起服务 + 原生窗口），`release_check.py` 是发出去之前的检查。
 
 ## 目录结构
 
 ```text
-启动原型工坊.command   双击启动：建环境、装依赖、起服务、开浏览器
-pyproject.toml        项目元数据与后端依赖（版本号从 backend/config.py 动态读取）
-Makefile              常用命令：make install / dev / web / build / package / clean
-backend/              FastAPI 服务：补丁、两阶段提交、Agent 循环、错误分类
-  tests/              后端单元测试
-frontend/
-  src/
-    App.vue           顶层：状态、和后端/预览框的通信，provide 给各面板
-    main.js
-    components/
-      layout/         页面骨架：顶栏、左侧对话、左侧属性、各种弹窗
-      chat/           对话里的卡片：执行进度、结果、图片引用
-      expand/         「展开」看板：场景卡、分支、覆盖说明
-      settings/       模型设置、记忆、文件管理
-    lib/              不依赖界面的逻辑：流式解析、预览文档、展开存储与导出
-    styles/           全局样式
-  scripts/            备用构建 build-esm.mjs
-  tests/              前端单元测试
-  dist/               预构建产物（不纳入版本库，构建生成）
-prompts/              系统提示词、设计规范、技能包，可直接改，也可在界面里编辑
-scripts/              命令行启动、发布打包、隔离验收服务器
-docs/                 设计与整改记录
-  archive/            旧版本的说明与审查记录
-  screenshots/        文档用截图
-sample/               新建项目用的骨架页面
-data/                 本机数据：原型源码、版本、修改意见、对话（不纳入版本库）
+backend/        FastAPI 服务：Agent 循环、精确补丁、两阶段提交、自检、记忆
+frontend/       Vue 3 界面（src/components、src/lib、src/locales 翻译表）
+prompts/        系统提示词和默认设计规范，可直接改，也可以在界面里编辑
+desktop/        桌面应用：外壳、打包配置、安装程序、图标、GitHub Actions 配置
+sample/         新建项目用的空白模板
+docs/           设计记录和截图
+data/           本机数据（不进版本库）
 ```
 
 ## 技术要点
 
-- **精确补丁**：模型只返回局部操作（set_text / set_attr / insert_after / replace_source_text / replace_region 等），不返回整页 HTML，大页面不会被截断。
-- **源码偏移定位**：BeautifulSoup 只用于查询，替换按原始字节区间进行，未涉及的源码一字不改。
-- **两阶段提交**：修改先生成候选，通过结构、脚本语法和独立 iframe 启动检查后才落盘、才产生新版本；失败自动退回上一版。
-- **统一撤销**：AI 修改、手动微调、版本退回合并成一条时间线，顶部「撤销」按时间倒序撤。
-- **流式进度**：修改过程通过 SSE 逐条推送步骤，界面显示的是人话，不出现工具名和选择器。
-- **结构化汇报**：模型用 `report_result` 逐条汇报每个修改意见的结果，未完成的意见继续保留在画布上。
+- **精确补丁**：模型只返回局部操作，不返回整页 HTML；替换按原始源码区间进行，没涉及的源码一字不改。
+- **两阶段提交**：修改先生成候选，通过结构、脚本语法和独立 iframe 启动检查后才保存成新版本；没过就保留上一版，
+  并能在报错的那一版基础上让 AI 修。
+- **自检**：保存后在后台把每个菜单页的按钮点一遍，检查报错、翻页串页、主按钮过多、表格被裁、弹窗关不掉、编号重复等，
+  有问题自动交回去修一轮。
+- **流式进度**：执行卡片显示的是人话，不出现工具名和选择器。
 
-## 开发前端（可选）
-
-```bash
-cd frontend
-npm install
-npm run dev     # 开发服务器
-npm test        # 前端单元测试
-make test       # 前端 + 后端单元测试
-npm run build   # 重新生成 dist
-```
-
-`npm run build` 需要 vite 的平台原生依赖。如果当前机器装不上（例如换了架构、没有网络），
-可以用备用构建 `npm run build:esm`：它只用 `@vue/compiler-sfc` 编译，输出浏览器原生 ES 模块，
-功能一致，只是没有压缩和打包。
-
-开发模式下另开一个终端跑后端：`python3 -m uvicorn backend.server:app --port 8900`。
-
-## 换成你们公司的设计规范
-
-顶栏的尺子图标打开「设计规范」，里面是两个标签页：
-
-**规范正文**每次修改都会完整发给模型，是视觉底线。换成你们公司的规范，AI 改出来的就按你们的来。
-**不要清空**——空的等于没有依据，模型会自己发挥。也可以「从现有页面读配色」：上传一份已有
-HTML / CSS，读出里面 `:root` 的 CSS 变量插到末尾，确认后保存。
-
-**组件库**里的东西模型平时只看到清单，要用时才取原文，所以存再多也不拖慢对话。
-
-**记忆**是这个项目的长期约定。你说「以后按钮都用描边」这类话，AI 会自己记一条，
-对这个项目的**所有页面**生效，换页不会忘，关掉重开也还在。一次性的要求（「这次改小一点」）
-和它自己的推测都不会进来。最多 30 条，满了挤掉最早的；不同意的直接删掉。
-往页面里放组件时模型只写组件名，完整原文由服务端填入——它不用把代码抄一遍，这是大页面生成不再动不动就输出超长的关键。
-
-导入的旧原型不会被强制套用规范；规范里这条的优先级高于全部视觉要求。
-
-同一个弹窗下方是**可复用组件**。把你们现成的表格、筛选栏、弹窗存进去（`.html` 是可照抄的代码，
-`.md` 是写法说明），AI 每次只看到一份清单（名字 + 一句话用途），真要用时才调 `read_component`
-取原文。所以存再多也不会拖慢对话，而生成大页面时它会照抄你们的结构，不再每次自己发明一个。
-
-带 `SKILL.md` 的 `.zip` 会按 **skill 包**装上：**整包结构原样保留**，`SKILL.md` 正文里写的
-`references/table.html` 这类相对路径仍然有效。分三层加载——平时常驻提示词的只有一句
-「什么时候用它」（取自 frontmatter 的 `description`，它就是触发器）；对上了才取正文；
-正文引用到哪个文件才取哪个。所以装几个 skill 也不会拖慢对话。
-
-不带 `SKILL.md` 的 zip 退回按零散组件收：挑出 `.html` 和 `.md`，跳过图片和杂项，
-包里重名的文件（多个 `README.md`）带上所属目录区分。
-
-组件文件放在 `prompts/components/`，直接往里丢文件也行。第一个 HTML 注释或 Markdown 标题会被
-当成用途说明，写清楚一点，AI 靠它判断什么时候该用哪个。
-
-## 常用命令
+## 开发与测试
 
 ```bash
-make install    # 安装后端依赖
-make dev        # 启动服务（带热重载）
-make web        # 前端开发服务器，后端另开一个终端跑 8900 端口
-make build      # 重新构建 frontend/dist
-make package    # 打发布 ZIP 到 release/
-make clean      # 清掉 __pycache__
+make test                                         # 前端 + 后端单元测试
+python3 -m unittest discover -s backend/tests -t .
+cd frontend && npm test
 ```
 
-前端单元测试：`cd frontend && npm test`（SSE 解析、预览消息、沙箱权限、结果卡片事件）。
+界面文案写的是中文原文，英文在 `frontend/src/locales/en.js`；新加的中文没有英文翻译时测试会报出来。
+加一种语言 = 加一份 `locales/xx.js`，再在 `src/lib/i18n.js` 的 `LANGUAGES` 里登记。
 
-手动验收：`python3 scripts/serve_fixture.py` 起一个用模拟模型的隔离服务（`http://127.0.0.1:5175`），
-不联网、不消耗模型额度。在对话框里输入关键词可以走到对应路径：
+## 许可证
 
-| 输入包含 | 走到 |
-|---|---|
-| 计划 | 任务清单三步推进 + 逐字输出结论 |
-| 改不了 | 失败路径，给出可一键填入的换种说法 |
-| 检查失败 | 运行检查不通过，自动退回上一版 |
-| 网络失败 / 超长输出 / 卡片 | 网络错误 / 截断提示 / 先提问再改 |
+[AGPL-3.0](LICENSE)。可以自由使用、修改和再分发；修改后的版本分发出去或者做成网络服务给别人用，也要以同样的许可证公开源码。
 
-后端单元测试：`python3 -m unittest discover -s backend/tests -t .`（原子写的崩溃恢复、改动范围检查）。
-两端一起跑：`make test`。
+---
 
-覆盖面还很窄——`patcher.py` / `agent.py` / `transactions.py` 仍然没有测试，改完请用上面的隔离验收手动过一遍。
+## English
 
-## 关于密钥
+**Prototype Studio** turns conversation into clickable HTML prototypes. Describe a page and it drafts one inside a proper
+app shell; click, circle or sketch on the prototype to show the AI exactly what to change; it checks its own work by
+clicking through every button, and every change is a version you can roll back.
 
-API 密钥保存在本机的 `data/config.json`（权限 0600），**不写入浏览器存储，也不写进原型文件**。
-接口返回的错误信息里出现密钥时会被替换成 `[密钥]`。`data/` 整个目录已在 `.gitignore` 中。
+- Runs locally; bring your own model (any OpenAI Chat Completions–compatible API with function calling)
+- Point-and-comment editing, a discuss-first mode with a pick-what-you-want suggestion list, and token-free direct style edits
+- Self-test after each change (runtime errors, broken pagination, clipped tables, dialogs that won't close…) with an automatic fix round
+- Expand view lays out every dialog, tab and sub-page on one board, exportable as a single HTML file
+- Project memory, custom design guidelines, component libraries and skill packs
+- UI in Chinese or English (switch in the ··· menu); the AI replies in the language you write in
+
+![English UI](docs/images/english.png)
+
+**Install**: download the `.dmg` (macOS 11+, Apple silicon) or the Windows installer / portable zip from
+[Releases](../../releases/latest). The apps are unsigned: on macOS right-click → Open the first time; on Windows click
+"More info" → "Run anyway". On first launch, bind your own model (endpoint, model name, API key).
+
+**From source**: see [从源码运行](#从源码运行) above — `pip install -e .`, build the frontend, then `make dev`.
+
+Licensed under [AGPL-3.0](LICENSE).
