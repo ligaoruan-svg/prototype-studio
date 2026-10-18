@@ -49,9 +49,11 @@ Windows 版要在 Windows 电脑上打（PyInstaller 不能跨系统打包）：
 界面用系统自带的 Edge WebView2（Win11 自带，Win10 绝大多数已装；没有的话应用会提示去微软官网装）。
 第一次打开如果提示「Windows 已保护你的电脑」：点「更多信息」→「仍要运行」。
 
-**没有 Windows 电脑**：把代码推到 GitHub（私有仓库也行），把 `desktop/ci/package.yml` 挪到
-`.github/workflows/package.yml`，在仓库的 Actions 里点「打包安装包」，GitHub 的机器会同时打出 Windows 安装程序和 Mac 的 .dmg
-（Mac 版用官方 Python，macOS 11 以上都能开）。GitHub 上没有你的 `data/`，打出来天然是空的。
+**没有 Windows 电脑**：双击 **`上传GitHub打包.command`**。第一次会装 GitHub 命令行工具、在浏览器里登录，
+在你账号下建一个**私有**仓库 `prototype-studio` 并上传代码（不传 `data/`，上传前还会查一遍密钥），
+然后让 GitHub 的电脑同时打 Windows 安装程序和 Mac 的 .dmg，大约 10 分钟后自动下载到 `release/github`。
+这样打出来的 Mac 版用官方 Python，macOS 11 以上都能开。以后改了代码再双击一次就是新版本。
+（私有仓库每月有 2000 分钟免费额度，Mac 机器按 10 倍算，打一次大约用掉 150 分钟。）
 
 ## 本机运行（macOS，浏览器版）
 
