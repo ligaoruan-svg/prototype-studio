@@ -323,6 +323,39 @@ def set_style(source, selector, name, value):
     return append_block(source, f"/* #region manual-styles */\n{rule}\n/* #endregion manual-styles */", "style")
 
 
+SHELL_HOME_NAV = "{key:'biz',label:'业务模块',items:[{key:'home',label:'首页'}]}"
+SHELL_HOME_PAGE = "home(){return pageShell('首页','',`${Card({title:'内容',body:'在这里写这一页的内容'})}`)}"
+SHELL_SCRIPT_AT = "// ===== 业务页面："
+
+
+def shell_add(source: str, nav: str = "", pages: str = "", bind: str = "", script: str = "") -> str:
+    """往页面外壳里加页面：菜单分组、页面方法、交互绑定、数据和辅助函数各放进它的位置，
+    不用先读源码找占位、再一段段 replace——以前一页光找位置就要绕十来轮。外壳自带的「首页」占位顺手删掉。
+    认的是代码里的那几处（const NAV=[/*PA:NAV*/ 等），不是文件开头注释里提到的同名占位。"""
+    nav_at, pages_at, bind_at = "const NAV=[/*PA:NAV*/", "const Pages={/*PA:PAGES*/", "function bindPage(page){/*PA:BIND*/"
+    if not all(m in source for m in (nav_at, pages_at, bind_at)):
+        raise PatchError("页面不是从外壳起步的，没有 const NAV=[/*PA:NAV*/ 等位置；用 replace_source_text 改")
+    if not (nav or pages or bind or script):
+        raise PatchError("shell_add 至少要写 nav、pages、bind、script 中的一项")
+    clean = lambda text: str(text or "").strip().rstrip(",")
+    if nav:
+        source = source.replace(nav_at + "\n  " + SHELL_HOME_NAV + "\n", nav_at + "\n", 1)
+        source = source.replace(nav_at, nav_at + "\n  " + clean(nav) + ",", 1)
+    if pages:
+        source = source.replace(pages_at + "\n  " + SHELL_HOME_PAGE + "\n", pages_at + "\n", 1)
+        source = source.replace(pages_at, pages_at + "\n  " + clean(pages) + ",", 1)
+    if bind:
+        source = source.replace(bind_at, bind_at + "\n  " + str(bind).strip() + "\n", 1)
+    if script:
+        at = source.find(SHELL_SCRIPT_AT)
+        if at < 0:
+            at = source.find("const Pages=")
+        if at < 0:
+            raise PatchError("外壳里找不到放脚本的位置")
+        source = source[:at] + str(script).strip() + "\n" + source[at:]
+    return source
+
+
 def apply_operations(source: str, operations: list[dict]) -> tuple[str, list[str]]:
     logs = []
     original_regions = set(regions(source))
@@ -345,6 +378,8 @@ def apply_operations(source: str, operations: list[dict]) -> tuple[str, list[str
             source = append_block(source, value, action.split("_")[1])
         elif action == "set_token":
             source = set_token(source, name, value)
+        elif action == "shell_add":
+            source = shell_add(source, op.get("nav", ""), op.get("pages", ""), op.get("bind", ""), op.get("script", ""))
         elif action == "set_rule":
             # 给一类元素写样式规则（脚本生成的元素在源码里没有标签，不用定位）
             source = set_style(source, selector, name, value)

@@ -5,7 +5,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-from backend.patcher import verify_source, new_issues   # noqa: E402
+from backend.patcher import verify_source, new_issues, apply_operations, PatchError   # noqa: E402
 
 SHELL = (ROOT / 'prompts/skills/零碳园区_UI_Skill包_v3/assets/页面外壳.html').read_text(encoding='utf-8')
 
@@ -37,6 +37,34 @@ class 外壳规则(unittest.TestCase):
 
     def test_分页列出全部页码(self):
         self.assertIn('Array.from({length:pages}', SHELL)
+
+
+class 往外壳里加页面(unittest.TestCase):
+    OP = {'action': 'shell_add', 'nav': "{key:'carbon',label:'碳管理',items:[{key:'quota',label:'碳配额'}]}",
+          'pages': "quota(){return pageShell('碳配额','',quotaBody())}",
+          'bind': "if(page==='quota'){document.getElementById('content').dataset.ok='1'}",
+          'script': "const quotaState={page:1};function quotaBody(){return '<p>配额</p>'}"}
+
+    def test_一次写完四处_占位首页删掉(self):
+        out, _ = apply_operations(SHELL, [self.OP])
+        self.assertIn("{key:'carbon'", out)
+        self.assertNotIn("label:'首页'", out)
+        self.assertNotIn('在这里写这一页的内容', out)
+        self.assertLess(out.index('function quotaBody'), out.index('const Pages='))
+        self.assertTrue(verify_source(out)['ok'], verify_source(out)['issues'])
+
+    def test_再加一页_前面的留着(self):
+        once, _ = apply_operations(SHELL, [self.OP])
+        two = {'action': 'shell_add', 'nav': "{key:'energy',label:'能耗',items:[{key:'mon',label:'监测'}]},",
+               'pages': "mon(){return pageShell('监测','','<p>监测</p>')},"}
+        out, _ = apply_operations(once, [two])
+        self.assertIn("{key:'carbon'", out); self.assertIn("{key:'energy'", out)
+        self.assertIn("mon(){", out); self.assertIn("quota(){", out)
+        self.assertTrue(verify_source(out)['ok'], verify_source(out)['issues'])
+
+    def test_不是外壳的页面不能用(self):
+        with self.assertRaises(PatchError):
+            apply_operations('<html><head></head><body></body></html>', [self.OP])
 
 
 if __name__ == '__main__':

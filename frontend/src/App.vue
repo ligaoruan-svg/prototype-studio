@@ -618,6 +618,7 @@ async function runAgent(text = '', runtimeFeedback = '', options = {}) {
         : report.issues.length ? `自检发现 ${report.issues.length} 个问题${again ? '，接着自动修一轮' : ''}`
         : `自检通过：${report.routes} 个页面、${report.clicked} 个按钮都点过`
       if (again) { followUp = selfTestRequest(report.issues); followRound = selfRound + 1 }
+      status.value = again ? '自检发现问题 · 马上自动修一轮' : report.issues.length ? `已保存 · 自检还剩 ${report.issues.length} 个问题` : '已保存 · 自检通过'
     }
     else status.value = result.clarification ? '等待你确认' : result.discussion ? '讨论完成 · 未修改文件' : '没有改动页面'
     lastResult.value = result

@@ -57,7 +57,7 @@ TOOL_SPECS = [
         "type": "function",
         "function": {
             "name": "apply_operations",
-            "description": "对当前页面执行局部 DOM/CSS/JS 修改。一次可以提交多条操作。插入现成组件用 insert_component（只写 name 和 selector，原文由系统插入，不要自己抄一遍）。",
+            "description": "对当前页面执行局部 DOM/CSS/JS 修改。一次可以提交多条操作。插入现成组件用 insert_component（只写 name 和 selector，原文由系统插入，不要自己抄一遍）。从页面外壳起步的页面，加新页面用 shell_add 一次写完 nav/pages/bind/script，不用先读源码找位置。",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -72,7 +72,7 @@ TOOL_SPECS = [
                                         "set_text", "set_html", "set_attr", "remove_attr", "add_class",
                                         "remove_class", "insert_before", "insert_after", "replace_outer_html",
                                         "remove", "append_style", "append_script", "replace_source_text",
-                                        "replace_region", "set_token", "set_style", "insert_component"
+                                        "replace_region", "set_token", "set_style", "insert_component", "shell_add"
                                     ],
                                 },
                                 "selector": {"type": "string"},
@@ -83,6 +83,10 @@ TOOL_SPECS = [
                                 "region": {"type": "string"},
                                 "position": {"type": "string", "enum": ["before", "after", "inside", "replace"],
                                              "description": "仅 insert_component 使用：相对 selector 的位置，默认 after"},
+                                "nav": {"type": "string", "description": "仅 shell_add：要加的一级菜单分组，如 {key:'carbon',label:'碳管理',items:[{key:'quota',label:'碳配额管理'}]}"},
+                                "pages": {"type": "string", "description": "仅 shell_add：Pages 里的页面方法，如 quota(){return pageShell('碳配额管理','说明',内容HTML,右上按钮)}"},
+                                "bind": {"type": "string", "description": "仅 shell_add：放进 bindPage(page) 的代码，如 if(page==='quota'){...}"},
+                                "script": {"type": "string", "description": "仅 shell_add：数据、状态对象、辅助函数、PageEvents.on(...)，放在页面方法前面"},
                             },
                             "required": ["action"],
                         },
@@ -718,8 +722,10 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
                     read_seen.clear(); read_regions.clear()
                     all_operations.append({"action": "start_from_shell", "skill": skill_name, "path": rel})
                     output = {"ok": True, "chars": len(shell),
-                              "note": ("外壳已经放进页面（样式、布局、菜单、路由、弹窗、Toast 都在）。接下来只写这三处，"
-                                       "用 replace_source_text 替换占位：\n"
+                              "note": ("外壳已经放进页面（样式、布局、菜单、路由、弹窗、Toast 都在）。**不用再读源码找位置**：\n"
+                                       "下一步直接调一次 apply_operations，用一条 {action:'shell_add', nav, pages, bind, script} 把这页写完——"
+                                       "nav 是菜单分组，pages 是页面方法，bind 是 bindPage 里的代码，script 是数据、状态和辅助函数；外壳的「首页」占位会自动删掉。\n"
+                                       "要改外壳本身的某一处时才用 replace_source_text。三处的含义：\n"
                                        "1. /*PA:NAV*/ 后面那行菜单配置 → 这次要的一级分组和二级页面（key 就是 URL hash）\n"
                                        "2. /*PA:PAGES*/ 后面的 home(){...} → 每个二级页面一个方法，返回 pageShell(标题, 说明, 内容HTML, 右上按钮HTML)\n"
                                        "3. /*PA:BIND*/ 函数体 → 按 page 绑定这一页的按钮、筛选、行操作（或 PageEvents.on(page, …)；不要 document.addEventListener，会串页）\n"
@@ -821,9 +827,14 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
                     steps = args.get("steps")
                     if not isinstance(steps,list) or not 2<=len(steps)<=6:
                         raise PatchError("计划需要 2 到 6 个步骤")
-                    plan[:] = [{"title":str(x.get("title","")).strip()[:60],"status":x.get("status","pending")} for x in steps if isinstance(x,dict)]
-                    if len(plan)!=len(steps) or any(not p["title"] or p["status"] not in {"pending","active","done"} for p in plan):
-                        raise PatchError("每个步骤都要有标题和 pending / active / done 状态")
+                    # 状态写成 in_progress、completed、中文，或者干脆没写，都别拒——以前因为这个白退回两轮
+                    norm = lambda v: ("done" if re.match(r"(?i)(done|complete|finish|已完成|完成)", str(v or "")) else
+                                      "active" if re.match(r"(?i)(active|in.?progress|doing|running|进行|当前)", str(v or "")) else "pending")
+                    plan[:] = [{"title":str(x.get("title") or x.get("step") or x.get("name") or "").strip()[:60],"status":norm(x.get("status"))}
+                               for x in steps if isinstance(x,(dict,str))] if all(isinstance(x,dict) for x in steps) else \
+                              [{"title":str(x).strip()[:60],"status":"pending"} for x in steps]
+                    if any(not p["title"] for p in plan):
+                        raise PatchError("每个步骤都要有标题")
                     brief = str(args.get("brief") or "").strip()[:800]
                     emit({"type":"plan","steps":plan, **({"brief": brief} if brief else {})})
                     output = {"ok":True,"steps":plan,"note":"计划记下了。之后不用再调 update_plan 更新状态，程序会按你的修改自动推进；直接动手写。"}
@@ -881,6 +892,9 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
                 todo[0]["status"] = "done"
                 if len(todo) > 1: todo[1]["status"] = "active"
                 emit({"type":"plan","steps":plan})
+        if not read_only and changed and wrapup_round is None and round_no >= max_rounds - 3:
+            wrapup_round = round_no + 1   # 已经改好了，最后两轮只许汇报，别让它读到轮次耗尽、给用户一句「已达到上限」
+            messages.append({"role":"user","content":"轮次快用完了：现在用 report_result 汇报这次改了什么、还有什么没来得及做。"})
         if not read_only and round_no == max_rounds - 4:
             messages.append({"role":"user","content":
                 "提醒：这次处理只剩 3 轮了。把还没写的部分合并成一次 apply_operations 写完，然后马上用 report_result 汇报；"
@@ -894,7 +908,8 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
             idle_rounds += 1
         if wrapup_round is not None and round_no >= wrapup_round:
             # 收尾轮也没给出提问或结论（参数不对之类）：这时才算真的卡住
-            incomplete = ("stalled", f"连续 {idle_rounds} 轮都在读源码、没有做出任何改动，已经停下")
+            incomplete = (("iterations", "轮次快用完了，没来得及整理汇报") if changed else
+                          ("stalled", f"连续 {idle_rounds} 轮都在读源码、没有做出任何改动，已经停下"))
             break
         if idle_rounds >= WRAPUP_AFTER and wrapup_round is None and not changed:
             # 催过还在读，说明它自己出不来了：不再让它读，逼它把线索交出来——问用户或者说明情况，
