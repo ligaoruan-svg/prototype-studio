@@ -53,7 +53,9 @@ TAG="v$VERSION"
 if git ls-remote --tags origin "refs/tags/$TAG" | grep -q .; then
   echo "标签 $TAG 已经发过。"
   if ask "重新打包这个版本的安装包，替换 Releases 上的附件？"; then
-    for _ in $(seq 1 12); do gh workflow run package.yml --ref "$TAG" >/dev/null 2>&1 && { echo "✓ 已开始重新打包（大约 15 分钟），打完自动替换"; break; }; sleep 5; done
+    # 标签挪到最新代码上再推一次：GitHub 按最新的代码和打包流程重新打，打完替换附件
+    git tag -fa "$TAG" -m "原型工坊 $VERSION" >/dev/null && git push -q -f origin "$TAG" \
+      && echo "✓ 已开始重新打包（大约 15 分钟），打完自动替换 Releases 上的附件" || fail "标签上传失败"
   fi
 else
   echo "打标签 $TAG：GitHub 会打 Mac / Windows 安装包并发到 Releases（大约 15 分钟）…"
