@@ -114,7 +114,7 @@ prompts/        系统提示词和默认设计规范，可直接改，也可以�
 desktop/        桌面应用：外壳、打包配置、安装程序、图标、GitHub Actions 配置
 scripts/        双击就能用的脚本：启动浏览器版、打包 Mac / Windows、上传 GitHub 打包、开源发布
 sample/         新建项目用的空白模板
-docs/           设计记录和截图
+docs/           架构说明（改代码前先看）和 README 截图
 data/           本机数据（不进版本库）
 ```
 

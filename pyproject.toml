@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "prototype-agent"
-description = "原型工坊 · 本地运行的原型修改工作台"
+description = "原型工坊 · 用说话的方式做可点击的 HTML 原型，本地运行"
 readme = "README.md"
 requires-python = ">=3.10"
 dynamic = ["version"]

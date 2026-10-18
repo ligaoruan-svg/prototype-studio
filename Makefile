@@ -1,4 +1,4 @@
-.PHONY: install dev web test build package clean
+.PHONY: install dev web test build mac clean
 
 install:  ## 安装后端依赖（可编辑安装）
 	python3 -m pip install -e .
@@ -16,8 +16,8 @@ test:  ## 跑后端和前端单元测试
 build:  ## 重新构建前端 dist
 	cd frontend && npm run build
 
-package:  ## 打发布 ZIP 到 release/
-	python3 scripts/package_release.py
+mac:  ## 打 Mac 安装包到 release/（Windows 版见 README「自己打包」）
+	bash scripts/打包Mac应用.command
 
 clean:  ## 清掉编译缓存
 	find . -name __pycache__ -type d -not -path "./.venv/*" -exec rm -rf {} +
