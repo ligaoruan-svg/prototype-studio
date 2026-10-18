@@ -67,6 +67,15 @@ for root, _, files in os.walk(sys.argv[1]):
             print("  在这里找到了：", os.path.join(root, name)); sys.exit(1)
 PY
 
+# 安装包：发给别人的就是这个 .dmg。对方双击打开，把「原型工坊」拖到「应用程序」就装好了
+VERSION=$(python3 -c 'import re;print(re.search(r"VERSION = \"([^\"]+)\"", open("backend/config.py", encoding="utf-8").read()).group(1))')
+DMG="release/原型工坊-$VERSION.dmg"
+echo "做安装包…"
+rm -rf build/dmg "$DMG" && mkdir -p build/dmg
+ditto "$APP" "build/dmg/原型工坊.app" && ln -s /Applications "build/dmg/应用程序"
+hdiutil create -volname "原型工坊 $VERSION" -srcfolder build/dmg -ov -format UDZO "$DMG" >/dev/null || fail "安装包生成失败"
+rm -rf build/dmg
+
 # 你自己这台电脑第一次装：把现有的项目、设计规范、组件和 skill 复制过去（只复制，不动原来的）。
 # 模型设置和密钥不复制——应用第一次打开会请你绑定，和别人拿到这个应用时一样
 SUPPORT="$HOME/Library/Application Support/原型工坊"
@@ -81,11 +90,14 @@ if [ ! -e "$SUPPORT/data" ] && [ -d data/projects ]; then
 fi
 
 echo ""
-echo "打好了：$APP"
-echo "这个应用是空的：没有你的项目、模型、组件和 skill，可以直接发给别人；对方打开后绑定他自己的模型。"
+echo "打好了："
+echo "  安装包（发给别人用这个）：$DMG"
+echo "  应用本体：$APP"
+echo "安装包是空的：没有你的项目、模型、组件和 skill。对方打开 .dmg，把「原型工坊」拖进「应用程序」，"
+echo "第一次打开如果提示「无法验证开发者」：右键点 原型工坊 →「打开」，或在「系统设置 → 隐私与安全性」里点「仍要打开」。"
 read -r -p "装到「应用程序」文件夹？[Y/n] " answer
 case "$answer" in
-  [nN]*) open -R "$APP" ;;
+  [nN]*) open -R "$DMG" ;;
   *)
     # 先把旧的停掉、删掉，不然新版装不进去：
     # 正在开着的原型工坊.app、终端里跑着的浏览器版服务（5173 端口），以及「应用程序」里的旧版本
