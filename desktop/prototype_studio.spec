@@ -8,11 +8,14 @@ from PyInstaller.utils.hooks import collect_submodules
 ROOT = os.path.abspath(os.path.join(SPECPATH, '..'))
 VERSION = re.search(r'VERSION = "([^"]+)"', open(os.path.join(ROOT, 'backend', 'config.py'), encoding='utf-8').read()).group(1)
 
+# 只打程序自带的：系统提示词、默认设计规范、界面、新建模板。
+# prompts/skills、prompts/components 是你自己装的（公司的 skill 包、组件库），不打进去——
+# 应用要能发给别人，别人打开看到的必须是空的，他们自己导入自己的
 datas = [
     (os.path.join(ROOT, 'frontend', 'dist'), 'frontend/dist'),
-    (os.path.join(ROOT, 'prompts'), 'prompts'),
-    (os.path.join(ROOT, 'sample'), 'sample'),
-]
+    (os.path.join(ROOT, 'sample', 'starter.html'), 'sample'),
+] + [(os.path.join(ROOT, 'prompts', name), 'prompts')
+     for name in ('agent-system.md', 'discussion-system.md', 'design-spec.md')]
 hidden = (collect_submodules('uvicorn')
           + collect_submodules('backend', filter=lambda name: not name.startswith('backend.tests'))
           + ['multipart', 'python_multipart'])

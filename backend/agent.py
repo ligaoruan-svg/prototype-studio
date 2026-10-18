@@ -84,8 +84,8 @@ TOOL_SPECS = [
                                 "region": {"type": "string"},
                                 "position": {"type": "string", "enum": ["before", "after", "inside", "replace"],
                                              "description": "仅 insert_component 使用：相对 selector 的位置，默认 after"},
-                                "nav": {"type": "string", "description": "仅 shell_add：要加的一级菜单分组，如 {key:'carbon',label:'碳管理',items:[{key:'quota',label:'碳配额管理'}]}"},
-                                "pages": {"type": "string", "description": "仅 shell_add：Pages 里的页面方法，如 quota(){return pageShell('碳配额管理','说明',内容HTML,右上按钮)}"},
+                                "nav": {"type": "string", "description": "仅 shell_add：要加的一级菜单分组，如 {key:'order',label:'订单管理',items:[{key:'refund',label:'退款审核'}]}"},
+                                "pages": {"type": "string", "description": "仅 shell_add：Pages 里的页面方法，如 refund(){return pageShell('退款审核','说明',内容HTML,右上按钮)}"},
                                 "bind": {"type": "string", "description": "仅 shell_add：放进 bindPage(page) 的代码，如 if(page==='quota'){...}"},
                                 "script": {"type": "string", "description": "仅 shell_add：数据、状态对象、辅助函数、PageEvents.on(...)，放在页面方法前面"},
                             },
@@ -239,7 +239,7 @@ WRAPUP_AFTER = 6     # 催过还在读：只留「提问 / 汇报」两个工具
 WRAPUP_TOOLS = {"ask_user", "report_result"}
 WRAPUP_PROMPT = ("别再读源码了，根据已经读到的内容收个尾，三选一：\n"
                  "1. 大致知道问题在哪、还差用户一句话 → ask_user：问题里先用一句话说你查到了什么，"
-                 "选项给 2–3 个最可能的位置或做法，用页面上的叫法（比如「左侧菜单的减碳项目管理」），不写选择器；\n"
+                 "选项给 2–3 个最可能的位置或做法，用页面上的叫法（比如「左侧菜单的订单管理」），不写选择器；\n"
                  "2. 确认页面本来就没问题、不需要改 → report_result 说清依据；\n"
                  "3. 实在找不到 → report_result 写明查了哪几处、为什么对不上，并告诉用户怎么指给你"
                  "（点选那个元素，或在交互模式下把出问题的操作点一遍再发）。")

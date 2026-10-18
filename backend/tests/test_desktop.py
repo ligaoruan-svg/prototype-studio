@@ -69,5 +69,16 @@ class DesktopTest(unittest.TestCase):
             self.assertEqual(out[4:], ['True', 'True'])   # 自带的设计规范复制了一份过去
 
 
+    def test_app_bundle_carries_nothing_personal(self):
+        # 应用要能发给别人：项目、模型设置、自己装的 skill 和组件都不打进 .app
+        spec_text = (ROOT / 'desktop' / 'prototype_studio.spec').read_text('utf-8')
+        datas = spec_text[spec_text.index('datas = ['):spec_text.index('hidden =')]
+        for personal in ("'data'", "'skills'", "'components'", "os.path.join(ROOT, 'prompts'), 'prompts'"):
+            self.assertNotIn(personal, datas)
+        script = (ROOT / '打包Mac应用.command').read_text('utf-8')
+        self.assertIn('应用里发现了你的 API 密钥', script)
+        self.assertNotIn('ditto data "$SUPPORT/data"', script)   # 模型设置不复制
+
+
 if __name__ == '__main__':
     unittest.main()

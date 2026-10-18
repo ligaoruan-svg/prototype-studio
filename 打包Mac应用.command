@@ -44,6 +44,9 @@ ditto build/dist/PrototypeStudio.app "$APP" || fail "复制应用失败"
 # 应用里不能带你的东西：没有项目、没有模型设置。拿你本机的密钥去整个 .app 里找一遍，找到就不发
 echo "检查应用里有没有带上你的密钥…"
 [ -d "$APP/Contents/Resources/data" ] && fail "应用里混进了 data 文件夹（项目和模型设置），已停止"
+for x in skills components; do
+  [ -d "$APP/Contents/Resources/prompts/$x" ] && fail "应用里混进了你装的 $x，已停止"
+done
 python3 - "$APP" <<'PY' || fail "应用里发现了你的 API 密钥，已停止。不要把这个 .app 发给别人"
 import json, os, sys
 keys = set()
@@ -79,7 +82,7 @@ fi
 
 echo ""
 echo "打好了：$APP"
-echo "这个应用里没有你的项目和模型设置，可以直接发给别人；对方打开后绑定他自己的模型。"
+echo "这个应用是空的：没有你的项目、模型、组件和 skill，可以直接发给别人；对方打开后绑定他自己的模型。"
 read -r -p "装到「应用程序」文件夹？[Y/n] " answer
 case "$answer" in
   [nN]*) open -R "$APP" ;;
