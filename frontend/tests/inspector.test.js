@@ -9,7 +9,7 @@ const bridge = readFileSync(new URL('../../backend/bridge.py', import.meta.url),
 
 test('属性按 尺寸 / 布局 / 文字 / 填充 / 边框 / 效果 分组', () => {
   for (const name of ['图层', '尺寸', '布局', '文字', '填充', '边框', '效果'])
-    assert.match(panel, new RegExp(`<summary>${name}`), name)
+    assert.match(panel, new RegExp(`<summary>(\\{\\{ \\$t\\(')?${name}`), name)
 })
 
 test('宽高有 适应 / 固定 / 填满 三种', () => {

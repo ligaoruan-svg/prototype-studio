@@ -21,9 +21,9 @@ defineEmits(['pick', 'edit', 'play', 'refind', 'toggle', 'close', 'open', 'goto'
     </div>
     <!-- 收放只有一个开关，永远在卡片右边同一个位置：收着显示「后续 N ▸」，开着显示「▾ 收起」 -->
     <template v-if="node.children.length">
-      <button type="button" class="more" :class="{ opened: open.has(node.id) }" :aria-expanded="open.has(node.id)" :title="open.has(node.id) ? '收起后面的视图' : `展开「${node.title}」里还能打开的 ${node.children.length} 个视图`" @click="$emit('toggle', node.id)">
-        <template v-if="open.has(node.id)"><ChevronDown :size="13" />收起</template>
-        <template v-else>后续 {{ node.children.length }} 个<ChevronRight :size="13" /></template>
+      <button type="button" class="more" :class="{ opened: open.has(node.id) }" :aria-expanded="open.has(node.id)" :title="open.has(node.id) ? $t('收起后面的视图') : $t('展开「{0}」里还能打开的 {1} 个视图', [$t(node.title), $t(node.children.length)])" @click="$emit('toggle', node.id)">
+        <template v-if="open.has(node.id)"><ChevronDown :size="13" />{{ $t('收起') }}</template>
+        <template v-else>{{ $t('后续 {0} 个', [$t(node.children.length)]) }}<ChevronRight :size="13" /></template>
       </button>
       <div v-if="open.has(node.id)" class="branch-children">
         <BoardBranch v-for="child in node.children" :key="child.id" :node="child" :styles="styles" :frame="frame" :picked="picked" :mode="mode" :open="open" :patch="patch" :focus="focus" :route="route" :focus-width="focusWidth" @pick="$emit('pick', $event)" @edit="$emit('edit', $event)" @play="$emit('play', $event)" @refind="$emit('refind')" @toggle="$emit('toggle', $event)" @close="$emit('close')" @open="$emit('open', $event)" @goto="$emit('goto', $event)" @fix="$emit('fix', $event)" />

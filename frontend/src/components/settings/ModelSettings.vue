@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue'
+import { t } from '../../lib/i18n.js'
 import { Check, Pencil, Plus, ShieldCheck, Trash2, LoaderCircle, Eye, PlugZap } from 'lucide-vue-next'
 // 绑定多个模型：可以同时绑好几家服务商、好几个模型，在输入框下面一点就切。
 // 每个模型一套：显示名、接口地址、模型名、密钥、能不能看图、输出上限。密钥只存在本机服务里。
@@ -64,47 +65,47 @@ function save({ use = false, test = false } = {}) {
 }
 function use(p) { act('use' + p.id, async () => { emit('saved', await call('/api/config/switch', 'POST', { id: p.id })); done.value = `正在用「${p.name || p.model}」` }) }
 function remove(p) {
-  if (!window.confirm(`解绑「${p.name || p.model}」？它的密钥也会从本机删掉。`)) return
+  if (!window.confirm(t('解绑「{0}」？它的密钥也会从本机删掉。', [p.name || p.model]))) return
   act('del' + p.id, async () => { emit('saved', await call(`/api/config/profiles/${p.id}`, 'DELETE')); done.value = '已解绑' })
 }
 function testOne(p) { act('test' + p.id, async () => tested(p.name || p.model, await call('/api/config/test', 'POST', { id: p.id }))) }
 </script>
 <template>
   <div class="models">
-    <p class="dialog-intro">可以绑定多个模型（不同服务商也行），在输入框下面的模型名那里一点就能切换。都需要兼容 Chat Completions 接口。</p>
-    <p v-if="notice" class="form-error" role="alert">{{ notice }}</p>
+    <p class="dialog-intro">{{ $t('可以绑定多个模型（不同服务商也行），在输入框下面的模型名那里一点就能切换。都需要兼容 Chat Completions 接口。') }}</p>
+    <p v-if="notice" class="form-error" role="alert">{{ $t(notice) }}</p>
     <ul class="model-list">
       <li v-for="p in profiles" :key="p.id" :class="{ active: p.active, editing: form?.id === p.id }">
-        <div class="who"><b>{{ p.name || p.model }}</b><small>{{ p.name ? p.model + ' · ' : '' }}{{ p.host }}<template v-if="!p.has_key"> · <em class="warn">缺密钥</em></template></small></div>
-        <span v-if="p.supports_vision" class="tag" title="能看截图"><Eye :size="11" />看图</span>
-        <span v-if="p.active" class="tag on"><Check :size="11" />正在用</span>
-        <button v-else type="button" class="outline small" :disabled="!!busy || !p.has_key" @click="use(p)">用它</button>
-        <button type="button" class="icon-button" title="测试：能不能连上、会不会调用工具（发两条短消息，可能有少量费用）" :disabled="!!busy || !p.has_key" @click="testOne(p)"><LoaderCircle v-if="busy === 'test' + p.id" :size="13" class="spin" /><PlugZap v-else :size="13" /></button>
-        <button type="button" class="icon-button" title="修改" :disabled="!!busy" @click="edit(p)"><Pencil :size="13" /></button>
-        <button type="button" class="icon-button" :title="p.active ? '正在用的不能解绑，先切到别的' : '解绑'" :disabled="!!busy || p.active" @click="remove(p)"><Trash2 :size="13" /></button>
+        <div class="who"><b>{{ p.name || p.model }}</b><small>{{ p.name ? p.model + ' · ' : '' }}{{ $t(p.host) }}<template v-if="!p.has_key"> · <em class="warn">{{ $t('缺密钥') }}</em></template></small></div>
+        <span v-if="p.supports_vision" class="tag" :title="$t('能看截图')"><Eye :size="11" />{{ $t('看图') }}</span>
+        <span v-if="p.active" class="tag on"><Check :size="11" />{{ $t('正在用') }}</span>
+        <button v-else type="button" class="outline small" :disabled="!!busy || !p.has_key" @click="use(p)">{{ $t('用它') }}</button>
+        <button type="button" class="icon-button" :title="$t('测试：能不能连上、会不会调用工具（发两条短消息，可能有少量费用）')" :disabled="!!busy || !p.has_key" @click="testOne(p)"><LoaderCircle v-if="busy === 'test' + p.id" :size="13" class="spin" /><PlugZap v-else :size="13" /></button>
+        <button type="button" class="icon-button" :title="$t('修改')" :disabled="!!busy" @click="edit(p)"><Pencil :size="13" /></button>
+        <button type="button" class="icon-button" :title="p.active ? $t('正在用的不能解绑，先切到别的') : $t('解绑')" :disabled="!!busy || p.active" @click="remove(p)"><Trash2 :size="13" /></button>
       </li>
     </ul>
-    <button v-if="!form" type="button" class="outline add-model" :disabled="!!busy" @click="addNew"><Plus :size="14" />绑定新模型</button>
+    <button v-if="!form" type="button" class="outline add-model" :disabled="!!busy" @click="addNew"><Plus :size="14" />{{ $t('绑定新模型') }}</button>
     <form v-else class="model-form" @submit.prevent="save({ use: !form.id })">
-      <h4>{{ form.id ? '修改「' + (form.name || form.model) + '」' : '绑定新模型' }}</h4>
-      <div class="providers" role="group" aria-label="服务商"><span>服务商</span><button v-for="p in PROVIDERS" :key="p.name" type="button" :class="{ on: provider?.name === p.name }" @click="pickProvider(p)">{{ p.name }}</button><button type="button" :class="{ on: !provider }" @click="form.base_url = ''">其他</button></div>
-      <label>接口地址<input v-model="form.base_url" type="url" required placeholder="https://…/v1"></label>
-      <div class="two"><label>模型名称<small>接口里认的名字</small><input v-model="form.model" required :placeholder="provider?.models?.[0] || '服务商控制台里的模型名'" list="model-name-options"><datalist id="model-name-options"><option v-for="m in provider?.models || []" :key="m" :value="m"></option></datalist></label>
-        <label>显示名<small>只给你自己看，可不填</small><input v-model="form.name" maxlength="30" placeholder="比如：快的 / 能看图的"></label></div>
-      <label>API 密钥<input v-model="form.api_key" type="password" autocomplete="off" :placeholder="keyHint"></label>
-      <div class="limit-grid"><label>单次输出<small>tokens</small><input v-model.number="form.max_tokens" type="number" min="1024" max="131072" step="1024" required></label><label>上下文预算<small>字符</small><input v-model.number="form.context_budget" type="number" min="20000" max="2000000" step="20000" required></label><label>轮次上限<small>次</small><input v-model.number="form.max_rounds" type="number" min="4" max="60" step="2" required></label></div>
-      <p v-if="looksSwapped" class="form-error">模型名称「{{ form.model }}」看着不像模型名，「{{ form.name }}」倒像——是不是填反了？</p>
-      <p class="field-hint">按模型的真实能力填，填大了接口会报错。上下文预算要大于你的组件库，否则读进来就被折叠掉。</p>
-      <label class="vision-option"><input type="checkbox" v-model="form.supports_vision">这个模型能看图片（截图理解）</label>
-      <label class="vision-option"><input type="checkbox" v-model="form.stream">逐字显示回复（接口不支持流式时关掉）</label>
-      <div class="dialog-actions"><button type="button" class="quiet" :disabled="!!busy" @click="form = null">取消</button><button type="button" class="outline" :disabled="!!busy" @click="save({ test: true })"><LoaderCircle v-if="busy === 'test'" :size="13" class="spin" />{{ busy === 'test' ? '测试中…' : '保存并测试' }}</button><button class="primary" :disabled="!!busy">{{ form.id ? '保存' : '保存并使用' }}</button></div>
+      <h4>{{ form.id ? $t('修改「') + (form.name || form.model) + $t('」') : $t('绑定新模型') }}</h4>
+      <div class="providers" role="group" :aria-label="$t('服务商')"><span>{{ $t('服务商') }}</span><button v-for="p in PROVIDERS" :key="p.name" type="button" :class="{ on: provider?.name === p.name }" @click="pickProvider(p)">{{ $t(p.name) }}</button><button type="button" :class="{ on: !provider }" @click="form.base_url = ''">{{ $t('其他') }}</button></div>
+      <label>{{ $t('接口地址') }}<input v-model="form.base_url" type="url" required placeholder="https://…/v1"></label>
+      <div class="two"><label>{{ $t('模型名称') }}<small>{{ $t('接口里认的名字') }}</small><input v-model="form.model" required :placeholder="provider?.models?.[0] || $t('服务商控制台里的模型名')" list="model-name-options"><datalist id="model-name-options"><option v-for="m in provider?.models || []" :key="m" :value="m"></option></datalist></label>
+        <label>{{ $t('显示名') }}<small>{{ $t('只给你自己看，可不填') }}</small><input v-model="form.name" maxlength="30" :placeholder="$t('比如：快的 / 能看图的')"></label></div>
+      <label>{{ $t('API 密钥') }}<input v-model="form.api_key" type="password" autocomplete="off" :placeholder="$t(keyHint)"></label>
+      <div class="limit-grid"><label>{{ $t('单次输出') }}<small>tokens</small><input v-model.number="form.max_tokens" type="number" min="1024" max="131072" step="1024" required></label><label>{{ $t('上下文预算') }}<small>{{ $t('字符') }}</small><input v-model.number="form.context_budget" type="number" min="20000" max="2000000" step="20000" required></label><label>{{ $t('轮次上限') }}<small>{{ $t('次') }}</small><input v-model.number="form.max_rounds" type="number" min="4" max="60" step="2" required></label></div>
+      <p v-if="looksSwapped" class="form-error">{{ $t('模型名称「{0}」看着不像模型名，「{1}」倒像——是不是填反了？', [form.model, form.name]) }}</p>
+      <p class="field-hint">{{ $t('按模型的真实能力填，填大了接口会报错。上下文预算要大于你的组件库，否则读进来就被折叠掉。') }}</p>
+      <label class="vision-option"><input type="checkbox" v-model="form.supports_vision">{{ $t('这个模型能看图片（截图理解）') }}</label>
+      <label class="vision-option"><input type="checkbox" v-model="form.stream">{{ $t('逐字显示回复（接口不支持流式时关掉）') }}</label>
+      <div class="dialog-actions"><button type="button" class="quiet" :disabled="!!busy" @click="form = null">{{ $t('取消') }}</button><button type="button" class="outline" :disabled="!!busy" @click="save({ test: true })"><LoaderCircle v-if="busy === 'test'" :size="13" class="spin" />{{ busy === 'test' ? $t('测试中…') : $t('保存并测试') }}</button><button class="primary" :disabled="!!busy">{{ form.id ? $t('保存') : $t('保存并使用') }}</button></div>
     </form>
-    <p v-if="error" class="form-error" role="alert">{{ error }}</p>
-    <p v-else-if="warn" class="model-warn">{{ warn }}</p>
-    <p v-else-if="done" class="model-done"><Check :size="12" />{{ done }}</p>
-    <label class="vision-option pref"><input type="checkbox" :checked="keepInspector" @change="emit('update:keepInspector', $event.target.checked)">始终展开属性面板</label>
-    <div class="settings-note"><ShieldCheck :size="17" /><p>密钥只保存在本机服务配置里，不写进浏览器或原型文件。截图理解要用勾了「能看图片」的模型。测试连接会发一条短消息，可能产生少量费用。</p></div>
-    <p class="field-hint">当前服务 v{{ model.version || '?' }}，{{ model.started_at || '未知时间' }} 启动——改了后端代码要重启才生效。</p>
+    <p v-if="error" class="form-error" role="alert">{{ $t(error) }}</p>
+    <p v-else-if="warn" class="model-warn">{{ $t(warn) }}</p>
+    <p v-else-if="done" class="model-done"><Check :size="12" />{{ $t(done) }}</p>
+    <label class="vision-option pref"><input type="checkbox" :checked="keepInspector" @change="emit('update:keepInspector', $event.target.checked)">{{ $t('始终展开属性面板') }}</label>
+    <div class="settings-note"><ShieldCheck :size="17" /><p>{{ $t('密钥只保存在本机服务配置里，不写进浏览器或原型文件。截图理解要用勾了「能看图片」的模型。测试连接会发一条短消息，可能产生少量费用。') }}</p></div>
+    <p class="field-hint">{{ $t('当前服务 v{0}，{1} 启动——改了后端代码要重启才生效。', [model.version || '?', model.started_at || $t('未知时间')]) }}</p>
   </div>
 </template>
 <style scoped>

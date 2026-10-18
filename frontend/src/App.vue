@@ -13,6 +13,7 @@ import { previewMessage, PREVIEW_SANDBOX } from './lib/previewMessage.js'
 import { preparePreviewDocument } from './lib/previewDocument.js'
 import { consumeAgentStream, responseError } from './lib/streamAgent.js'
 import { selfTest, selfTestRequest } from './lib/probe.js'
+import { t, dateLocale, locale } from './lib/i18n.js'
 
 const projects = ref([]), project = ref(null), pageId = ref('')
 const sourceInfo = ref({ source: '', hash: '', tokens: {}, defaults: {}, regions: [] })
@@ -301,7 +302,7 @@ const selectionPlace = computed(() => {
   if (t.place) return t.place
   return t.modal ? `${page.value?.title || ''} › ${t.modal}` : ''
 })
-function elementLabel(target) { const kinds = { button: '按钮', input: '输入框', textarea: '输入框', h1: '标题', h2: '标题', p: '文字', a: '链接' }; return target?.kind === 'region' ? `已选中 ${target.targets.length} 个元素` : `${target?.text?.slice(0, 22) || '选中'} · ${kinds[target?.tag] || '区域'}` }
+function elementLabel(target) { const kinds = { button: '按钮', input: '输入框', textarea: '输入框', h1: '标题', h2: '标题', p: '文字', a: '链接' }; return target?.kind === 'region' ? t('已选中 {0} 个元素', [target.targets.length]) : `${target?.text?.slice(0, 22) || t('选中')} · ${t(kinds[target?.tag] || '区域')}` }
 function preparePreview(html) {
   let stored = {}
   try { stored = JSON.parse(localStorage.getItem(runtimeKey()) || '{}') } catch {}
@@ -464,7 +465,7 @@ async function checkAndCommit(candidate) {
     const committed = await post('/api/candidates/' + candidate.pending_id + '/commit', { runtime_checked: true, errors })
     adoptPresync(candidate.pending_id, committed.hash)   // 必须在 previewHash 变之前：别让刚拍好的那页又排队同步一遍
     previewHash.value = committed.hash
-    savedAt.value = new Date().toLocaleTimeString('zh-CN')
+    savedAt.value = new Date().toLocaleTimeString(dateLocale())
     validationDetails.value = candidate.validation?.syntax_checked ? '页面结构、脚本语法及页面启动检查通过；不代表所有交互均已验证' : '页面结构及页面启动检查通过；本机没有执行脚本语法检查'
     status.value = '已保存 · 刚刚'
     return committed
@@ -596,7 +597,7 @@ async function runAgent(text = '', runtimeFeedback = '', options = {}) {
   reference.value = null
   lastResult.value = null; status.value = intent === 'edit' ? '正在读页面' : '思考中'; leftOpen.value = true
   try {
-    const response = await fetch('/api/projects/' + project.value.id + '/agent/stream', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ page_id: pageId.value, message, selection: target, runtime_feedback: runtimeFeedback, reference: sentRef, scene: previewScene(), intent, include_annotations: options.includeAnnotations !== false, repair_pending: options.repairPending || '' }) })
+    const response = await fetch('/api/projects/' + project.value.id + '/agent/stream', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ page_id: pageId.value, message, selection: target, runtime_feedback: runtimeFeedback, reference: sentRef, scene: previewScene(), intent, include_annotations: options.includeAnnotations !== false, repair_pending: options.repairPending || '', lang: locale.value }) })
     const result = await consumeAgentStream(response, event => {
       if (event.type === 'started' && event.run_id) current.runId = event.run_id
       // 模型服务忙：后台自动等几秒重试，这里只记一笔，让人知道不是卡住了
@@ -845,7 +846,7 @@ async function attachImage(file) {
   if (locked.value) { toast('AI 正在修改，等它完成再加截图'); return }
   if (file.size > 8 * 1024 * 1024) { toast('请用 8 MB 以内的截图'); return }
   const pasted = !file.name || /^image\.(png|jpe?g|webp|gif)$/i.test(file.name)
-  const name = pasted ? `粘贴的截图 ${new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}` : file.name
+  const name = pasted ? `粘贴的截图 ${new Date().toLocaleTimeString(dateLocale(), { hour: '2-digit', minute: '2-digit' })}` : file.name
   try {
     const dataUrl = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(new Error('截图读取失败')); reader.readAsDataURL(file) })
     const img = await new Promise((resolve, reject) => { const image = new window.Image(); image.onload = () => resolve(image); image.onerror = () => reject(new Error('无法识别这张图片')); image.src = dataUrl })
@@ -902,9 +903,9 @@ function requestExport() {
   const missing = routes.filter(r => !expand.entries[r.hash]?.result?.styles).length
   const stale = routes.filter(r => expand.entries[r.hash]?.result?.styles && !isFresh(r.hash)).length
   if (!routes.length || missing || stale) {
-    const what = !routes.length ? '还没有找过这个原型有哪些业务页面，现在只能导出已经展开的页面。'
-      : [missing && `${missing} 个业务页面还没展开`, stale && `${stale} 个页面不是最新版本`].filter(Boolean).join('，') + '。'
-    if (window.confirm(`${what}\n\n确定：先把所有业务页面展开到最新，完成后自动导出（展开期间可以照常使用）\n取消：直接导出现在已有的`)) {
+    const what = !routes.length ? t('还没有找过这个原型有哪些业务页面，现在只能导出已经展开的页面。')
+      : [missing && t('{0} 个业务页面还没展开', [missing]), stale && t('{0} 个页面不是最新版本', [stale])].filter(Boolean).join(t('，')) + t('。')
+    if (window.confirm(t('{0}\n\n确定：先把所有业务页面展开到最新，完成后自动导出（展开期间可以照常使用）\n取消：直接导出现在已有的', [what]))) {
       pendingExport.value = true; expandAll(boardRoute.value || previewRoute.value)
       toast('正在展开全部业务页面，完成后会自动导出'); return
     }
@@ -938,8 +939,8 @@ function exportExpand() {
 }
 function download(zip = false) { if (project.value) window.location.assign(zip ? `/api/projects/${project.value.id}/export` : endpoint('/download')) }
 // 一个格式器反复用：每次 toLocaleString 都新建一个，聊天长了以后每敲一个字都要重算几百次
-const timeFormat = new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
-function formatTime(value) { const d = new Date(value); return isNaN(d) ? '' : timeFormat.format(d) }
+const timeFormats = {}
+function formatTime(value) { const d = new Date(value); if (isNaN(d)) return ''; const id = locale.value; timeFormats[id] ||= new Intl.DateTimeFormat(dateLocale(), { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }); return timeFormats[id].format(d) }
 function keydown(event) {
   if (dialog.value?.open) return
   const key = event.key.toLowerCase(), command = event.metaKey || event.ctrlKey
@@ -991,30 +992,30 @@ provide('studio', {
 <template>
   <div class="studio" :class="{ presenting }">
     <div v-if="presenting" class="present-edge" @mouseenter="peekExit"></div>
-    <button v-if="presenting" class="present-exit" :class="{ shown: exitShown }" @click="stopPresent" @mouseenter="peekExit" @mouseleave="hideExitSoon"><X :size="14" />退出演示 <kbd>Esc</kbd></button>
+    <button v-if="presenting" class="present-exit" :class="{ shown: exitShown }" @click="stopPresent" @mouseenter="peekExit" @mouseleave="hideExitSoon"><X :size="14" />{{ $t('退出演示') }} <kbd>Esc</kbd></button>
     <AppHeader />
 
     <main class="workspace" :class="{ 'side-closed': !leftOpen && !rightOpen }">
       <div v-if="(leftOpen || rightOpen)" class="mobile-scrim" @click="leftOpen = false; rightOpen = false"></div>
       <ConversationPanel />
 
-      <section class="canvas-panel" aria-label="原型画布">
+      <section class="canvas-panel" :aria-label="$t('原型画布')">
         <div v-if="view === 'preview'" class="canvas" :class="device">
 
           <ExpandBoard v-if="boardMounted" :class="{ 'view-hidden': !boardOpen }" :aria-hidden="!boardOpen" v-model:focus="boardFocus" v-model:route="boardRoute" :notes="annotations" :patch="cardPatch" :page-name="page?.title" :selection="selected" :mode="mode" @open="openFromBoard" @select="pickFromBoard" @clear="closeSelection" @mode="setMode" @export="requestExport" />
-          <div class="preview-shell" :class="{ 'is-selecting': mode !== 'interact', 'view-hidden': boardOpen }" :aria-hidden="boardOpen"><iframe v-if="previewDoc" ref="previewFrame" title="原型预览" :srcdoc="previewDoc" :sandbox="PREVIEW_SANDBOX" @load="previewLoaded"></iframe><div v-else class="empty-canvas"><div class="empty-emblem"><PanelsTopLeft :size="30" :stroke-width="1.4" /></div><h1>给想法一个可操作的样子</h1><p>从已有的 HTML 开始修改，<br>或描述需求，让 AI 帮你搭建第一版。</p><div><button class="primary" @click="openDialog('new')"><Plus :size="16" />新建原型</button><button class="outline" @click="fileInput.click()"><Upload :size="16" />导入原型</button></div><span>支持 HTML、包含多页面的 ZIP</span></div><div v-if="drawing && tool === 'comment' && !boardOpen" class="draw-bar" @keydown.esc.stop="drawClear"><PenLine :size="15" /><input ref="drawInput" v-model="drawNote" maxlength="1000" :placeholder="`给画的 ${drawing.count} 笔写一句说明，比如：这块改成卡片布局`" aria-label="标记说明" @keydown.enter.exact.prevent="drawSend" @keydown.meta.enter.prevent="drawSend"><button class="icon-button" title="撤销一笔" aria-label="撤销一笔" :disabled="!drawing.count || drawBusy" @click="send({ type: 'PA_DRAW_UNDO' })"><Undo2 :size="15" /></button><button class="icon-button" title="重做" aria-label="重做" :disabled="!drawing.redo || drawBusy" @click="send({ type: 'PA_DRAW_REDO' })"><Redo2 :size="15" /></button><button class="quiet" :disabled="drawBusy" @click="drawClear">取消</button><button class="outline" title="先记下，攒几条一起改" :disabled="drawBusy || locked || !drawNote.trim()" @click="drawSave">记下</button><button class="primary" title="回车发送" :disabled="drawBusy || locked || !drawNote.trim()" @click="drawSend"><LoaderCircle v-if="drawBusy" :size="14" class="spin" /><span v-else>发送</span></button></div><div v-if="loading" class="loading-veil"><LoaderCircle class="spin" :size="25" /><span>正在加载原型…</span></div></div>
+          <div class="preview-shell" :class="{ 'is-selecting': mode !== 'interact', 'view-hidden': boardOpen }" :aria-hidden="boardOpen"><iframe v-if="previewDoc" ref="previewFrame" :title="$t('原型预览')" :srcdoc="previewDoc" :sandbox="PREVIEW_SANDBOX" @load="previewLoaded"></iframe><div v-else class="empty-canvas"><div class="empty-emblem"><PanelsTopLeft :size="30" :stroke-width="1.4" /></div><h1>{{ $t('给想法一个可操作的样子') }}</h1><p>{{ $t('从已有的 HTML 开始修改，') }}<br>{{ $t('或描述需求，让 AI 帮你搭建第一版。') }}</p><div><button class="primary" @click="openDialog('new')"><Plus :size="16" />{{ $t('新建原型') }}</button><button class="outline" @click="fileInput.click()"><Upload :size="16" />{{ $t('导入原型') }}</button></div><span>{{ $t('支持 HTML、包含多页面的 ZIP') }}</span></div><div v-if="drawing && tool === 'comment' && !boardOpen" class="draw-bar" @keydown.esc.stop="drawClear"><PenLine :size="15" /><input ref="drawInput" v-model="drawNote" maxlength="1000" :placeholder="$t('给画的 {0} 笔写一句说明，比如：这块改成卡片布局', [$t(drawing.count)])" :aria-label="$t('标记说明')" @keydown.enter.exact.prevent="drawSend" @keydown.meta.enter.prevent="drawSend"><button class="icon-button" :title="$t('撤销一笔')" :aria-label="$t('撤销一笔')" :disabled="!drawing.count || drawBusy" @click="send({ type: 'PA_DRAW_UNDO' })"><Undo2 :size="15" /></button><button class="icon-button" :title="$t('重做')" :aria-label="$t('重做')" :disabled="!drawing.redo || drawBusy" @click="send({ type: 'PA_DRAW_REDO' })"><Redo2 :size="15" /></button><button class="quiet" :disabled="drawBusy" @click="drawClear">{{ $t('取消') }}</button><button class="outline" :title="$t('先记下，攒几条一起改')" :disabled="drawBusy || locked || !drawNote.trim()" @click="drawSave">{{ $t('记下') }}</button><button class="primary" :title="$t('回车发送')" :disabled="drawBusy || locked || !drawNote.trim()" @click="drawSend"><LoaderCircle v-if="drawBusy" :size="14" class="spin" /><span v-else>{{ $t('发送') }}</span></button></div><div v-if="loading" class="loading-veil"><LoaderCircle class="spin" :size="25" /><span>{{ $t('正在加载原型…') }}</span></div></div>
           
         </div>
-        <div v-else class="code-panel"><div class="code-toolbar"><Braces :size="15" /><select aria-label="源码区域" v-model="codeRegion"><option value="all">完整文件 · 只读</option><option v-for="region in sourceInfo.regions" :key="region.name" :value="region.name">{{ region.label || '自定义区域' }}</option></select><span>{{ codeText.split('\n').length }} 行</span><button class="quiet" @click="copySource"><Check v-if="codeCopied" :size="14" /><Copy v-else :size="14" />{{ codeCopied ? '已复制' : '复制' }}</button></div><div class="source-scroll"><pre class="line-numbers" aria-hidden="true">{{ lineNumbers }}</pre><pre class="source-code"><code>{{ codeText }}</code></pre></div></div>
-        <div v-if="error" class="error-banner" role="alert"><AlertCircle :size="16" /><span>{{ error }}</span><button class="icon-button" aria-label="关闭错误提示" @click="error = ''"><X :size="14" /></button></div>
-        <footer class="canvas-status"><span v-if="page" class="status-version">v{{ page.version }} · {{ page.modification_count || 0 }} 次修改</span><span :title="validationDetails + (savedAt ? ' · ' + savedAt : '')"><LoaderCircle v-if="locked" :size="13" class="spin" /><Check v-else :size="13" />{{ status }}</span><details v-if="runtimeErrors.length" class="runtime-warning"><summary><AlertCircle :size="13" />{{ runtimeErrors.length }} 条运行提示</summary><div><p v-for="warning in runtimeErrors" :key="warning">{{ warning }}</p></div></details></footer>
+        <div v-else class="code-panel"><div class="code-toolbar"><Braces :size="15" /><select :aria-label="$t('源码区域')" v-model="codeRegion"><option value="all">{{ $t('完整文件 · 只读') }}</option><option v-for="region in sourceInfo.regions" :key="region.name" :value="region.name">{{ $t(region.label || '自定义区域') }}</option></select><span>{{ $t('{0} 行', [codeText.split('\n').length]) }}</span><button class="quiet" @click="copySource"><Check v-if="codeCopied" :size="14" /><Copy v-else :size="14" />{{ codeCopied ? $t('已复制') : $t('复制') }}</button></div><div class="source-scroll"><pre class="line-numbers" aria-hidden="true">{{ lineNumbers }}</pre><pre class="source-code"><code>{{ codeText }}</code></pre></div></div>
+        <div v-if="error" class="error-banner" role="alert"><AlertCircle :size="16" /><span>{{ $t(error) }}</span><button class="icon-button" :aria-label="$t('关闭错误提示')" @click="error = ''"><X :size="14" /></button></div>
+        <footer class="canvas-status"><span v-if="page" class="status-version">{{ $t('v{0} · {1} 次修改', [$t(page.version), page.modification_count || 0]) }}</span><span :title="validationDetails + (savedAt ? ' · ' + savedAt : '')"><LoaderCircle v-if="locked" :size="13" class="spin" /><Check v-else :size="13" />{{ $t(status) }}</span><details v-if="runtimeErrors.length" class="runtime-warning"><summary><AlertCircle :size="13" />{{ $t('{0} 条运行提示', [$t(runtimeErrors.length)]) }}</summary><div><p v-for="warning in runtimeErrors" :key="warning">{{ $t(warning) }}</p></div></details></footer>
       </section>
 
       <InspectorPanel />
     </main>
 
     <StudioDialog />
-    <div v-if="backendStale" class="stale-banner" role="alert"><AlertCircle :size="15" /><span>后台服务还在跑旧代码，新功能可能用不了：关掉原型工坊的终端窗口，再双击「启动原型工坊」重启一下。</span><button type="button" class="icon-button" aria-label="知道了" @click="backendStale = false"><X :size="13" /></button></div>
-    <div v-if="notice" class="toast" role="status"><Check :size="16" />{{ notice }}</div>
+    <div v-if="backendStale" class="stale-banner" role="alert"><AlertCircle :size="15" /><span>{{ $t('后台服务还在跑旧代码，新功能可能用不了：关掉原型工坊的终端窗口，再双击「启动原型工坊」重启一下。') }}</span><button type="button" class="icon-button" :aria-label="$t('知道了')" @click="backendStale = false"><X :size="13" /></button></div>
+    <div v-if="notice" class="toast" role="status"><Check :size="16" />{{ $t(notice) }}</div>
   </div>
 </template>

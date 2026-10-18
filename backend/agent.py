@@ -399,6 +399,18 @@ def scene_text(scene: dict | None) -> str:
             "先按这里的 selector 和报错去源码里找，不要从头通读：\n" + "\n".join(lines))
 
 
+LANG_NAMES = {'zh': '中文', 'en': 'English'}
+
+
+def language_note(lang: str) -> str:
+    """界面不是中文时补一句：程序代发的指令（「按已讨论的建议修改」「【自检】……」）是中文写的，
+    不能让 AI 照着它们的语言回复"""
+    name = LANG_NAMES.get(lang.split('-')[0], lang)
+    return (f"\n\n（用户的界面语言是 {name}。回复、汇报、计划、提问和选项都用用户自己说话的语言；"
+            f"上面这句如果是程序代发的中文指令、看不出用户用什么语言，就用 {name}。"
+            f"新建页面时，页面上的文字也用这种语言。）")
+
+
 def run_agent(project_id: str, page_id: str, user_message: str, *args, **kwargs) -> dict[str, Any]:
     """跑一次修改/讨论，并把过程（每一轮调了哪些工具、成没成、花了多少 token）记一份到项目的 runs/ 里。
     以前只记结果：撞到轮次上限时没法知道绕在了哪一步。"""
@@ -460,7 +472,7 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
               max_tokens: int = 32000, context_budget: int = 200_000, max_rounds: int = 24,
               on_event=None, intent: str = 'auto', include_annotations: bool = True,
               stream: bool = True, should_stop=None, scene: dict | None = None, trace: list | None = None,
-              start_source: str | None = None) -> dict[str, Any]:
+              start_source: str | None = None, lang: str = 'zh') -> dict[str, Any]:
     emit = on_event or (lambda event: None)
     trace = [] if trace is None else trace
     plan: list[dict] = []   # 当前计划：程序按每轮的修改自动往前推，不用模型一轮轮调 update_plan
@@ -510,6 +522,8 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
                        "只修上面的报错，不要从头再做，也不要重新调 start_from_shell。")
     kickoff = ("以下是背景资料，只在和用户这轮问的事情相关时才用：\n" + background
                + "\n\n———\n用户这轮说的是：\n" + user_message)
+    if not lang.startswith('zh'):
+        kickoff += language_note(lang)
     if memory.looks_like_rule(user_message):
         kickoff += ("\n\n（这句话里像有对整个项目长期有效的约定。如果是，除了照做，还要调 remember 用一句话记下来，"
                     "以后别的页面也照这个来；只是这一次的要求就不用记。）")

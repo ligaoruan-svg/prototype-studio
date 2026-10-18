@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
+import { t, dateLocale } from '../../lib/i18n.js'
 import { LoaderCircle, Pencil, Plus, Sparkles, X, Check } from 'lucide-vue-next'
 // 记忆面板，参照 Claude 的记忆：
 // · 两层：「这个项目」只在本项目生效；「所有项目」是你个人的习惯，每个项目都带上
@@ -28,13 +29,13 @@ async function run(action, done = '') {
 const total = computed(() => (data.value?.project.memory.length || 0) + (data.value?.global.memory.length || 0))
 const groups = scope => (data.value?.categories || []).map(c => ({ name: c, items: (data.value?.[scope].memory || []).filter(e => e.category === c) })).filter(g => g.items.length)
 const paused = computed(() => !!data.value?.project.state.paused)
-const lastSynth = computed(() => data.value?.project.state.synthesized_at ? new Date(data.value.project.state.synthesized_at).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '')
+const lastSynth = computed(() => data.value?.project.state.synthesized_at ? new Date(data.value.project.state.synthesized_at).toLocaleString(dateLocale(), { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '')
 const changes = out => { const n = (out?.added?.length || 0) + (out?.updated?.length || 0) + (out?.removed?.length || 0); return n ? `改了 ${n} 处：新增 ${out.added.length}、修改 ${out.updated.length}、删除 ${out.removed.length}` : '看过了，没有需要改的' }
 function askEdit() { const text = instruction.value.trim(); if (!text) return; run(async () => { const out = await api('/edit', 'POST', { instruction: text }); instruction.value = ''; return out }, changes) }
 function synthesize() { run(() => api('/synthesize', 'POST'), out => out?.skipped === 'paused' ? '记忆暂停中，没有整理' : changes(out)) }
 function togglePause() { run(() => api('/pause', 'POST', { scope: 'project', paused: !paused.value }), paused.value ? '记忆已恢复' : '已暂停：照旧遵守已记住的，不再记新的') }
 function clearScope(scope) {
-  if (!window.confirm(scope === 'global' ? '清空「所有项目」里你的习惯？每个项目都会受影响，不能恢复。' : '清空这个项目记住的所有内容？不能恢复。')) return
+  if (!window.confirm(t(scope === 'global' ? '清空「所有项目」里你的习惯？每个项目都会受影响，不能恢复。' : '清空这个项目记住的所有内容？不能恢复。'))) return
   run(() => api('/clear', 'POST', { scope }), '已清空')
 }
 function remove(item) { run(() => api(`/${item.id}`, 'DELETE'), '已删掉') }
@@ -46,49 +47,49 @@ onMounted(() => load().catch(e => { error.value = e.message }))
 <template>
   <div class="mem">
     <div class="mem-head">
-      <p>AI 会记住以后还用得上的工作背景：你说过的约定、反复改过的偏好、业务里的叫法。每聊几句会在后台自己整理一次。</p>
-      <button type="button" class="mem-switch" :class="{ off: paused }" role="switch" :aria-checked="!paused" :disabled="busy || !data" :title="paused ? '恢复：继续记新的' : '暂停：照旧遵守已记住的，但不再记新的'" @click="togglePause"><i></i>{{ paused ? '已暂停' : '记忆开着' }}</button>
+      <p>{{ $t('AI 会记住以后还用得上的工作背景：你说过的约定、反复改过的偏好、业务里的叫法。每聊几句会在后台自己整理一次。') }}</p>
+      <button type="button" class="mem-switch" :class="{ off: paused }" role="switch" :aria-checked="!paused" :disabled="busy || !data" :title="paused ? $t('恢复：继续记新的') : $t('暂停：照旧遵守已记住的，但不再记新的')" @click="togglePause"><i></i>{{ paused ? $t('已暂停') : $t('记忆开着') }}</button>
     </div>
     <form class="mem-ask" @submit.prevent="askEdit">
       <Sparkles :size="14" />
-      <input v-model="instruction" maxlength="300" :disabled="busy" placeholder="告诉 AI 要怎么改记忆，比如：描边那条只对次要按钮；记一下「配额」是年度免费排放额度" aria-label="用一句话修改记忆">
-      <button class="primary" :disabled="busy || !instruction.trim()"><LoaderCircle v-if="busy" :size="13" class="spin" /><span v-else>改</span></button>
+      <input v-model="instruction" maxlength="300" :disabled="busy" :placeholder="$t('告诉 AI 要怎么改记忆，比如：描边那条只对次要按钮；记一下「配额」是年度免费排放额度')" :aria-label="$t('用一句话修改记忆')">
+      <button class="primary" :disabled="busy || !instruction.trim()"><LoaderCircle v-if="busy" :size="13" class="spin" /><span v-else>{{ $t('改') }}</span></button>
     </form>
-    <p v-if="error" class="form-error">{{ error }}</p>
-    <p v-else-if="notice" class="mem-notice"><Check :size="12" />{{ notice }}</p>
-    <div v-if="!data" class="mem-empty"><LoaderCircle :size="14" class="spin" />正在读取…</div>
+    <p v-if="error" class="form-error">{{ $t(error) }}</p>
+    <p v-else-if="notice" class="mem-notice"><Check :size="12" />{{ $t(notice) }}</p>
+    <div v-if="!data" class="mem-empty"><LoaderCircle :size="14" class="spin" />{{ $t('正在读取…') }}</div>
     <template v-else>
       <section v-for="scope in ['project', 'global']" :key="scope" class="mem-scope">
-        <header><h4>{{ scope === 'project' ? '这个项目' : '所有项目 · 你的习惯' }}</h4><small>{{ scope === 'project' ? '只在这个项目里生效' : '每个项目都会带上' }} · {{ data[scope].memory.length }} / {{ data.max }}</small>
-          <button v-if="data[scope].memory.length" type="button" class="text-button" :disabled="busy" @click="clearScope(scope)">清空</button></header>
-        <p v-if="!data[scope].memory.length" class="mem-empty">{{ scope === 'project' ? '还没有。对话里说「以后表格都带斑马纹」，或者多聊几句，它会自己记下来。' : '还没有。说「我所有项目都……」「以后回复短一点」这类个人习惯会记在这里。' }}</p>
+        <header><h4>{{ scope === 'project' ? $t('这个项目') : $t('所有项目 · 你的习惯') }}</h4><small>{{ scope === 'project' ? $t('只在这个项目里生效') : $t('每个项目都会带上') }} · {{ data[scope].memory.length }} / {{ $t(data.max) }}</small>
+          <button v-if="data[scope].memory.length" type="button" class="text-button" :disabled="busy" @click="clearScope(scope)">{{ $t('清空') }}</button></header>
+        <p v-if="!data[scope].memory.length" class="mem-empty">{{ scope === 'project' ? $t('还没有。对话里说「以后表格都带斑马纹」，或者多聊几句，它会自己记下来。') : $t('还没有。说「我所有项目都……」「以后回复短一点」这类个人习惯会记在这里。') }}</p>
         <div v-for="g in groups(scope)" :key="g.name" class="mem-group">
-          <h5>{{ g.name }}</h5>
+          <h5>{{ $t(g.name) }}</h5>
           <div v-for="item in g.items" :key="item.id" class="mem-row">
             <template v-if="editing === item.id">
-              <input v-model="editText" maxlength="120" class="mem-edit" aria-label="修改这条记忆" @keydown.enter.prevent="saveEdit(item)" @keydown.esc="editing = null">
-              <button type="button" class="icon-button" title="保存" :disabled="busy" @click="saveEdit(item)"><Check :size="13" /></button>
+              <input v-model="editText" maxlength="120" class="mem-edit" :aria-label="$t('修改这条记忆')" @keydown.enter.prevent="saveEdit(item)" @keydown.esc="editing = null">
+              <button type="button" class="icon-button" :title="$t('保存')" :disabled="busy" @click="saveEdit(item)"><Check :size="13" /></button>
             </template>
             <template v-else>
-              <div><b>{{ item.text }}</b><small><span class="src" :class="item.source">{{ SOURCE[item.source] || '你说的' }}</span>{{ new Date(item.updated_at || item.created_at).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }) }}</small></div>
-              <button type="button" class="icon-button" title="改这条" :disabled="busy" @click="startEdit(item)"><Pencil :size="12" /></button>
-              <button type="button" class="icon-button" title="删掉这条" :aria-label="'删掉：' + item.text" :disabled="busy" @click="remove(item)"><X :size="13" /></button>
+              <div><b>{{ item.text }}</b><small><span class="src" :class="item.source">{{ $t(SOURCE[item.source] || '你说的') }}</span>{{ new Date(item.updated_at || item.created_at).toLocaleDateString(dateLocale(), { month: '2-digit', day: '2-digit' }) }}</small></div>
+              <button type="button" class="icon-button" :title="$t('改这条')" :disabled="busy" @click="startEdit(item)"><Pencil :size="12" /></button>
+              <button type="button" class="icon-button" :title="$t('删掉这条')" :aria-label="$t('删掉：') + item.text" :disabled="busy" @click="remove(item)"><X :size="13" /></button>
             </template>
           </div>
         </div>
       </section>
       <form v-if="adding" class="mem-add" @submit.prevent="addOne">
-        <input v-model="draft.note" maxlength="120" placeholder="写成一句话，比如：表格都带斑马纹" aria-label="新的记忆" :disabled="busy">
-        <select v-model="draft.category" aria-label="类别"><option v-for="c in data.categories" :key="c">{{ c }}</option></select>
-        <select v-model="draft.scope" aria-label="范围"><option value="project">这个项目</option><option value="global">所有项目</option></select>
-        <button class="primary" :disabled="busy || draft.note.trim().length < 4">记住</button><button type="button" class="quiet" @click="adding = false">取消</button>
+        <input v-model="draft.note" maxlength="120" :placeholder="$t('写成一句话，比如：表格都带斑马纹')" :aria-label="$t('新的记忆')" :disabled="busy">
+        <select v-model="draft.category" :aria-label="$t('类别')"><option v-for="c in data.categories" :key="c">{{ $t(c) }}</option></select>
+        <select v-model="draft.scope" :aria-label="$t('范围')"><option value="project">{{ $t('这个项目') }}</option><option value="global">{{ $t('所有项目') }}</option></select>
+        <button class="primary" :disabled="busy || draft.note.trim().length < 4">{{ $t('记住') }}</button><button type="button" class="quiet" @click="adding = false">{{ $t('取消') }}</button>
       </form>
       <footer class="mem-foot">
-        <button v-if="!adding" type="button" class="text-button" :disabled="busy" @click="adding = true"><Plus :size="13" />自己加一条</button>
-        <span>{{ paused ? '暂停中，不会自动整理' : data.synthesizing ? '正在整理…' : lastSynth ? `上次整理 ${lastSynth}` : '还没整理过' }}{{ !paused && data.pending ? ` · 有 ${data.pending} 句新对话待整理` : '' }}</span>
-        <button type="button" class="text-button" :disabled="busy || paused" title="不等攒够，马上从最近的对话里整理一次" @click="synthesize">现在整理</button>
+        <button v-if="!adding" type="button" class="text-button" :disabled="busy" @click="adding = true"><Plus :size="13" />{{ $t('自己加一条') }}</button>
+        <span>{{ paused ? $t('暂停中，不会自动整理') : data.synthesizing ? $t('正在整理…') : lastSynth ? $t('上次整理 {0}', [$t(lastSynth)]) : $t('还没整理过') }}{{ !paused && data.pending ? $t(' · 有 {0} 句新对话待整理', [$t(data.pending)]) : '' }}</span>
+        <button type="button" class="text-button" :disabled="busy || paused" :title="$t('不等攒够，马上从最近的对话里整理一次')" @click="synthesize">{{ $t('现在整理') }}</button>
       </footer>
-      <p class="field-hint">只记工作上的背景；一次性的修改、页面里已经有的内容、密钥这类不会记。</p>
+      <p class="field-hint">{{ $t('只记工作上的背景；一次性的修改、页面里已经有的内容、密钥这类不会记。') }}</p>
     </template>
   </div>
 </template>

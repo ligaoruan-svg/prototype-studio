@@ -16,10 +16,10 @@ onUnmounted(() => { window.removeEventListener('mousemove', move); window.remove
 
 <template>
   <div class="reference-editor">
-    <div class="reference-hint"><Scan :size="16" />{{ reference.regions.length >= 16 ? '已达到 16 个区域上限，可删除区域后重新框选' : '在截图上按住拖动，框出需要调整的区域' }}</div>
-    <div class="reference-viewport"><div ref="surface" class="reference-surface" @pointerdown="down" @pointermove="move" @pointerup="up" @pointercancel="start = null; draft = null"><img :src="reference.data_url" :alt="reference.name" draggable="false"><div v-for="(box, i) in reference.regions" :key="i" class="reference-box" :class="{ active: active === i }" :style="style(box)"><span>{{ i + 1 }}</span></div><div v-if="draft" class="reference-box drawing" :style="style(draft)"></div></div></div>
-    <div v-if="!reference.regions.length" class="field-hint">也可以直接参考整张图，在对话里描述希望借鉴的布局、配色或功能。</div>
-    <div class="reference-notes"><label v-for="(box, i) in reference.regions" :key="i"><span class="reference-number">{{ i + 1 }}</span><textarea :aria-label="`截图区域 ${i + 1} 修改意见`" :value="box.note" placeholder="这一块需要怎么改？" rows="2" @focus="active = i" @input="updateNote(i, $event.target.value)"></textarea><button type="button" class="icon-button" :aria-label="`移除区域 ${i + 1}`" @click="emit('update', reference.regions.filter((_, j) => j !== i))"><Trash2 :size="14" /></button></label></div>
+    <div class="reference-hint"><Scan :size="16" />{{ reference.regions.length >= 16 ? $t('已达到 16 个区域上限，可删除区域后重新框选') : $t('在截图上按住拖动，框出需要调整的区域') }}</div>
+    <div class="reference-viewport"><div ref="surface" class="reference-surface" @pointerdown="down" @pointermove="move" @pointerup="up" @pointercancel="start = null; draft = null"><img :src="reference.data_url" :alt="$t(reference.name)" draggable="false"><div v-for="(box, i) in reference.regions" :key="i" class="reference-box" :class="{ active: active === i }" :style="style(box)"><span>{{ i + 1 }}</span></div><div v-if="draft" class="reference-box drawing" :style="style(draft)"></div></div></div>
+    <div v-if="!reference.regions.length" class="field-hint">{{ $t('也可以直接参考整张图，在对话里描述希望借鉴的布局、配色或功能。') }}</div>
+    <div class="reference-notes"><label v-for="(box, i) in reference.regions" :key="i"><span class="reference-number">{{ i + 1 }}</span><textarea :aria-label="$t('截图区域 {0} 修改意见', [i + 1])" :value="box.note" :placeholder="$t('这一块需要怎么改？')" rows="2" @focus="active = i" @input="updateNote(i, $event.target.value)"></textarea><button type="button" class="icon-button" :aria-label="$t('移除区域 {0}', [i + 1])" @click="emit('update', reference.regions.filter((_, j) => j !== i))"><Trash2 :size="14" /></button></label></div>
   </div>
 </template>
 

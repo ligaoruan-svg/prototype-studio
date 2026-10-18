@@ -1,5 +1,6 @@
 <script setup>
 import { computed, nextTick, onMounted, ref } from 'vue'
+import { dateLocale } from '../../lib/i18n.js'
 import { FolderOpen, FileCode2, Pencil, Trash2, RotateCcw, Search, LoaderCircle, ChevronRight } from 'lucide-vue-next'
 const props = defineProps({ currentProjectId: String })
 const emit = defineEmits(['changed', 'open', 'busy'])
@@ -40,51 +41,51 @@ async function confirmPurge() {
   }, item.all ? '回收站已清空' : '已彻底删除')
 }
 function switchView(value) { view.value = value; deleting.value = null; purging.value = null; renaming.value = null; error.value = ''; message.value = '' }
-function date(value) { return new Date(value).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }) }
+function date(value) { return new Date(value).toLocaleDateString(dateLocale(), { month: '2-digit', day: '2-digit' }) }
 onMounted(async () => { busy.value = true; try { await load() } catch (e) { error.value = e.message } finally { busy.value = false } })
 </script>
 
 <template>
   <div class="file-manager">
-    <p class="dialog-intro">管理导入和新建的项目。删除会放入回收站，源码、资源和历史版本仍可恢复。</p>
-    <div class="file-tabs" role="tablist" aria-label="文件分类">
-      <button role="tab" :aria-selected="view === 'projects'" :disabled="busy" @click="switchView('projects')"><FolderOpen :size="15" />项目<span>{{ projects.length }}</span></button>
-      <button role="tab" :aria-selected="view === 'trash'" :disabled="busy" @click="switchView('trash')"><Trash2 :size="15" />回收站<span>{{ trash.length }}</span></button>
+    <p class="dialog-intro">{{ $t('管理导入和新建的项目。删除会放入回收站，源码、资源和历史版本仍可恢复。') }}</p>
+    <div class="file-tabs" role="tablist" :aria-label="$t('文件分类')">
+      <button role="tab" :aria-selected="view === 'projects'" :disabled="busy" @click="switchView('projects')"><FolderOpen :size="15" />{{ $t('项目') }}<span>{{ $t(projects.length) }}</span></button>
+      <button role="tab" :aria-selected="view === 'trash'" :disabled="busy" @click="switchView('trash')"><Trash2 :size="15" />{{ $t('回收站') }}<span>{{ $t(trash.length) }}</span></button>
     </div>
-    <div class="file-search"><Search :size="16" /><input v-model="query" aria-label="搜索文件" placeholder="搜索项目或页面名称"></div>
+    <div class="file-search"><Search :size="16" /><input v-model="query" :aria-label="$t('搜索文件')" :placeholder="$t('搜索项目或页面名称')"></div>
     <form v-if="renaming" ref="actionBox" class="file-action-box" @submit.prevent="saveName">
-      <label for="file-name">重命名{{ renaming.kind === 'project' ? '项目' : '页面' }}</label><input id="file-name" v-model="name" aria-label="新名称" maxlength="80" required :disabled="busy">
-      <p>只更新工作台名称，不改动文件路径或原型中的内容。</p>
-      <div class="file-action-buttons"><button type="button" class="outline" :disabled="busy" @click="renaming = null">取消</button><button class="primary" :disabled="busy || !name.trim()">保存名称</button></div>
+      <label for="file-name">{{ $t('重命名{0}', [renaming.kind === 'project' ? $t('项目') : $t('页面')]) }}</label><input id="file-name" v-model="name" :aria-label="$t('新名称')" maxlength="80" required :disabled="busy">
+      <p>{{ $t('只更新工作台名称，不改动文件路径或原型中的内容。') }}</p>
+      <div class="file-action-buttons"><button type="button" class="outline" :disabled="busy" @click="renaming = null">{{ $t('取消') }}</button><button class="primary" :disabled="busy || !name.trim()">{{ $t('保存名称') }}</button></div>
     </form>
     <div v-if="deleting" ref="actionBox" class="file-action-box delete-confirm" role="alert">
-      <h3>删除{{ deleting.kind === 'project' ? '项目' : '页面' }}“{{ deleting.name }}”？</h3>
-      <p>{{ deleting.kind === 'project' ? `此项目及其 ${deleting.page_count} 个在用页面将从工作区移除。` : '此页面将从项目中移除，其他页面不受影响；指向它的链接可能暂时不可用。' }}你可以在回收站恢复，不会删除最初上传的文件。</p>
-      <div class="file-action-buttons"><button class="outline" :disabled="busy" @click="deleting = null">取消</button><button class="danger-button" :disabled="busy" @click="confirmDelete"><Trash2 :size="15" />移入回收站</button></div>
+      <h3>{{ $t('删除{0}“{1}”？', [deleting.kind === 'project' ? $t('项目') : $t('页面'), deleting.name]) }}</h3>
+      <p>{{ $t('{0}你可以在回收站恢复，不会删除最初上传的文件。', [deleting.kind === 'project' ? $t('此项目及其 {0} 个在用页面将从工作区移除。', [$t(deleting.page_count)]) : $t('此页面将从项目中移除，其他页面不受影响；指向它的链接可能暂时不可用。')]) }}</p>
+      <div class="file-action-buttons"><button class="outline" :disabled="busy" @click="deleting = null">{{ $t('取消') }}</button><button class="danger-button" :disabled="busy" @click="confirmDelete"><Trash2 :size="15" />{{ $t('移入回收站') }}</button></div>
     </div>
     <div v-if="purging" ref="actionBox" class="file-action-box delete-confirm" role="alert">
-      <h3>{{ purging.all ? `清空回收站（${trash.length} 项）？` : `彻底删除${purging.kind === 'project' ? '项目' : '页面'}“${purging.name}”？` }}</h3>
-      <p>删除后无法恢复：工作区里的源码副本、历史版本、修改记录和展开结果都会删掉。你电脑上最初导入的那个文件不受影响。</p>
-      <div class="file-action-buttons"><button class="outline" :disabled="busy" @click="purging = null">取消</button><button class="danger-button" :disabled="busy" @click="confirmPurge"><Trash2 :size="15" />{{ purging.all ? '全部彻底删除' : '彻底删除' }}</button></div>
+      <h3>{{ purging.all ? $t('清空回收站（{0} 项）？', [$t(trash.length)]) : $t('彻底删除{0}“{1}”？', [purging.kind === 'project' ? $t('项目') : $t('页面'), purging.name]) }}</h3>
+      <p>{{ $t('删除后无法恢复：工作区里的源码副本、历史版本、修改记录和展开结果都会删掉。你电脑上最初导入的那个文件不受影响。') }}</p>
+      <div class="file-action-buttons"><button class="outline" :disabled="busy" @click="purging = null">{{ $t('取消') }}</button><button class="danger-button" :disabled="busy" @click="confirmPurge"><Trash2 :size="15" />{{ purging.all ? $t('全部彻底删除') : $t('彻底删除') }}</button></div>
     </div>
-    <p v-if="error" class="form-error" role="alert">{{ error }}<button class="text-button" :disabled="busy" @click="perform(load, '列表已刷新')">重试加载</button></p>
-    <p v-if="message" class="file-feedback" role="status">{{ message }}</p>
-    <div v-if="busy" class="file-loading" role="status"><LoaderCircle class="spin" :size="16" />正在更新文件…</div>
+    <p v-if="error" class="form-error" role="alert">{{ $t(error) }}<button class="text-button" :disabled="busy" @click="perform(load, $t('列表已刷新'))">{{ $t('重试加载') }}</button></p>
+    <p v-if="message" class="file-feedback" role="status">{{ $t(message) }}</p>
+    <div v-if="busy" class="file-loading" role="status"><LoaderCircle class="spin" :size="16" />{{ $t('正在更新文件…') }}</div>
     <div class="file-list" :aria-busy="busy">
       <template v-if="view === 'projects'">
         <article v-for="project in visibleProjects" :key="project.id" class="managed-project">
-          <div class="managed-row"><FolderOpen :size="21" class="file-kind" /><div class="managed-title"><b>{{ project.name }}</b><small>{{ project.page_count }} 个页面 · {{ date(project.updated_at) }} 更新<span v-if="project.id === props.currentProjectId"> · 当前项目</span></small></div><button class="icon-button" :aria-label="`重命名项目 ${project.name}`" title="重命名项目" :disabled="busy" @click="rename(target(project))"><Pencil :size="15" /></button><button class="icon-button file-delete" :aria-label="`删除项目 ${project.name}`" title="删除项目" :disabled="busy" @click="remove(target(project))"><Trash2 :size="15" /></button><button class="outline" :aria-label="`打开项目 ${project.name}`" :disabled="busy" @click="emit('open', project.id)">打开</button></div>
-          <details v-if="project.pages.length" class="managed-pages"><summary><ChevronRight :size="13" />管理 {{ project.pages.length }} 个页面</summary><div v-for="page in project.pages" :key="page.id" class="managed-row page-file"><FileCode2 :size="17" class="file-kind" /><div class="managed-title"><b>{{ page.title }}</b><small :title="page.path">{{ page.path }} · v{{ page.version }}</small></div><button class="icon-button" :aria-label="`重命名页面 ${page.title}`" title="重命名页面" :disabled="busy" @click="rename(target(project, page))"><Pencil :size="14" /></button><button class="icon-button file-delete" :aria-label="`删除页面 ${page.title}`" title="删除页面" :disabled="busy" @click="remove(target(project, page))"><Trash2 :size="14" /></button></div></details>
+          <div class="managed-row"><FolderOpen :size="21" class="file-kind" /><div class="managed-title"><b>{{ project.name }}</b><small>{{ $t('{0} 个页面 · {1} 更新', [$t(project.page_count), date(project.updated_at)]) }}<span v-if="project.id === props.currentProjectId"> {{ $t('· 当前项目') }}</span></small></div><button class="icon-button" :aria-label="$t('重命名项目 {0}', [project.name])" :title="$t('重命名项目')" :disabled="busy" @click="rename(target(project))"><Pencil :size="15" /></button><button class="icon-button file-delete" :aria-label="$t('删除项目 {0}', [project.name])" :title="$t('删除项目')" :disabled="busy" @click="remove(target(project))"><Trash2 :size="15" /></button><button class="outline" :aria-label="$t('打开项目 {0}', [project.name])" :disabled="busy" @click="emit('open', project.id)">{{ $t('打开') }}</button></div>
+          <details v-if="project.pages.length" class="managed-pages"><summary><ChevronRight :size="13" />{{ $t('管理 {0} 个页面', [$t(project.pages.length)]) }}</summary><div v-for="page in project.pages" :key="page.id" class="managed-row page-file"><FileCode2 :size="17" class="file-kind" /><div class="managed-title"><b>{{ page.title }}</b><small :title="page.path">{{ page.path }} · v{{ $t(page.version) }}</small></div><button class="icon-button" :aria-label="$t('重命名页面 {0}', [page.title])" :title="$t('重命名页面')" :disabled="busy" @click="rename(target(project, page))"><Pencil :size="14" /></button><button class="icon-button file-delete" :aria-label="$t('删除页面 {0}', [page.title])" :title="$t('删除页面')" :disabled="busy" @click="remove(target(project, page))"><Trash2 :size="14" /></button></div></details>
         </article>
-        <p v-if="!visibleProjects.length && !busy" class="file-empty">{{ query ? '没有匹配的项目或页面' : '还没有项目，可以从顶部导入或新建。' }}</p>
+        <p v-if="!visibleProjects.length && !busy" class="file-empty">{{ query ? $t('没有匹配的项目或页面') : $t('还没有项目，可以从顶部导入或新建。') }}</p>
       </template>
       <template v-else>
-        <div v-if="trash.length && !query" class="trash-bar"><span>回收站不会自动清空，不要的可以彻底删除</span><button type="button" class="text-button danger-text" :disabled="busy" @click="askPurge({ all: true })"><Trash2 :size="14" />清空回收站</button></div>
-        <article v-for="item in visibleTrash" :key="item.project_id + (item.page_id || '')" class="managed-row recycled-row"><component :is="item.kind === 'project' ? FolderOpen : FileCode2" :size="21" class="file-kind" /><div class="managed-title"><b>{{ item.name }}</b><small>{{ item.kind === 'project' ? `项目 · ${item.page_count} 个页面` : `页面 · ${item.project_name}` }} · {{ date(item.deleted_at) }} 删除</small></div><button class="outline" :aria-label="`恢复${item.kind === 'project' ? '项目' : '页面'} ${item.name}`" :disabled="busy" @click="restore(item)"><RotateCcw :size="14" />恢复</button><button class="icon-button file-delete" :aria-label="`彻底删除${item.kind === 'project' ? '项目' : '页面'} ${item.name}`" title="彻底删除（不能恢复）" :disabled="busy" @click="askPurge(item)"><Trash2 :size="15" /></button></article>
-        <p v-if="!visibleTrash.length && !busy" class="file-empty">{{ query ? '回收站中没有匹配结果' : '回收站是空的' }}</p>
+        <div v-if="trash.length && !query" class="trash-bar"><span>{{ $t('回收站不会自动清空，不要的可以彻底删除') }}</span><button type="button" class="text-button danger-text" :disabled="busy" @click="askPurge({ all: true })"><Trash2 :size="14" />{{ $t('清空回收站') }}</button></div>
+        <article v-for="item in visibleTrash" :key="item.project_id + (item.page_id || '')" class="managed-row recycled-row"><component :is="item.kind === 'project' ? FolderOpen : FileCode2" :size="21" class="file-kind" /><div class="managed-title"><b>{{ $t(item.name) }}</b><small>{{ $t('{0} · {1} 删除', [item.kind === 'project' ? $t('项目 · {0} 个页面', [$t(item.page_count)]) : $t('页面 · {0}', [item.project_name]), date(item.deleted_at)]) }}</small></div><button class="outline" :aria-label="$t('恢复{0} {1}', [item.kind === 'project' ? $t('项目') : $t('页面'), $t(item.name)])" :disabled="busy" @click="restore(item)"><RotateCcw :size="14" />{{ $t('恢复') }}</button><button class="icon-button file-delete" :aria-label="$t('彻底删除{0} {1}', [item.kind === 'project' ? $t('项目') : $t('页面'), $t(item.name)])" :title="$t('彻底删除（不能恢复）')" :disabled="busy" @click="askPurge(item)"><Trash2 :size="15" /></button></article>
+        <p v-if="!visibleTrash.length && !busy" class="file-empty">{{ query ? $t('回收站中没有匹配结果') : $t('回收站是空的') }}</p>
       </template>
     </div>
-    <p class="field-hint">{{ view === 'trash' ? '彻底删除只删工作区里的副本，你电脑上最初导入的文件不受影响。' : '删除先放进回收站；在回收站里可以恢复，也可以彻底删除。' }}</p>
+    <p class="field-hint">{{ view === 'trash' ? $t('彻底删除只删工作区里的副本，你电脑上最初导入的文件不受影响。') : $t('删除先放进回收站；在回收站里可以恢复，也可以彻底删除。') }}</p>
   </div>
 </template>
 

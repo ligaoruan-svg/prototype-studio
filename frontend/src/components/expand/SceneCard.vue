@@ -74,28 +74,28 @@ onUnmounted(() => { window.removeEventListener('message', listen); observer?.dis
   <article ref="root" class="scene-card" :class="{ 'selected-card': rels.length, large, stale: node.stale, pending: node.pending }" :data-node-id="node.id">
     <header v-if="!large" class="scene-head">
       <component :is="pageLike ? Monitor : Layers" :size="14" />
-      <h3 :title="node.title">{{ node.title }}</h3>
-      <span v-if="node.pending" class="sync-badge" title="改动后正在重新拍这张卡"><LoaderCircle :size="11" class="spin" />更新中</span>
-      <span v-if="notes" class="note-badge" :title="`这张卡上已记下 ${notes} 条修改意见`">已记 {{ notes }}</span>
-      <button v-if="node.stale" type="button" class="stale-badge" title="按原来的路径点不开了（按钮可能改了名或被删了），这张卡显示的是旧样子。点这里重新查找这一页" @click="$emit('refind')"><RotateCw :size="11" />路径失效</button>
-      <button type="button" class="head-action" :title="`编辑「${node.title}」：放大后点选要改的地方`" @click="$emit('edit', node)"><PencilLine :size="13" /><span>编辑</span></button>
+      <h3 :title="$t(node.title)">{{ $t(node.title) }}</h3>
+      <span v-if="node.pending" class="sync-badge" :title="$t('改动后正在重新拍这张卡')"><LoaderCircle :size="11" class="spin" />{{ $t('更新中') }}</span>
+      <span v-if="notes" class="note-badge" :title="$t('这张卡上已记下 {0} 条修改意见', [$t(notes)])">{{ $t('已记 {0}', [$t(notes)]) }}</span>
+      <button v-if="node.stale" type="button" class="stale-badge" :title="$t('按原来的路径点不开了（按钮可能改了名或被删了），这张卡显示的是旧样子。点这里重新查找这一页')" @click="$emit('refind')"><RotateCw :size="11" />{{ $t('路径失效') }}</button>
+      <button type="button" class="head-action" :title="$t('编辑「{0}」：放大后点选要改的地方', [$t(node.title)])" @click="$emit('edit', node)"><PencilLine :size="13" /><span>{{ $t('编辑') }}</span></button>
     </header>
-    <div v-if="!large && !compact" class="scene-trail" :title="crumb"><ChevronRight :size="12" /><span>{{ crumb }}</span></div>
+    <div v-if="!large && !compact" class="scene-trail" :title="$t(crumb)"><ChevronRight :size="12" /><span>{{ $t(crumb) }}</span></div>
     <div ref="stage" class="scene-preview">
       <!-- 交互模式：卡片是快照不能点，点一下放大成真的在跑的原型 -->
-      <button v-if="mode === 'interact' && !large" type="button" class="play-cover" :aria-label="`交互${node.title}`" @click="$emit('play', node)"><span><Hand :size="14" />点一下交互</span></button>
+      <button v-if="mode === 'interact' && !large" type="button" class="play-cover" :aria-label="$t('交互{0}', [$t(node.title)])" @click="$emit('play', node)"><span><Hand :size="14" />{{ $t('点一下交互') }}</span></button>
       <div class="thumb" :class="{ asleep: !live }" :style="{ width: view.width + 'px', height: view.height + 'px' }">
-        <iframe v-if="live" ref="iframe" sandbox="allow-scripts" :title="`${node.title} · 点选要改的地方`" :srcdoc="doc" :style="{ width: frame.w + 'px', height: frame.h + 'px', transform: view.transform }" @load="sync"></iframe>
+        <iframe v-if="live" ref="iframe" sandbox="allow-scripts" :title="$t('{0} · 点选要改的地方', [$t(node.title)])" :srcdoc="doc" :style="{ width: frame.w + 'px', height: frame.h + 'px', transform: view.transform }" @load="sync"></iframe>
       </div>
     </div>
     <footer v-if="!large" class="scene-foot">
-      <button v-if="fixable" type="button" class="source-type fixable" :aria-expanded="fixOpen" title="认错了？点这里改成子页面 / 页签 / 别的业务页面，下次展开照你改的来" @click="fixOpen = !fixOpen"><Code2 :size="12" />{{ kindLabel }}<span v-if="node.forced" class="mine">你改的</span><ChevronDown :size="11" /></button>
-      <span v-else class="source-type"><component :is="pageLike ? Code2 : Layers" :size="12" />{{ kindLabel }}</span>
-      <button type="button" class="play-mini" :title="`交互「${node.title}」：真的跑起来随便点，演示数据不保存`" @click="$emit('play', node)"><Hand :size="12" />交互</button>
-      <div v-if="fixOpen" class="fix-menu" role="menu" aria-label="纠正这张卡的类型">
-        <p>认错了？「{{ edgeLabel(node.label) }}」点出来的其实是</p>
-        <button v-for="o in fixOptions" :key="o.kind" type="button" role="menuitem" @click="fix(o.kind)"><b>{{ o.label }}</b><small>{{ o.hint }}</small></button>
-        <button v-if="node.forced" type="button" role="menuitem" class="reset" @click="fix(null)"><b>恢复自动认</b><small>去掉你的纠正，按默认规则认</small></button>
+      <button v-if="fixable" type="button" class="source-type fixable" :aria-expanded="fixOpen" :title="$t('认错了？点这里改成子页面 / 页签 / 别的业务页面，下次展开照你改的来')" @click="fixOpen = !fixOpen"><Code2 :size="12" />{{ $t(kindLabel) }}<span v-if="node.forced" class="mine">{{ $t('你改的') }}</span><ChevronDown :size="11" /></button>
+      <span v-else class="source-type"><component :is="pageLike ? Code2 : Layers" :size="12" />{{ $t(kindLabel) }}</span>
+      <button type="button" class="play-mini" :title="$t('交互「{0}」：真的跑起来随便点，演示数据不保存', [$t(node.title)])" @click="$emit('play', node)"><Hand :size="12" />{{ $t('交互') }}</button>
+      <div v-if="fixOpen" class="fix-menu" role="menu" :aria-label="$t('纠正这张卡的类型')">
+        <p>{{ $t('认错了？「{0}」点出来的其实是', [edgeLabel(node.label)]) }}</p>
+        <button v-for="o in fixOptions" :key="o.kind" type="button" role="menuitem" @click="fix(o.kind)"><b>{{ $t(o.label) }}</b><small>{{ $t(o.hint) }}</small></button>
+        <button v-if="node.forced" type="button" role="menuitem" class="reset" @click="fix(null)"><b>{{ $t('恢复自动认') }}</b><small>{{ $t('去掉你的纠正，按默认规则认') }}</small></button>
       </div>
     </footer>
   </article>

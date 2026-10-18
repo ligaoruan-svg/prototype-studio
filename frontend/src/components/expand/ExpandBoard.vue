@@ -163,48 +163,48 @@ watch(() => [props.route, expand.hash, expand.scope], () => requestRoute(props.r
 onMounted(() => requestRoute(props.route))
 </script>
 <template>
-  <section class="board" aria-label="展开这一页的所有视图">
+  <section class="board" :aria-label="$t('展开这一页的所有视图')">
       <div class="board-tools">
         <div class="board-heading-wrap">
           <div class="board-heading">
             <Layers :size="16" />
-            <label v-if="pages.length" class="page-switch" title="切换业务页面"><select :value="route" aria-label="切换业务页面" @change="$emit('update:route', $event.target.value); $emit('update:focus', null)"><option v-if="!pages.some(p => p.hash === route)" :value="route">{{ title }}</option><option v-for="p in pages" :key="p.hash" :value="p.hash">{{ p.title }}{{ p.count != null ? ' · ' + p.count : '' }}{{ p.state ? '（' + p.state + '）' : '' }}</option></select><strong>{{ title }}</strong><ChevronDown :size="14" /></label>
-            <strong v-else>{{ title }}</strong>
+            <label v-if="pages.length" class="page-switch" :title="$t('切换业务页面')"><select :value="route" :aria-label="$t('切换业务页面')" @change="$emit('update:route', $event.target.value); $emit('update:focus', null)"><option v-if="!pages.some(p => p.hash === route)" :value="route">{{ $t(title) }}</option><option v-for="p in pages" :key="p.hash" :value="p.hash">{{ $t(p.title) }}{{ p.count != null ? ' · ' + p.count : '' }}{{ p.state ? $t('（') + $t(p.state) + $t('）') : '' }}</option></select><strong>{{ $t(title) }}</strong><ChevronDown :size="14" /></label>
+            <strong v-else>{{ $t(title) }}</strong>
           </div>
-          <p v-if="status === 'running'" class="board-sub live" aria-live="polite"><LoaderCircle :size="12" class="spin" />正在试「{{ shortLabel(progress.current) || '准备中' }}」· 已试 {{ progress.tried || 0 }} / {{ progress.total || '…' }} · 找到 {{ progress.nodes?.length || 0 }} 个<template v-if="pageEta"> · {{ pageEta }}</template></p>
-          <p v-else-if="status === 'refreshing'" class="board-sub live" aria-live="polite"><LoaderCircle :size="12" class="spin" />正在重新查找 · 已试 {{ progress.tried || 0 }} / {{ progress.total || '…' }}<template v-if="pageEta"> · {{ pageEta }}</template></p>
-          <p v-else-if="status === 'syncing'" class="board-sub live" aria-live="polite"><LoaderCircle :size="12" class="spin" />正在同步改动 · {{ progress.done || 0 }} / {{ progress.total || state.nodes.length }}</p>
-          <p v-else-if="status === 'discovering'" class="board-sub live" aria-live="polite"><LoaderCircle :size="12" class="spin" />先认一下这个原型有哪些业务页面（第一次打开时找一次）</p>
-          <p v-else-if="status === 'queued'" class="board-sub live" aria-live="polite"><LoaderCircle :size="12" class="spin" />排队中，马上轮到这一页</p>
-          <p v-else-if="coverage?.left?.n" class="board-sub warn">这一页还有 {{ coverage.left.n }} 个按钮没轮到（{{ coverage.left.why }}）——<button type="button" class="link-btn" @click="refind">再找一遍</button></p>
-          <p v-else-if="staleCount" class="board-sub warn">有 {{ staleCount }} 张卡路径失效（标了黄色），可能按钮改了名——<button type="button" class="link-btn" @click="refind">重新查找这一页</button></p>
-          <p v-else class="board-sub">{{ hint }}</p>
+          <p v-if="status === 'running'" class="board-sub live" aria-live="polite"><LoaderCircle :size="12" class="spin" />{{ $t('正在试「{0}」· 已试 {1} / {2} · 找到 {3} 个', [shortLabel(progress.current) || $t('准备中'), progress.tried || 0, progress.total || '…', progress.nodes?.length || 0]) }}<template v-if="pageEta"> · {{ $t(pageEta) }}</template></p>
+          <p v-else-if="status === 'refreshing'" class="board-sub live" aria-live="polite"><LoaderCircle :size="12" class="spin" />{{ $t('正在重新查找 · 已试 {0} / {1}', [progress.tried || 0, progress.total || '…']) }}<template v-if="pageEta"> · {{ $t(pageEta) }}</template></p>
+          <p v-else-if="status === 'syncing'" class="board-sub live" aria-live="polite"><LoaderCircle :size="12" class="spin" />{{ $t('正在同步改动 · {0} / {1}', [progress.done || 0, progress.total || state.nodes.length]) }}</p>
+          <p v-else-if="status === 'discovering'" class="board-sub live" aria-live="polite"><LoaderCircle :size="12" class="spin" />{{ $t('先认一下这个原型有哪些业务页面（第一次打开时找一次）') }}</p>
+          <p v-else-if="status === 'queued'" class="board-sub live" aria-live="polite"><LoaderCircle :size="12" class="spin" />{{ $t('排队中，马上轮到这一页') }}</p>
+          <p v-else-if="coverage?.left?.n" class="board-sub warn">{{ $t('这一页还有 {0} 个按钮没轮到（{1}）——', [$t(coverage.left.n), $t(coverage.left.why)]) }}<button type="button" class="link-btn" @click="refind">{{ $t('再找一遍') }}</button></p>
+          <p v-else-if="staleCount" class="board-sub warn">{{ $t('有 {0} 张卡路径失效（标了黄色），可能按钮改了名——', [$t(staleCount)]) }}<button type="button" class="link-btn" @click="refind">{{ $t('重新查找这一页') }}</button></p>
+          <p v-else class="board-sub">{{ $t(hint) }}</p>
         </div>
         <div class="board-control">
-          <button v-if="picked" type="button" class="icon-button tool" title="定位当前选中的视图" aria-label="定位当前选中的视图" @click="reveal(picked.nodeId)"><LocateFixed :size="15" /></button>
-          <button v-if="exportable" type="button" class="export-expand" title="把已展开的所有业务页面导出成一个 HTML 文件：发给别人双击就能看，也能打印成 PDF" @click="$emit('export')"><Download :size="13" />导出展开图</button>
-          <button v-if="!allDone" type="button" class="expand-all" :disabled="allRunning" :title="allRunning ? (waiting ? '你在操作，后台先停一停；停手 1.5 秒后接着展开。正在看的这页不受影响' : '后台正在展开：先展开你正在看的这页，别的页面趁你停手时慢慢跑') : '把原型里的每个业务页面都展开一遍，之后改动会自动同步'" @click="expandAll(route)"><LoaderCircle v-if="allRunning" :size="13" class="spin" /><Layers v-else :size="13" />{{ allRunning ? (expand.discovering ? '正在找页面…' : `业务页面 ${allProgress.done} / ${allProgress.total}${waiting ? ' · 等你停手' : allEta ? ' · ' + allEta : ''}`) : '一键展开全部业务页面' }}</button>
-          <span v-else class="all-done" title="所有业务页面都已展开，改动会自动同步">{{ allProgress.total }} 个业务页面已展开</span>
-          <label class="search"><Search :size="14" /><input v-model="query" type="search" placeholder="查找弹窗" aria-label="查找弹窗"></label>
-          <button type="button" class="icon-button tool" :disabled="busy" title="重新查找这一页的所有弹窗（新加了按钮时用）" aria-label="重新查找这一页的所有弹窗" @click="refind"><RotateCw :size="15" :class="{ spin: busy }" /></button>
+          <button v-if="picked" type="button" class="icon-button tool" :title="$t('定位当前选中的视图')" :aria-label="$t('定位当前选中的视图')" @click="reveal(picked.nodeId)"><LocateFixed :size="15" /></button>
+          <button v-if="exportable" type="button" class="export-expand" :title="$t('把已展开的所有业务页面导出成一个 HTML 文件：发给别人双击就能看，也能打印成 PDF')" @click="$emit('export')"><Download :size="13" />{{ $t('导出展开图') }}</button>
+          <button v-if="!allDone" type="button" class="expand-all" :disabled="allRunning" :title="allRunning ? (waiting ? $t('你在操作，后台先停一停；停手 1.5 秒后接着展开。正在看的这页不受影响') : $t('后台正在展开：先展开你正在看的这页，别的页面趁你停手时慢慢跑')) : $t('把原型里的每个业务页面都展开一遍，之后改动会自动同步')" @click="expandAll(route)"><LoaderCircle v-if="allRunning" :size="13" class="spin" /><Layers v-else :size="13" />{{ allRunning ? (expand.discovering ? $t('正在找页面…') : $t('业务页面 {0} / {1}{2}', [$t(allProgress.done), $t(allProgress.total), waiting ? $t(' · 等你停手') : allEta ? ' · ' + allEta : ''])) : $t('一键展开全部业务页面') }}</button>
+          <span v-else class="all-done" :title="$t('所有业务页面都已展开，改动会自动同步')">{{ $t('{0} 个业务页面已展开', [$t(allProgress.total)]) }}</span>
+          <label class="search"><Search :size="14" /><input v-model="query" type="search" :placeholder="$t('查找弹窗')" :aria-label="$t('查找弹窗')"></label>
+          <button type="button" class="icon-button tool" :disabled="busy" :title="$t('重新查找这一页的所有弹窗（新加了按钮时用）')" :aria-label="$t('重新查找这一页的所有弹窗')" @click="refind"><RotateCw :size="15" :class="{ spin: busy }" /></button>
         </div>
       </div>
       <div class="board-bar">
-        <div class="board-filter" role="tablist" aria-label="按来源筛选">
-          <span class="bar-label">看</span>
-          <button v-for="g in groups" :key="g.key" type="button" role="tab" :aria-selected="filter === g.key" :class="{ active: filter === g.key }" @click="filter = g.key">{{ g.label }}</button>
-          <button v-if="filter !== 'all'" type="button" class="clear-filter" @click="filter = 'all'">只显示了一部分 · 看全部</button>
+        <div class="board-filter" role="tablist" :aria-label="$t('按来源筛选')">
+          <span class="bar-label">{{ $t('看') }}</span>
+          <button v-for="g in groups" :key="g.key" type="button" role="tab" :aria-selected="filter === g.key" :class="{ active: filter === g.key }" @click="filter = g.key">{{ $t(g.label) }}</button>
+          <button v-if="filter !== 'all'" type="button" class="clear-filter" @click="filter = 'all'">{{ $t('只显示了一部分 · 看全部') }}</button>
         </div>
-        <div class="board-levels" role="group" aria-label="展开层级">
-          <span class="bar-label">层级</span>
-          <div class="seg" :class="{ disabled: level === 'none' }" :title="level === 'none' ? '这一页的弹窗都是页面直接打开的，只有一层' : '第一层：只看页面直接打开的；全部展开：弹窗里再点开的也都摊开'">
-            <button type="button" :class="{ active: level === 'first' || level === 'none' }" :disabled="level === 'none'" @click="setLevel('first')">第一层</button>
-            <button type="button" :class="{ active: level === 'all' }" :disabled="level === 'none'" @click="setLevel('all')">全部展开</button>
+        <div class="board-levels" role="group" :aria-label="$t('展开层级')">
+          <span class="bar-label">{{ $t('层级') }}</span>
+          <div class="seg" :class="{ disabled: level === 'none' }" :title="level === 'none' ? $t('这一页的弹窗都是页面直接打开的，只有一层') : $t('第一层：只看页面直接打开的；全部展开：弹窗里再点开的也都摊开')">
+            <button type="button" :class="{ active: level === 'first' || level === 'none' }" :disabled="level === 'none'" @click="setLevel('first')">{{ $t('第一层') }}</button>
+            <button type="button" :class="{ active: level === 'all' }" :disabled="level === 'none'" @click="setLevel('all')">{{ $t('全部展开') }}</button>
           </div>
-          <span class="bar-count">{{ q ? '搜索中 · ' : level === 'custom' ? '部分展开 · ' : '' }}显示 {{ shownCount }} / {{ scenes.length }}</span>
+          <span class="bar-count">{{ $t('{0}显示 {1} / {2}', [q ? $t('搜索中 · ') : level === 'custom' ? $t('部分展开 · ') : '', $t(shownCount), $t(scenes.length)]) }}</span>
         </div>
       </div>
-      <div v-if="expand.error" class="board-error"><AlertCircle :size="15" /><span>{{ expand.error }}，可以点右上角的刷新再试一次。</span></div>
+      <div v-if="expand.error" class="board-error"><AlertCircle :size="15" /><span>{{ $t('{0}，可以点右上角的刷新再试一次。', [$t(expand.error)]) }}</span></div>
       <div ref="scroller" class="board-scroll">
         <div class="board-tree">
           <div class="tree-root" :class="{ big: focus === 0 }">
@@ -213,13 +213,13 @@ onMounted(() => requestRoute(props.route))
             <div v-else class="scene-ghost" aria-hidden="true"><span></span><span></span><span></span></div>
             <CardExtras v-if="pageNode && focus !== 0" :links="pageExtras.links" :dead="pageExtras.dead" @goto="reveal" />
             <div v-if="jumps.length && focus !== 0" class="jumps">
-              <p>从这页能跳到 <span>{{ jumps.length }}</span></p>
+              <p>{{ $t('从这页能跳到') }} <span>{{ $t(jumps.length) }}</span></p>
               <div v-for="(j, i) in jumps" :key="i" class="jump">
-                <button type="button" class="jump-go" :disabled="j.route == null" :title="j.route == null ? '这个页面不在业务页面清单里' : `切到「${j.name}」的展开图（不离开展开视图）`" @click="goJump(j)">
-                  <b><ArrowRight :size="12" />{{ j.name }}<em v-if="j.forced">你改的</em></b><small>{{ j.from ? `在「${j.from}」里` : '' }}点「{{ j.label }}」</small>
+                <button type="button" class="jump-go" :disabled="j.route == null" :title="j.route == null ? $t('这个页面不在业务页面清单里') : $t('切到「{0}」的展开图（不离开展开视图）', [$t(j.name)])" @click="goJump(j)">
+                  <b><ArrowRight :size="12" />{{ $t(j.name) }}<em v-if="j.forced">{{ $t('你改的') }}</em></b><small>{{ $t('{0}点「{1}」', [j.from ? $t('在「{0}」里', [$t(j.from)]) : '', $t(j.label)]) }}</small>
                 </button>
-                <button v-if="j.forced" type="button" class="jump-fix" title="去掉你的纠正，按默认规则认" @click="fixJump(j, null)">恢复</button>
-                <button v-else type="button" class="jump-fix" :title="`认错了：「${j.label}」点出来的其实是这一页的子页面，挂到这页的树下`" @click="fixJump(j, 'subpage')">是子页面</button>
+                <button v-if="j.forced" type="button" class="jump-fix" :title="$t('去掉你的纠正，按默认规则认')" @click="fixJump(j, null)">{{ $t('恢复') }}</button>
+                <button v-else type="button" class="jump-fix" :title="$t('认错了：「{0}」点出来的其实是这一页的子页面，挂到这页的树下', [$t(j.label)])" @click="fixJump(j, 'subpage')">{{ $t('是子页面') }}</button>
               </div>
             </div>
             <CoverageNote v-if="coverage && focus !== 0" :coverage="coverage" @refind="refind" />
@@ -228,8 +228,8 @@ onMounted(() => requestRoute(props.route))
             <BoardBranch v-for="node in roots" :key="node.id" :node="node" :styles="state.styles" :frame="frame" :picked="picked" :mode="mode" :open="openView" :patch="routePatch" :focus="focus" :route="route" :focus-width="focusWidth" @pick="pick" @edit="edit" @play="play" @refind="refind" @toggle="toggle" @close="$emit('update:focus', null)" @open="openInPreview" @goto="reveal" @fix="fixNode" />
             <div v-if="status === 'running' || status === 'queued' || status === 'discovering'" class="branch-ghost" aria-hidden="true"><span></span><div class="scene-ghost"><span></span><span></span><span></span></div></div>
             <div v-if="!busy && !roots.length" class="empty-board">
-              <template v-if="q || filter !== 'all'"><Search :size="22" /><h3>没有找到对应视图</h3><p>试试其他名称，或者清空当前筛选。</p><button type="button" class="outline" @click="query = ''; filter = 'all'">清空筛选</button></template>
-              <template v-else><h3>这一页没有点出弹窗</h3><p>如果弹窗要先切到某个页签、选中某一行才出现，先在预览里切过去，再点右上角的刷新。</p></template>
+              <template v-if="q || filter !== 'all'"><Search :size="22" /><h3>{{ $t('没有找到对应视图') }}</h3><p>{{ $t('试试其他名称，或者清空当前筛选。') }}</p><button type="button" class="outline" @click="query = ''; filter = 'all'">{{ $t('清空筛选') }}</button></template>
+              <template v-else><h3>{{ $t('这一页没有点出弹窗') }}</h3><p>{{ $t('如果弹窗要先切到某个页签、选中某一行才出现，先在预览里切过去，再点右上角的刷新。') }}</p></template>
             </div>
           </div>
         </div>

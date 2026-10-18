@@ -38,10 +38,10 @@ onUnmounted(() => { window.removeEventListener('message', listen); observer?.dis
 <template>
   <div ref="stage" class="live-stage">
     <div class="live-frame" :style="{ width: frame.w * scale + 'px', height: frame.h * scale + 'px' }">
-      <iframe ref="iframe" sandbox="allow-scripts allow-forms" :title="`${node.title} · 交互`" :srcdoc="doc" :style="{ width: frame.w + 'px', height: frame.h + 'px', transform: `scale(${scale})` }"></iframe>
-      <div v-if="status === 'loading'" class="live-veil"><LoaderCircle :size="18" class="spin" />正在打开「{{ node.title }}」…</div>
+      <iframe ref="iframe" sandbox="allow-scripts allow-forms" :title="$t('{0} · 交互', [$t(node.title)])" :srcdoc="doc" :style="{ width: frame.w + 'px', height: frame.h + 'px', transform: `scale(${scale})` }"></iframe>
+      <div v-if="status === 'loading'" class="live-veil"><LoaderCircle :size="18" class="spin" />{{ $t('正在打开「{0}」…', [$t(node.title)]) }}</div>
     </div>
-    <p v-if="status === 'failed'" class="live-note"><AlertCircle :size="14" />没能按原路径点开这个弹窗，页面已经载入，可以自己点一下打开</p>
+    <p v-if="status === 'failed'" class="live-note"><AlertCircle :size="14" />{{ $t('没能按原路径点开这个弹窗，页面已经载入，可以自己点一下打开') }}</p>
   </div>
 </template>
 <style scoped>

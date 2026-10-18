@@ -119,6 +119,7 @@ class AgentIn(BaseModel):
     intent: str = Field(default='auto', pattern='^(auto|discuss|edit)$')
     include_annotations: bool = True
     repair_pending: str = ''   # 运行检查没过的那一版：在它的基础上修报错，不从头再做
+    lang: str = Field(default='zh', pattern='^[a-z]{2}(-[A-Za-z]{2,4})?$')   # 界面语言：用户这句话看不出语言时，AI 按它回复
 
 
 class EditIn(BaseModel):
@@ -721,7 +722,7 @@ def agent_chat(project_id: str, body: AgentIn, x_deepseek_key: str | None = Head
         return run_agent(project_id, body.page_id, body.message, key, body.model or settings['model'],
                          settings['base_url'], body.selection, body.runtime_feedback, body.reference, settings['max_tokens'],
                          settings.get('context_budget', 200_000), settings.get('max_rounds', 24),
-                         intent=body.intent, include_annotations=body.include_annotations, scene=body.scene)
+                         intent=body.intent, include_annotations=body.include_annotations, scene=body.scene, lang=body.lang)
     except Exception as exc:
         if not isinstance(exc, (WorkError, PatchError)):
             logging.getLogger(__name__).exception('Unexpected agent request failure')
@@ -777,7 +778,7 @@ def agent_stream(project_id: str, body: AgentIn):
                                settings.get('max_rounds', 24),
                                on_event=events.put, intent=body.intent, include_annotations=body.include_annotations, scene=body.scene,
                                stream=settings.get('stream', True), should_stop=stop.is_set,
-                               start_source=(draft or {}).get('after'))
+                               start_source=(draft or {}).get('after'), lang=body.lang)
             events.put({'type':'complete','result':result})
             synthesize_later(project_id)
         except Exception as exc:

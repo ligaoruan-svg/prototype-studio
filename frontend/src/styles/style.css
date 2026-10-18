@@ -438,6 +438,11 @@ input[type=color]::-webkit-color-swatch { border: none; border-radius: 2px; }
 .more-list button { justify-content: flex-start; gap: 9px; width: 100%; padding: 8px 10px; font-size: 13px; border-radius: 8px; color: var(--ink); }
 .more-list button:hover:not(:disabled) { background: var(--quiet); }
 .more-list hr { border: 0; border-top: 1px solid var(--line); margin: 4px 6px; }
+.more-list .lang-row { display: flex; align-items: center; gap: 9px; padding: 4px 4px 4px 10px; font-size: 13px; color: var(--ink); }
+.more-list .lang-row > span:first-of-type { flex: 1; }
+.more-list .lang-options { display: inline-flex; gap: 2px; padding: 2px; border-radius: 8px; background: var(--quiet); }
+.more-list .lang-options button { width: auto; padding: 4px 8px; font-size: 12px; border-radius: 6px; color: var(--muted); }
+.more-list .lang-options button.active { background: #fff; color: var(--ink); box-shadow: 0 1px 2px #39251b1f; }
 
 /* 画布四周的留白收窄，原型本身显得大 */
 .canvas { padding: 10px 12px 12px; }

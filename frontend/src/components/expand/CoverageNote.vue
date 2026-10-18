@@ -47,19 +47,19 @@ const secs = computed(() => (c.value?.ms ? Math.max(1, Math.round(c.value.ms / 1
 </script>
 <template>
   <div v-if="c" class="coverage" :class="{ warn: incomplete }">
-    <p class="head"><ListChecks :size="13" />试了 <b>{{ c.tried }}</b> 个按钮<small v-if="secs">· 用了 {{ secs >= 60 ? Math.round(secs / 60) + ' 分钟' : secs + ' 秒' }}</small></p>
-    <p class="outcomes"><span v-for="o in outcomes" :key="o.label" :class="{ warn: o.warn }">{{ o.label }} {{ o.n }}</span></p>
+    <p class="head"><ListChecks :size="13" />{{ $t('试了') }} <b>{{ $t(c.tried) }}</b> {{ $t('个按钮') }}<small v-if="secs">{{ $t('· 用了 {0}', [secs >= 60 ? Math.round(secs / 60) + $t(' 分钟') : secs + $t(' 秒')]) }}</small></p>
+    <p class="outcomes"><span v-for="o in outcomes" :key="o.label" :class="{ warn: o.warn }">{{ $t(o.label) }} {{ $t(o.n) }}</span></p>
     <button v-if="skipped.length" type="button" class="toggle" :aria-expanded="open" @click="open = !open">
       <component :is="open ? ChevronDown : ChevronRight" :size="12" />
-      <template v-if="incomplete">还有 {{ c.left.n }} 个没轮到</template><template v-else-if="skippedTotal">跳过 {{ skippedTotal }} 个，看为什么</template><template v-else>看明细</template>
+      <template v-if="incomplete">{{ $t('还有 {0} 个没轮到', [$t(c.left.n)]) }}</template><template v-else-if="skippedTotal">{{ $t('跳过 {0} 个，看为什么', [$t(skippedTotal)]) }}</template><template v-else>{{ $t('看明细') }}</template>
     </button>
     <ul v-if="open" class="reasons">
       <li v-for="r in skipped" :key="r.key" :class="{ warn: r.warn, quiet: r.quiet }">
-        <strong>{{ r.title }} <span>{{ r.n }}</span></strong>
-        <small>{{ r.why }}</small>
-        <em v-if="r.labels.length">{{ r.labels.join('、') }}{{ r.n > r.labels.length ? ' …' : '' }}</em>
+        <strong>{{ $t(r.title) }} <span>{{ $t(r.n) }}</span></strong>
+        <small>{{ $t(r.why) }}</small>
+        <em v-if="r.labels.length">{{ r.labels.join($t('、')) }}{{ r.n > r.labels.length ? ' …' : '' }}</em>
       </li>
-      <li v-if="incomplete" class="again"><button type="button" class="link-btn" @click="emit('refind')">重新查找这一页</button></li>
+      <li v-if="incomplete" class="again"><button type="button" class="link-btn" @click="emit('refind')">{{ $t('重新查找这一页') }}</button></li>
     </ul>
   </div>
 </template>

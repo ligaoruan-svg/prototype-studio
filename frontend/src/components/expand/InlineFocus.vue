@@ -12,15 +12,15 @@ const live = ref(null)
 <template>
   <article class="inline-focus" :class="{ playing: mode === 'interact' }" :style="{ width: width + 'px' }" :data-node-id="node.id">
     <header class="if-head">
-      <div class="if-title"><strong>{{ node.title }}</strong><span v-if="crumb" class="if-crumb">{{ crumb }}</span></div>
-      <span class="state-tag" :class="{ live: mode === 'interact' }">{{ mode === 'interact' ? '交互中 · 演示数据不保存' : mode === 'box' ? '编辑中 · 拖动框选' : '编辑中 · 点选要改的地方' }}</span>
+      <div class="if-title"><strong>{{ $t(node.title) }}</strong><span v-if="crumb" class="if-crumb">{{ $t(crumb) }}</span></div>
+      <span class="state-tag" :class="{ live: mode === 'interact' }">{{ mode === 'interact' ? $t('交互中 · 演示数据不保存') : mode === 'box' ? $t('编辑中 · 拖动框选') : $t('编辑中 · 点选要改的地方') }}</span>
       <template v-if="mode === 'interact'">
-        <button type="button" class="if-btn" title="重新载入，回到刚打开的样子" @click="live?.restart()"><RotateCw :size="13" />重新开始</button>
-        <button type="button" class="if-btn" @click="$emit('edit', node)"><PencilLine :size="13" />改为编辑</button>
+        <button type="button" class="if-btn" :title="$t('重新载入，回到刚打开的样子')" @click="live?.restart()"><RotateCw :size="13" />{{ $t('重新开始') }}</button>
+        <button type="button" class="if-btn" @click="$emit('edit', node)"><PencilLine :size="13" />{{ $t('改为编辑') }}</button>
       </template>
-      <button v-else type="button" class="if-btn" @click="$emit('play', node)"><Hand :size="13" />交互</button>
-      <button type="button" class="if-btn quiet" title="离开展开视图，到预览里打开这个视图" @click="$emit('open', node)"><ExternalLink :size="13" />去预览</button>
-      <button type="button" class="if-btn close" title="收回成小卡（Esc）" aria-label="收起放大" @click="$emit('close')"><Minimize2 :size="13" />收起</button>
+      <button v-else type="button" class="if-btn" @click="$emit('play', node)"><Hand :size="13" />{{ $t('交互') }}</button>
+      <button type="button" class="if-btn quiet" :title="$t('离开展开视图，到预览里打开这个视图')" @click="$emit('open', node)"><ExternalLink :size="13" />{{ $t('去预览') }}</button>
+      <button type="button" class="if-btn close" :title="$t('收回成小卡（Esc）')" :aria-label="$t('收起放大')" @click="$emit('close')"><Minimize2 :size="13" />{{ $t('收起') }}</button>
     </header>
     <div class="if-body">
       <LiveScene v-if="mode === 'interact'" ref="live" :key="'live-' + node.id" :node="node" :route="route" :frame="frame" />
