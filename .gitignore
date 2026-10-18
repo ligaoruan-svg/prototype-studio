@@ -14,3 +14,7 @@ frontend/dist/
 
 # 桌面端自动放截图的目录
 Claude outputs/
+
+# 打包 Mac 应用
+.venv-build/
+build/

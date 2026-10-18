@@ -1022,5 +1022,7 @@ export default {
   "外壳自带的占位页「{0}」还在，菜单里也还挂着：没用就从 NAV 和 Pages 里删掉": "The shell's placeholder page \"{0}\" is still there and in the menu: remove it from NAV and Pages if unused",
   "数据": "Data",
   "规范": "Guidelines",
-  "这一页": "This page"
+  "这一页": "This page",
+  "展开图": "expanded",
+  "导出失败，请重试": "Export failed, please retry"
 }

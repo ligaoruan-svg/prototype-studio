@@ -10,7 +10,7 @@ import re
 import zipfile
 from pathlib import Path, PurePosixPath
 
-ROOT = Path(__file__).resolve().parents[1] / "prompts" / "components"
+from .paths import COMPONENTS_DIR as ROOT
 SAFE_NAME = re.compile(r"[\w一-龥-]{1,40}\.(?:html|md)")
 MAX_FILES = 40
 MAX_BYTES = 120_000

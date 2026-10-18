@@ -1,0 +1,69 @@
+#!/bin/bash
+# 双击这个文件，打出一个能放进「应用程序」的 原型工坊.app。
+# 第一次要下载打包工具，需要联网，大概三五分钟；以后改了代码再双击一次就是新版本。
+cd "$(dirname "$0")" || exit 1
+fail() { echo ""; echo "打包没成功：$1"; read -r -p "按回车关闭"; exit 1; }
+
+echo "== 打包 原型工坊.app =="
+command -v python3 >/dev/null || fail "没找到 python3，先装 Python 3.10 以上版本"
+
+# 打包工具单独放一个环境，不影响平时用的 .venv
+if [ ! -d .venv-build ]; then
+  echo "第一次打包：准备打包工具…"
+  python3 -m venv .venv-build || fail "创建打包环境失败"
+fi
+# shellcheck disable=SC1091
+source .venv-build/bin/activate || fail "打包环境损坏，删掉 .venv-build 文件夹后重试"
+echo "检查依赖…"
+python -m pip install -q --upgrade pip >/dev/null 2>&1
+python -m pip install -q -e . "pywebview>=5.3" "pyinstaller>=6.11" || fail "依赖安装失败，检查网络后重试"
+
+echo "构建界面…"
+if [ -d frontend/node_modules ] && command -v node >/dev/null; then
+  (cd frontend && node scripts/build-esm.mjs .) || fail "界面构建失败"
+fi
+[ -f frontend/dist/index.html ] || fail "缺少 frontend/dist（需要 Node.js 构建界面）"
+
+echo "生成图标…"
+rm -rf build/icon.iconset && mkdir -p build/icon.iconset
+for s in 16 32 128 256 512; do
+  sips -z $s $s desktop/icon.png --out "build/icon.iconset/icon_${s}x${s}.png" >/dev/null
+  d=$((s * 2)); sips -z $d $d desktop/icon.png --out "build/icon.iconset/icon_${s}x${s}@2x.png" >/dev/null
+done
+iconutil -c icns build/icon.iconset -o build/icon.icns || fail "图标生成失败"
+
+echo "打包（一两分钟）…"
+pyinstaller desktop/prototype_studio.spec --noconfirm --clean --log-level WARN \
+  --distpath build/dist --workpath build/work || fail "PyInstaller 出错，看上面的报错"
+
+mkdir -p release
+APP="release/原型工坊.app"
+rm -rf "$APP"
+ditto build/dist/PrototypeStudio.app "$APP" || fail "复制应用失败"
+
+# 第一次装：把现在用的项目、模型设置、设计规范、组件和 skill 复制过去（只复制，不动原来的）
+SUPPORT="$HOME/Library/Application Support/原型工坊"
+if [ ! -e "$SUPPORT/data" ] && [ -d data ]; then
+  echo "把现有的项目和模型设置复制到应用里…"
+  mkdir -p "$SUPPORT/prompts"
+  ditto data "$SUPPORT/data"
+  [ -f prompts/design-spec.md ] && cp prompts/design-spec.md "$SUPPORT/prompts/"
+  for x in skills components; do [ -d "prompts/$x" ] && ditto "prompts/$x" "$SUPPORT/prompts/$x"; done
+fi
+
+echo ""
+echo "打好了：$APP"
+read -r -p "装到「应用程序」文件夹？[Y/n] " answer
+case "$answer" in
+  [nN]*) open -R "$APP" ;;
+  *)
+    osascript -e 'quit app "原型工坊"' >/dev/null 2>&1
+    rm -rf "/Applications/原型工坊.app"
+    if ditto "$APP" "/Applications/原型工坊.app"; then
+      echo "已装好，可以在「启动台」或「应用程序」里打开 原型工坊。"
+      open "/Applications/原型工坊.app"
+    else
+      echo "没有写入「应用程序」的权限，已在访达里选中，拖进去就行。"; open -R "$APP"
+    fi ;;
+esac
+read -r -p "按回车关闭"

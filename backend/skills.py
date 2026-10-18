@@ -17,7 +17,7 @@ import shutil
 import zipfile
 from pathlib import Path, PurePosixPath
 
-ROOT = Path(__file__).resolve().parents[1] / "prompts" / "skills"
+from .paths import SKILLS_DIR as ROOT
 SAFE_NAME = re.compile(r"[\w一-龥-]{1,40}")
 TEXT_SUFFIX = {".html", ".htm", ".md", ".markdown", ".css", ".txt", ".json", ".svg", ".js"}
 MAX_SKILLS = 12

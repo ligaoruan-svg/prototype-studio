@@ -11,7 +11,8 @@ VERSION = "6.0"
 STARTED_AT = __import__("datetime").datetime.now().strftime("%H:%M:%S")
 # 启动脚本拿它和磁盘上代码的改动时间比，判断正在跑的服务是不是已经过时。
 STARTED_EPOCH = __import__("time").time()
-CONFIG_FILE = Path(__file__).resolve().parents[1] / "data" / "config.json"
+from .paths import DATA_DIR
+CONFIG_FILE = DATA_DIR / "config.json"
 DEFAULT = {"base_url": "https://api.deepseek.com", "model": "deepseek-flash", "api_key": "", "supports_vision": False,
            "max_tokens": 32000, "stream": True, "context_budget": 200_000, "max_rounds": 24}
 

@@ -28,7 +28,7 @@ from .deepseek_client import chat
 from .errors import WorkError, error_payload
 from .experience import REGION_NAMES, element_name
 
-ROOT = Path(__file__).resolve().parents[1]
+from .paths import APP_ROOT as ROOT, SPEC_FILE
 FRONTEND_DIST = ROOT / "frontend" / "dist"
 app = FastAPI(title="原型工坊", version=config.VERSION)
 
@@ -274,7 +274,7 @@ def test_config(body: TestIn | None = None):
     return {"ok": bool(result.get('choices')), "usage": result.get('usage', {}), "tools": tools, "tool_error": tool_error}
 
 
-SPEC_PATH = ROOT / "prompts" / "design-spec.md"
+SPEC_PATH = SPEC_FILE
 
 
 @app.get("/api/design-spec")

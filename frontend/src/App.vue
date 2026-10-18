@@ -14,6 +14,7 @@ import { preparePreviewDocument } from './lib/previewDocument.js'
 import { consumeAgentStream, responseError } from './lib/streamAgent.js'
 import { selfTest, selfTestRequest } from './lib/probe.js'
 import { t, dateLocale, locale } from './lib/i18n.js'
+import { saveFile, downloadUrl } from './lib/desktop.js'
 
 const projects = ref([]), project = ref(null), pageId = ref('')
 const sourceInfo = ref({ source: '', hash: '', tokens: {}, defaults: {}, regions: [] })
@@ -931,13 +932,12 @@ function exportExpand() {
   const name = project.value.name || '原型', file = page.value.path || page.value.title || ''
   const { html, pages, views, missing } = buildExpandExport({ projectName: name, fileName: file, version: page.value.version, routes: expand.routes, entries: expand.entries, currentHash: expand.hash, notes: annotations.value })
   if (!pages) { toast('还没有展开好的页面可以导出'); return }
-  const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }))
-  const a = document.createElement('a')
-  a.href = url; a.download = `${name}-展开图-v${page.value.version}.html`.replace(/[\\/:*?"<>|]/g, '_')
-  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 5000)
-  toast(`已导出 ${pages} 个业务页面、${views} 个视图${missing ? `；还有 ${missing} 个页面没展开，先点「一键展开」可以导出完整的` : ''}`)
+  const fileName = `${name}-${t('展开图')}-v${page.value.version}.html`.replace(/[\\/:*?"<>|]/g, '_')
+  saveFile(fileName, html).then(saved => {
+    if (saved) toast(`已导出 ${pages} 个业务页面、${views} 个视图${missing ? `；还有 ${missing} 个页面没展开，先点「一键展开」可以导出完整的` : ''}`)
+  }, () => toast('导出失败，请重试'))
 }
-function download(zip = false) { if (project.value) window.location.assign(zip ? `/api/projects/${project.value.id}/export` : endpoint('/download')) }
+function download(zip = false) { if (project.value) downloadUrl(zip ? `/api/projects/${project.value.id}/export` : endpoint('/download')).catch(() => toast('导出失败，请重试')) }
 // 一个格式器反复用：每次 toLocaleString 都新建一个，聊天长了以后每敲一个字都要重算几百次
 const timeFormats = {}
 function formatTime(value) { const d = new Date(value); if (isNaN(d)) return ''; const id = locale.value; timeFormats[id] ||= new Intl.DateTimeFormat(dateLocale(), { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }); return timeFormats[id].format(d) }

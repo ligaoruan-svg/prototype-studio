@@ -28,7 +28,8 @@ def _locked(fn):
     return wrapper
 
 ROOT = Path(__file__).resolve().parents[1]
-DATA_ROOT = ROOT / "data" / "projects"
+from .paths import DATA_DIR
+DATA_ROOT = DATA_DIR / "projects"
 DATA_ROOT.mkdir(parents=True, exist_ok=True)
 
 
