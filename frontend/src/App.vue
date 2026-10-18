@@ -566,7 +566,9 @@ async function runAgent(text = '', runtimeFeedback = '', options = {}) {
   busy.value = true; error.value = ''; pendingUser.value = message
   // 截图跟着这一条发出去就算用过了：从输入框上方拿掉，挂到这条消息上；停止或失败再放回来
   const sentRef = reference.value
-  let followUp = ''   // 自检发现问题：这次结束后自动再修一轮（只一轮，修完再查一遍，不再自动修）
+  // 自检发现问题：这次结束后自动再修一轮；修完再查，如果修出了新的报错，再修第二轮，之后不再自动修
+  let followUp = '', followRound = 0
+  const selfRound = options.selfReview || 0
   pendingRef.value = sentRef
   if (!text || input.value.trim() === message) input.value = ''
   reference.value = null
@@ -578,7 +580,7 @@ async function runAgent(text = '', runtimeFeedback = '', options = {}) {
       // 模型服务忙：后台自动等几秒重试，这里只记一笔，让人知道不是卡住了
       if (event.type === 'model_retry') current.steps.push({ id: `retry-${event.round}-${event.attempt}`, label: event.label, state: 'done' })
       if (event.type === 'intent') { current.intent = event.intent; current.options.intent = event.intent; status.value = event.intent === 'discuss' ? '讨论中 · 不会修改文件' : '正在读页面' }
-      if (event.type === 'plan') current.plan = event.steps
+      if (event.type === 'plan') { current.plan = event.steps; if (event.brief) current.brief = event.brief }
       if (event.type === 'model_wait') { current.streamText = ''; current.round = event.round }
       if (event.type === 'text_delta') current.streamText += event.text
       if (event.type === 'note_delta') {
@@ -608,13 +610,14 @@ async function runAgent(text = '', runtimeFeedback = '', options = {}) {
       current.steps.push({ id: 'selftest', label: '做完自检：把每页的按钮点一遍', state: 'running' })
       const step = current.steps[current.steps.length - 1], html = previewDoc.value
       const report = await selfTest({ makeDoc: route => makeProbeDoc(route, html), width: canvasWidth.value || 1200 })
-      result.selftest = { ...report, round: options.selfReview ? 2 : 1 }
+      const again = report.issues.length && (selfRound === 0 || (selfRound === 1 && report.issues.some(i => i.kind === '报错')))
+      result.selftest = { ...report, round: selfRound + 1, final: !again }
       if (result.change_id) selftests.value = { ...selftests.value, [result.change_id]: result.selftest }
       step.state = 'done'
       step.label = report.skipped ? '自检没跑完：' + report.skipped
-        : report.issues.length ? `自检发现 ${report.issues.length} 个问题${options.selfReview ? '' : '，接着自动修一轮'}`
+        : report.issues.length ? `自检发现 ${report.issues.length} 个问题${again ? '，接着自动修一轮' : ''}`
         : `自检通过：${report.routes} 个页面、${report.clicked} 个按钮都点过`
-      if (report.issues.length && !options.selfReview) followUp = selfTestRequest(report.issues)
+      if (again) { followUp = selfTestRequest(report.issues); followRound = selfRound + 1 }
     }
     else status.value = result.clarification ? '等待你确认' : result.discussion ? '讨论完成 · 未修改文件' : '没有改动页面'
     lastResult.value = result
@@ -644,7 +647,7 @@ async function runAgent(text = '', runtimeFeedback = '', options = {}) {
   } finally {
     current.finished = Date.now(); busy.value = false; pendingUser.value = ''; pendingRef.value = null
     await nextTick(); if (chatBox.value) chatBox.value.scrollTop = chatBox.value.scrollHeight
-    if (followUp) setTimeout(() => runAgent(followUp, '', { intent: 'edit', includeAnnotations: false, selection: null, selfReview: true }), 0)
+    if (followUp) setTimeout(() => runAgent(followUp, '', { intent: 'edit', includeAnnotations: false, selection: null, selfReview: followRound }), 0)
   }
 }
 // 停止：告诉后台在下一步之前停下。已经改好的部分照常检查、保存，可以一键撤销；还没改就什么都不动

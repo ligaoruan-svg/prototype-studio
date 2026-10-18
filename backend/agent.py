@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 import re
 import logging
 from pathlib import Path
@@ -171,9 +172,11 @@ TOOL_SPECS.extend([
      "annotations":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"status":{"type":"string","enum":["completed","partial","unprocessed"]},"reason":{"type":"string"}},"required":["id","status"]}},
      "retry_hint":{"type":"string","description":"没能改成时，写一句用户可以直接发送的换种说法；改成了就留空。"}},
      "required":["summary","annotations"]}}},
-    {"type":"function","function":{"name":"update_plan","description":"改动需要三步以上时，先列出计划；每推进一步就再调用一次并更新状态。步骤用页面上的叫法，不写选择器。",
+    {"type":"function","function":{"name":"update_plan","description":("改动需要三步以上时，先列出计划，只列一次——之后程序按你每轮的修改自动推进状态，不要再调它更新。"
+                                                                    "步骤用页面上的叫法，不写选择器。从零做页面时同时写 brief（业务梳理）。"),
      "parameters":{"type":"object","properties":{"steps":{"type":"array","minItems":2,"maxItems":6,"items":{"type":"object","properties":{
-     "title":{"type":"string"},"status":{"type":"string","enum":["pending","active","done"]}},"required":["title","status"]}}},"required":["steps"]}}},
+     "title":{"type":"string"},"status":{"type":"string","enum":["pending","active","done"]}},"required":["title","status"]}},
+     "brief":{"type":"string","description":"从零做页面时的业务梳理，3–5 行：谁用、管什么、有哪些状态和规则、哪些操作合理哪些不该有、页面要先回答用户哪几个问题"}},"required":["steps"]}}},
     {"type":"function","function":{"name":"ask_user","description":"改动方向存在重大歧义、删除数据或大范围重排时，先问一个问题，不做修改。",
      "parameters":{"type":"object","properties":{"question":{"type":"string"},"options":{"type":"array","minItems":2,"maxItems":3,"items":{"type":"string"}}},"required":["question","options"]}}}
 ])
@@ -392,13 +395,51 @@ def scene_text(scene: dict | None) -> str:
             "先按这里的 selector 和报错去源码里找，不要从头通读：\n" + "\n".join(lines))
 
 
-def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, model: str,
+def run_agent(project_id: str, page_id: str, user_message: str, *args, **kwargs) -> dict[str, Any]:
+    """跑一次修改/讨论，并把过程（每一轮调了哪些工具、成没成、花了多少 token）记一份到项目的 runs/ 里。
+    以前只记结果：撞到轮次上限时没法知道绕在了哪一步。"""
+    trace: list[dict] = []
+    started, outcome = time.time(), {}
+    try:
+        result = _run_agent(project_id, page_id, user_message, *args, trace=trace, **kwargs)
+        outcome = {"changed": result.get("changed"), "intent": result.get("intent"),
+                   "summary": str((result.get("report") or {}).get("summary") or result.get("message") or "")[:300],
+                   "usage": result.get("usage")}
+        return result
+    except Exception as exc:
+        outcome = {"error": f"{type(exc).__name__}: {str(exc)[:300]}"}
+        raise
+    finally:
+        try:
+            storage.save_run_trace(project_id, {"page_id": page_id, "request": user_message[:500], "seconds": round(time.time() - started, 1),
+                                                "outcome": outcome, "rounds": _trace_rounds(trace)})
+        except Exception:
+            pass
+
+
+def _trace_rounds(trace: list[dict]) -> list[dict]:
+    rounds = []
+    for i, r in enumerate(trace):
+        log = r.pop("_log", [])
+        end = trace[i + 1]["start"] if i + 1 < len(trace) else len(log)
+        calls = []
+        for item in log[r["start"]:end]:
+            out = item.get("output") if isinstance(item.get("output"), dict) else {}
+            calls.append({"tool": item.get("tool"), "ok": out.get("ok", True) is not False and not out.get("error"),
+                          "error": str(out.get("error") or "")[:200], "args": len(json.dumps(item.get("args") or {}, ensure_ascii=False))})
+        rounds.append({**{k: v for k, v in r.items() if k != "start"}, "calls": calls})
+    return rounds
+
+
+def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, model: str,
               base_url: str = "https://api.deepseek.com", selection: dict | None = None,
               runtime_feedback: str = "", reference: dict | None = None,
               max_tokens: int = 32000, context_budget: int = 200_000, max_rounds: int = 24,
               on_event=None, intent: str = 'auto', include_annotations: bool = True,
-              stream: bool = True, should_stop=None, scene: dict | None = None) -> dict[str, Any]:
+              stream: bool = True, should_stop=None, scene: dict | None = None, trace: list | None = None) -> dict[str, Any]:
     emit = on_event or (lambda event: None)
+    trace = [] if trace is None else trace
+    plan: list[dict] = []   # 当前计划：程序按每轮的修改自动往前推，不用模型一轮轮调 update_plan
     intent = resolve_intent(user_message, intent)
     read_only = intent == 'discuss'
     tools = [spec for spec in TOOL_SPECS if not (read_only and spec['function']['name'] in {'apply_operations', 'report_result', 'update_plan', 'start_from_shell'})]
@@ -522,6 +563,10 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
         for key in usage:
             usage[key] += (resp.get("usage") or {}).get(key,0) or 0
         choices = resp.get("choices") or []
+        trace.append({"round": round_no + 1, "finish": (choices[0].get("finish_reason") if choices else None),
+                      "prompt": (resp.get("usage") or {}).get("prompt_tokens"), "completion": (resp.get("usage") or {}).get("completion_tokens"),
+                      "start": len(tool_log), "_log": tool_log})
+        version_at_round = source_version
         if not choices:
             raise WorkError("invalid_arguments","模型没有返回有效回复")
         if choices[0].get("finish_reason") in {"length","max_tokens"}:
@@ -776,11 +821,12 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
                     steps = args.get("steps")
                     if not isinstance(steps,list) or not 2<=len(steps)<=6:
                         raise PatchError("计划需要 2 到 6 个步骤")
-                    plan = [{"title":str(x.get("title","")).strip()[:60],"status":x.get("status","pending")} for x in steps if isinstance(x,dict)]
+                    plan[:] = [{"title":str(x.get("title","")).strip()[:60],"status":x.get("status","pending")} for x in steps if isinstance(x,dict)]
                     if len(plan)!=len(steps) or any(not p["title"] or p["status"] not in {"pending","active","done"} for p in plan):
                         raise PatchError("每个步骤都要有标题和 pending / active / done 状态")
-                    emit({"type":"plan","steps":plan})
-                    output = {"ok":True,"steps":plan}
+                    brief = str(args.get("brief") or "").strip()[:800]
+                    emit({"type":"plan","steps":plan, **({"brief": brief} if brief else {})})
+                    output = {"ok":True,"steps":plan,"note":"计划记下了。之后不用再调 update_plan 更新状态，程序会按你的修改自动推进；直接动手写。"}
                 elif fn=="ask_user":
                     options = args.get("options",[])
                     if changed: raise PatchError("已修改后不能再提问，请先汇报修改结果")
@@ -829,6 +875,16 @@ def run_agent(project_id: str, page_id: str, user_message: str, api_key: str, mo
             if incomplete: break
             if report or question or discussion: break
         if report or question or discussion or incomplete: break
+        if plan and source_version != version_at_round:
+            todo = [p for p in plan if p["status"] != "done"]
+            if todo:
+                todo[0]["status"] = "done"
+                if len(todo) > 1: todo[1]["status"] = "active"
+                emit({"type":"plan","steps":plan})
+        if not read_only and round_no == max_rounds - 4:
+            messages.append({"role":"user","content":
+                "提醒：这次处理只剩 3 轮了。把还没写的部分合并成一次 apply_operations 写完，然后马上用 report_result 汇报；"
+                "来不及做的写进汇报里，不要再读源码或规范。"})
         # 空转守卫：这一轮只读不改也不汇报，就累计一次。
         # 读来读去不下手是最常见的烧额度方式——它自己感觉不到已经转了几圈，
         # 到了阈值就明确要求它二选一：动手，或者说清没什么要改的。

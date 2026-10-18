@@ -28,6 +28,7 @@ const heading = computed(() => {
 <template>
   <section class="execution-card" :class="{ failed: run.status === 'failed' }" :aria-label="discussing ? '本次回复进度' : '本次修改进度'">
     <header><LoaderCircle v-if="busy" :size="14" class="spin" /><AlertCircle v-else :size="14" /><strong>{{ heading }}</strong><button v-if="run.status === 'running' && run.runId" type="button" class="stop-mini" :disabled="run.stopping" title="停在下一步之前；已经改好的部分会保留并检查" @click="$emit('stop')">{{ run.stopping ? '停止中…' : '停止' }}</button><time>{{ clock }}</time></header>
+    <div v-if="run.brief" class="plan-brief"><b>业务梳理</b><p>{{ run.brief }}</p></div>
     <ol v-if="run.plan?.length" class="plan-list" :aria-label="discussing ? '分析步骤' : '修改计划'"><li v-for="(step, i) in run.plan" :key="i" :class="step.status"><Check v-if="step.status === 'done'" :size="12" /><LoaderCircle v-else-if="step.status === 'active'" :size="12" class="spin" /><i v-else></i>{{ step.title }}</li></ol>
     <ol aria-live="polite"><li v-for="step in run.steps" :key="step.id" :class="[step.kind === 'note' ? 'note' : step.state, { foldable: step.kind !== 'note' && step.detail }]"><template v-if="step.kind !== 'note'"><Check v-if="step.state === 'done'" :size="13" /><AlertCircle v-else-if="step.state === 'error'" :size="13" /><LoaderCircle v-else :size="13" class="spin" /></template><div><button v-if="step.kind !== 'note' && step.detail" type="button" class="step-head" :aria-expanded="opened.has(step.id)" @click="toggle(step.id)">{{ step.label }}<ChevronDown :size="12" :class="{ open: opened.has(step.id) }" /></button><span v-else>{{ step.label }}</span><small v-if="step.error">{{ step.error }}</small><small v-else-if="step.detail && opened.has(step.id)" class="step-detail">{{ step.detail }}</small></div></li></ol>
     <p v-if="run.streamText && !run.result" class="stream-text">{{ run.streamText }}<span class="caret"></span></p>
@@ -46,6 +47,7 @@ const heading = computed(() => {
 .step-head svg.open{transform:rotate(180deg)}
 .execution-card li.foldable:hover .step-head{color:var(--ink)}.execution-card li.error{color:#a24b37}.execution-card li.running{color:var(--primary)}
 .execution-card li.note{color:var(--ink);padding-left:1px;line-height:1.75;margin:3px 0}.plan-list{list-style:none;margin:10px 0 0;padding:9px 10px;border:1px solid var(--line);border-radius:9px;display:flex;flex-direction:column;gap:6px}
+.plan-brief{margin-top:10px;padding:8px 10px;border-radius:9px;background:var(--quiet);font-size:11.5px;line-height:1.7;color:#5f5a52}.plan-brief b{display:block;font-size:11px;color:var(--ink);margin-bottom:2px}.plan-brief p{margin:0;white-space:pre-wrap}
 .plan-list li{display:flex;align-items:center;gap:7px;color:var(--muted)}
 .plan-list li>i{width:12px;height:12px;border:1.5px solid var(--line);border-radius:50%;flex-shrink:0}
 .plan-list li.active{color:var(--ink);font-weight:500}

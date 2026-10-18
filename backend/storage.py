@@ -544,3 +544,20 @@ def save_expand_entry(project_id: str, page_id: str, route: str, version_hash: s
     if len(body) > 8_000_000:
         raise ValueError("这个页面的展开结果太大，没有保存")
     write_atomic(root / _route_file(route), body)
+
+
+RUN_TRACES_KEEP = 30
+
+
+def save_run_trace(project_id: str, trace: dict) -> None:
+    """一次运行的过程（每轮调了什么工具、成没成、token）记到 runs/ 下，只留最近 30 次。撞到轮次上限、绕路时回头查。"""
+    folder = project_dir(project_id) / "runs"
+    folder.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    path = folder / f"{stamp}-{uuid.uuid4().hex[:6]}.json"
+    path.write_text(json.dumps({"at": stamp, **trace}, ensure_ascii=False, indent=1), encoding="utf-8")
+    for old in sorted(folder.glob("*.json"))[:-RUN_TRACES_KEEP]:
+        try:
+            old.unlink()
+        except OSError:
+            pass
