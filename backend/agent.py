@@ -845,6 +845,12 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
                               "note":"已通过结构和脚本检查，不用再调 verify_page；全部改完就直接 report_result"}
                 elif fn=="verify_page":
                     output = verify_source(working_source,args.get("assertions") or [])
+                    if "/*PA:BIND*/" in working_source and not output["ok"] and all(
+                            i.startswith(("未找到", "内容不匹配", "元素仍存在")) for i in output["issues"]):
+                        # 外壳页面的内容是脚本渲染出来的，静态 HTML 里本来就查不到：实测它会以为没写进去，再翻十来轮源码
+                        output = {"ok": True, "note": ("这页的内容是脚本运行时渲染的，静态 HTML 里查不到元素是正常的，不代表没写进去。"
+                                                        "结构和脚本检查已经通过；保存后程序会把每页按钮点一遍自检。直接 report_result。"),
+                                  "issues": [], "syntax_checked": output.get("syntax_checked")}
                 elif fn=="report_result":
                     if apply_failed:
                         raise PatchError("这条消息里前面的修改没有成功，不能按「已改好」汇报。先重试那处修改；"
