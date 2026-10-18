@@ -119,4 +119,5 @@ case "$answer" in
       echo "没有写入「应用程序」的权限，已在访达里选中，拖进去就行。"; open -R "$APP"
     fi ;;
 esac
+open -R "$DMG"   # 在访达里选中安装包，发给别人就拖这个文件
 read -r -p "按回车关闭"
