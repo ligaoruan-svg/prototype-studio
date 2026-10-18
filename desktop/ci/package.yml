@@ -81,8 +81,9 @@ jobs:
           NOTES="下载：macOS 用 PrototypeStudio-$V-macOS.dmg（Apple 芯片，macOS 11 以上）；Windows 用 PrototypeStudio-$V-Windows-Setup.exe 安装，或免安装的 PrototypeStudio-$V-Windows-Portable.zip。第一次打开的说明见 README。"
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             # 同一个版本重新打包：换掉旧附件
-            gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' | while read -r a; do
-              gh release delete-asset "$TAG" "$a" --repo "$GITHUB_REPOSITORY" -y
+            # 按附件 id 删：旧附件名是「-6.0.dmg」这种以 - 开头的，当参数传会被当成选项
+            gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" -q '.assets[].id' | while read -r id; do
+              gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$id"
             done
             gh release upload "$TAG" up/* --repo "$GITHUB_REPOSITORY" --clobber
             gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes "$NOTES"
