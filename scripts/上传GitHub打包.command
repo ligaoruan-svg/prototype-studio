@@ -2,7 +2,7 @@
 # 双击：把代码传到你 GitHub 上的私有仓库，让 GitHub 的电脑同时打出 Windows 安装程序和 Mac 安装包，
 # 打完自动下载到 release/github。以后改了代码再双击一次，就是新版本。
 # 上传的只有代码：data/（项目、模型设置、密钥）、打包缓存都不传，上传前还会再查一遍。
-cd "$(dirname "$0")" || exit 1
+cd "$(dirname "$0")/.." || exit 1   # 脚本放在 scripts/ 里，干活要在项目根目录
 REPO_NAME="prototype-studio"
 fail() { echo ""; echo "没成功：$1"; read -r -p "按回车关闭"; exit 1; }
 

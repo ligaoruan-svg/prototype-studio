@@ -87,7 +87,7 @@ pip install -e .
 make dev            # 浏览器打开 http://127.0.0.1:5173
 ```
 
-macOS 上也可以直接在访达里双击 `启动原型工坊.command`：第一次会自动建环境、装依赖、起服务并打开浏览器。
+macOS 上也可以直接在访达里双击 `scripts/启动原型工坊.command`：第一次会自动建环境、装依赖、起服务并打开浏览器。
 
 想用桌面窗口而不是浏览器：`pip install pywebview && python3 desktop/app.py`。
 
@@ -95,9 +95,9 @@ macOS 上也可以直接在访达里双击 `启动原型工坊.command`：第一
 
 | 想要 | 怎么做 |
 |---|---|
-| Mac 安装包 | 在 Mac 上双击 `打包Mac应用.command`，得到 `release/原型工坊-版本号.dmg` |
-| Windows 安装包 | 在 Windows 上装好 Python 3.12（可选再装 [Inno Setup 6](https://jrsoftware.org/isdl.php)），双击 `打包Windows应用.bat` |
-| 两个都要、只有 Mac | 双击 `上传GitHub打包.command`：代码传到你的 GitHub 仓库，GitHub Actions 同时打两个平台并下载回来 |
+| Mac 安装包 | 在 Mac 上双击 `scripts/打包Mac应用.command`，得到 `release/原型工坊-版本号.dmg` |
+| Windows 安装包 | 在 Windows 上装好 Python 3.12（可选再装 [Inno Setup 6](https://jrsoftware.org/isdl.php)），双击 `scripts/打包Windows应用.bat` |
+| 两个都要、只有 Mac | 双击 `scripts/上传GitHub打包.command`：代码传到你的 GitHub 仓库，GitHub Actions 同时打两个平台并下载回来 |
 | 发一个新版本 | 推一个 `v*` 标签（如 `v6.1`），Actions 会打包并发到 Releases |
 
 PyInstaller 不能跨系统打包，所以 Windows 版要么在 Windows 上打，要么交给 GitHub Actions。
@@ -110,6 +110,7 @@ backend/        FastAPI 服务：Agent 循环、精确补丁、两阶段提交�
 frontend/       Vue 3 界面（src/components、src/lib、src/locales 翻译表）
 prompts/        系统提示词和默认设计规范，可直接改，也可以在界面里编辑
 desktop/        桌面应用：外壳、打包配置、安装程序、图标、GitHub Actions 配置
+scripts/        双击就能用的脚本：启动浏览器版、打包 Mac / Windows、上传 GitHub 打包、开源发布
 sample/         新建项目用的空白模板
 docs/           设计记录和截图
 data/           本机数据（不进版本库）

@@ -1,4 +1,4 @@
-"""打包 Windows 版：生成便携版 zip 和安装程序。在 Windows 上双击「打包Windows应用.bat」会调这个。
+"""打包 Windows 版：生成便携版 zip 和安装程序。在 Windows 上双击 scripts 里的「打包Windows应用.bat」会调这个。
 
 步骤和 Mac 版一样：单独的打包环境 → 构建界面 → 图标 → PyInstaller → 查有没有带上你的东西 → 打成安装包。
 --ci：在 GitHub Actions 这类干净机器上跑，不建虚拟环境、不问问题。
@@ -45,7 +45,7 @@ def build_python() -> Path:
 
 def main():
     if os.name != 'nt':
-        fail('这个脚本要在 Windows 上跑；Mac 上用「打包Mac应用.command」')
+        fail('这个脚本要在 Windows 上跑；Mac 上用 scripts 里的「打包Mac应用.command」')
     version = re.search(r'VERSION = "([^"]+)"', (ROOT / 'backend' / 'config.py').read_text('utf-8')).group(1)
     say(f'== 打包 原型工坊 {version}（Windows）==')
     py = build_python()

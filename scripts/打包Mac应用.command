@@ -1,7 +1,7 @@
 #!/bin/bash
 # 双击这个文件，打出一个能放进「应用程序」的 原型工坊.app。
 # 第一次要下载打包工具，需要联网，大概三五分钟；以后改了代码再双击一次就是新版本。
-cd "$(dirname "$0")" || exit 1
+cd "$(dirname "$0")/.." || exit 1   # 脚本放在 scripts/ 里，干活要在项目根目录
 # 在 GitHub Actions 这类自动打包的机器上（环境变量 CI 有值）不问问题、不装到本机
 fail() { echo ""; echo "打包没成功：$1"; [ -z "$CI" ] && read -r -p "按回车关闭"; exit 1; }
 ask() { if [ -n "$CI" ]; then REPLY="n"; else read -r -p "$1" REPLY; fi; }

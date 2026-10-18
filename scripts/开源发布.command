@@ -4,7 +4,7 @@
 #   2. 把仓库改成公开（会先问你）
 #   3. 打 v版本号 标签：GitHub 自动打 Mac / Windows 安装包并发布到 Releases
 #   4. 把你账号下其他仓库归档（会先列出来问你；归档后仍然公开、只读）
-cd "$(dirname "$0")" || exit 1
+cd "$(dirname "$0")/.." || exit 1   # 脚本放在 scripts/ 里，干活要在项目根目录
 fail() { echo ""; echo "没成功：$1"; read -r -p "按回车关闭"; exit 1; }
 ask() { read -r -p "$1 [y/N] " a; case "$a" in [yY]*) return 0 ;; *) return 1 ;; esac; }
 
@@ -12,7 +12,7 @@ echo "== 开源发布 原型工坊 =="
 rm -f .git/stale-* .git/index.lock .git/HEAD.lock .git/objects/maintenance.lock 2>/dev/null
 find .git/objects -name 'tmp_obj_*' -delete 2>/dev/null
 source desktop/ci/connect_github.sh
-git remote get-url origin >/dev/null 2>&1 || fail "还没传过 GitHub：先双击「上传GitHub打包.command」"
+git remote get-url origin >/dev/null 2>&1 || fail "还没传过 GitHub：先双击 scripts 里的「上传GitHub打包.command」"
 REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner) || fail "读不到仓库信息"
 OWNER=${REPO%%/*}
 VERSION=$(python3 -c 'import re;print(re.search(r"VERSION = \"([^\"]+)\"", open("backend/config.py", encoding="utf-8").read()).group(1))')

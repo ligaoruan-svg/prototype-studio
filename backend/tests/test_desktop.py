@@ -76,7 +76,7 @@ class DesktopTest(unittest.TestCase):
             datas = spec_text[spec_text.index('datas = ['):spec_text.index('hidden =')]
             for personal in ("'data'", "'skills'", "'components'", "os.path.join(ROOT, 'prompts'), 'prompts'"):
                 self.assertNotIn(personal, datas, spec_name)
-        script = (ROOT / '打包Mac应用.command').read_text('utf-8')
+        script = (ROOT / 'scripts' / '打包Mac应用.command').read_text('utf-8')
         self.assertIn('desktop/release_check.py "$APP"', script)
         self.assertIn("desktop/release_check.py', str(app)", (ROOT / 'desktop' / 'build_windows.py').read_text('utf-8'))
         self.assertNotIn('ditto data "$SUPPORT/data"', script)   # 模型设置不复制
