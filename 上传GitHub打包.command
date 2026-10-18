@@ -94,7 +94,13 @@ fi
 echo "让 GitHub 开始打包…"
 last_run() { gh run list --workflow package.yml --limit 1 --json databaseId -q '.[0].databaseId' 2>/dev/null; }
 BEFORE=$(last_run)
-gh workflow run package.yml --ref "$BRANCH" || fail "没能启动打包（仓库的 Actions 可能被关了：到仓库网页的 Settings → Actions 打开）"
+# 刚上传的打包配置，GitHub 要过一会儿才认得到（马上启动会报 404），多试几次
+started=""
+for _ in $(seq 1 12); do
+  if gh workflow run package.yml --ref "$BRANCH" 2>/dev/null; then started=1; break; fi
+  sleep 5
+done
+[ -n "$started" ] || fail "没能启动打包（仓库的 Actions 可能被关了：到仓库网页的 Settings → Actions 打开）"
 RUN=""
 for _ in $(seq 1 30); do   # 新的一次运行要过几秒才查得到；别拿成上一次的
   sleep 3; RUN=$(last_run)
