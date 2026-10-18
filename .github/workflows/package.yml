@@ -1,4 +1,4 @@
-# 上传GitHub打包.command 会把它复制到 .github/workflows/package.yml
+# scripts/上传GitHub打包.command 会把它复制到 .github/workflows/package.yml
 # 在 GitHub 的干净机器上同时打 Windows 和 Mac 两个安装包。
 # 用法：代码推到 GitHub 后，打开仓库的 Actions →「打包安装包」→ Run workflow；
 # 跑完在那次运行的页面底部下载 原型工坊-Windows / 原型工坊-Mac。
@@ -49,7 +49,7 @@ jobs:
           npm ci
           node scripts/build-esm.mjs .
       - name: 打包
-        run: bash 打包Mac应用.command
+        run: bash scripts/打包Mac应用.command
       - uses: actions/upload-artifact@v4
         with:
           name: 原型工坊-Mac
@@ -68,6 +68,24 @@ jobs:
       - name: 发布
         env: { GH_TOKEN: '${{ github.token }}' }
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" \
-            --title "原型工坊 ${GITHUB_REF_NAME#v}" \
-            --notes "下载：macOS 用 .dmg（Apple 芯片，macOS 11 以上）；Windows 用安装程序 .exe，或免安装的便携版 .zip。第一次打开的说明见 README。"
+          TAG="$GITHUB_REF_NAME"; V="${TAG#v}"
+          # GitHub 会把附件名里的中文去掉（变成「-6.0.dmg」），上传前换成英文名
+          mkdir up
+          for f in dist/*; do
+            case "$f" in
+              *.dmg) cp "$f" "up/PrototypeStudio-$V-macOS.dmg" ;;
+              *.exe) cp "$f" "up/PrototypeStudio-$V-Windows-Setup.exe" ;;
+              *.zip) cp "$f" "up/PrototypeStudio-$V-Windows-Portable.zip" ;;
+            esac
+          done
+          NOTES="下载：macOS 用 PrototypeStudio-$V-macOS.dmg（Apple 芯片，macOS 11 以上）；Windows 用 PrototypeStudio-$V-Windows-Setup.exe 安装，或免安装的 PrototypeStudio-$V-Windows-Portable.zip。第一次打开的说明见 README。"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            # 同一个版本重新打包：换掉旧附件
+            gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' | while read -r a; do
+              gh release delete-asset "$TAG" "$a" --repo "$GITHUB_REPOSITORY" -y
+            done
+            gh release upload "$TAG" up/* --repo "$GITHUB_REPOSITORY" --clobber
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes "$NOTES"
+          else
+            gh release create "$TAG" up/* --repo "$GITHUB_REPOSITORY" --title "原型工坊 $V" --notes "$NOTES"
+          fi
