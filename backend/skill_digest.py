@@ -74,7 +74,7 @@ def _html_digest(text: str) -> str:
 
 
 def file_digest(skill: str, relative: str) -> str:
-    folder = skills._folder(skill)
+    folder = skills._folder(skill)   # 同名时先找用户装的——和 read_skill_file 取原文时找的是同一份
     path = folder / relative
     try:
         mtime = path.stat().st_mtime
@@ -102,13 +102,14 @@ def digest_block(skill: str, files: list[str]) -> str:
     return "\n\n".join(parts)
 
 
-def find_shell() -> tuple[str, str, str] | None:
-    """装了的 skill 里第一个「页面外壳」：(skill 名, 相对路径, 内容)。"""
-    for item in skills.listing():
+def find_shell(meta: dict | None = None) -> tuple[str, str, str] | None:
+    """这个项目生效的 skill 里第一个「页面外壳」：(skill 名, 相对路径, 内容)。
+    项目选了风格就只看那一套；以前建的项目（没选过）照旧看装了的全部"""
+    for item in skills.active(meta):
         for rel in item.get("files", []):
             if SHELL_NAME.search(rel):
                 try:
-                    return item["folder"], rel, skills.read_file(item["folder"], rel)
+                    return item["folder"], rel, skills._folder(item["folder"], builtin=item.get("builtin", False)).joinpath(rel).read_text("utf-8", errors="replace")
                 except (ValueError, FileNotFoundError, OSError):
                     continue
     return None

@@ -159,6 +159,11 @@ class UndoIn(BaseModel):
 
 class NewProjectIn(BaseModel):
     name: str = "未命名原型"
+    style: str = "none"   # builtin:简洁后台 / mine:文件夹名 / none，见 skills.style_of
+
+
+class StyleIn(BaseModel):
+    style: str
 
 
 class RenameIn(BaseModel):
@@ -474,12 +479,48 @@ def remove_component(name: str):
     return {"ok": True}
 
 
+@app.get("/api/styles")
+def list_styles():
+    """新建原型、设计规范里选风格用：软件自带的 + 自己导入的"""
+    return {"builtin": skills.builtin_listing(), "mine": skills.listing()}
+
+
+@app.put("/api/projects/{project_id}/style")
+def set_project_style(project_id: str, body: StyleIn):
+    try:
+        style = skills.check_style(body.style)
+        with transactions.LOCK:
+            storage.set_style(project_id, style)
+    except FileNotFoundError:
+        raise HTTPException(404, "项目不存在")
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return {"ok": True, "style": style}
+
+
+def _starter_html(name: str, style: str) -> str:
+    """新项目的第一页：选了带外壳的风格就直接是那套外壳（打开就看得到样子），否则是通用的空白骨架"""
+    import html as html_lib
+    from . import skill_digest
+    found = skill_digest.find_shell({"style": style})
+    if found:
+        shell = found[2]
+        shell = re.sub(r"<title>[^<]*</title>", lambda _: f"<title>{html_lib.escape(name)}</title>", shell, count=1)
+        js_name = json.dumps(name, ensure_ascii=False).replace("<", "\\u003c")
+        return shell.replace("const APP_NAME='示例系统';", f"const APP_NAME={js_name};", 1)
+    html = (ROOT / "sample" / "starter.html").read_text('utf-8')
+    return html.replace('新原型', html_lib.escape(name))
+
+
 @app.post("/api/projects/new")
 def new_project(body: NewProjectIn):
-    html = (ROOT / "sample" / "starter.html").read_text('utf-8')   # 先读模板：读不到就别建出一个空项目
-    project = storage.create_project(body.name.strip()[:80] or "未命名原型")
-    import html as html_lib
-    html = html.replace('新原型', html_lib.escape(project['name']))
+    try:
+        style = skills.check_style(body.style)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    name = body.name.strip()[:80] or "未命名原型"
+    html = _starter_html(name, style)   # 先备好第一页：读不到就别建出一个空项目
+    project = storage.create_project(name, style)
     (storage.project_dir(project['id']) / 'source' / 'index.html').write_text(html, 'utf-8')
     storage.add_page(project['id'], 'index.html', project['name'])
     return storage.load_meta(project['id'])
@@ -532,7 +573,7 @@ def _import_upload(filename: str, raw: bytes, name: str):
         if not any(zip_member_ok(i.filename) and PurePosixPath(i.filename).suffix.lower() in {".html", ".htm"}
                    for i in archive.infolist()):
             raise HTTPException(400, "ZIP 中没有 HTML 页面")
-    project = storage.create_project(name or Path(filename).stem)
+    project = storage.create_project(name or Path(filename).stem, "none")   # 导入的原型默认不套风格，保持原样
     source = storage.project_dir(project["id"]) / "source"
     try:
         if archive is None:
@@ -556,6 +597,7 @@ def get_project(project_id: str):
     try:
         meta = storage.load_meta(project_id)
         meta['pages'] = [p for p in meta['pages'] if not p.get('deleted_at')]
+        meta['style'] = skills.style_of(meta)
         for page in meta['pages']:
             entries = transactions.undo_entries(page)
             page['undo_count'] = len(entries)

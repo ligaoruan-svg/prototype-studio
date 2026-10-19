@@ -90,7 +90,13 @@ class DesktopTest(unittest.TestCase):
             (app / 'prompts').mkdir(parents=True)
             (app / 'prompts' / 'agent-system.md').write_text('规则', 'utf-8')
             rc.own_keys = lambda: {b'sk-secret-123456'}
+            self.assertIn('自带的风格', '\n'.join(rc.check(app)))   # 自带风格没打进去也要拦
+            (app / 'prompts' / 'styles' / '简洁后台').mkdir(parents=True)
+            (app / 'prompts' / 'styles' / '简洁后台' / 'SKILL.md').write_text('# 简洁后台', 'utf-8')
             self.assertEqual(rc.check(app), [])
+            (app / 'prompts' / 'styles' / '简洁后台' / 'x.md').write_text('零碳园区', 'utf-8')
+            self.assertIn('混进了你自己的 skill', '\n'.join(rc.check(app)))
+            (app / 'prompts' / 'styles' / '简洁后台' / 'x.md').write_text('', 'utf-8')
             (app / 'lib.bin').write_bytes(b'xx sk-secret-123456 xx')
             (app / 'prompts' / 'skills').mkdir()
             (app / 'data' / 'projects').mkdir(parents=True)

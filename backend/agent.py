@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .deepseek_client import chat, DeepSeekError
-from .patcher import apply_operations, verify_source, PatchError, regions, outline, new_issues
+from .patcher import apply_operations, verify_source, PatchError, regions, outline, new_issues, SHELL_HOME_PAGE
 from . import storage
 from .transactions import stage
 from .errors import WorkError, error_payload
@@ -448,6 +448,23 @@ def _trace_rounds(trace: list[dict]) -> list[dict]:
     return rounds
 
 
+SHELL_NOTE = ("外壳里样式、布局、菜单、路由、弹窗、Toast 都在。**不用再读源码找位置**：\n"
+                                       "下一步直接调一次 apply_operations，用一条 {action:'shell_add', nav, pages, bind, script} 把这页写完——"
+                                       "nav 是菜单分组，pages 是页面方法，bind 是 bindPage 里的代码，script 是数据、状态和辅助函数；外壳的「首页」占位会自动删掉。\n"
+                                       "要改外壳本身的某一处时才用 replace_source_text。三处的含义：\n"
+                                       "1. /*PA:NAV*/ 后面那行菜单配置 → 这次要的一级分组和二级页面（key 就是 URL hash）\n"
+                                       "2. /*PA:PAGES*/ 后面的 home(){...} → 每个二级页面一个方法，返回 pageShell(标题, 说明, 内容HTML, 右上按钮HTML)\n"
+                                       "3. /*PA:BIND*/ 函数体 → 按 page 绑定这一页的按钮、筛选、行操作（或 PageEvents.on(page, …)；不要 document.addEventListener，会串页）\n"
+                                       "组件直接用 ZeroUI.Button / Tag / Field / Pager / Empty / Toast / Modal / ConfirmModal / Drawer / openModal / openDrawer 和 Card()，"
+                                       "签名见系统提示里的要点。样式类沿用外壳里的（card、metric-grid、data-table、lnk、tw 等），不要另写一套 CSS。"
+                                       "尽量一两次 apply_operations 把整页内容写完，不要拆成十几次小改。")
+
+
+def is_fresh_shell(source: str) -> bool:
+    """页面是还没写内容的外壳（按风格新建项目时第一页就是它）：外壳自带的「首页」占位还在"""
+    return "const Pages={/*PA:PAGES*/\n  " + SHELL_HOME_PAGE in (source or "")
+
+
 def shell_api(shell: str) -> dict:
     """外壳里现成能用的：组件函数和参数、页面函数、样式类。放进 start_from_shell 的返回里，模型不用再翻源码看怎么写。"""
     objects = re.findall(r"^\s{2}(\w+):\(\{([^}]*)\}", shell, re.M)          # Button:({label,kind…})=>
@@ -481,10 +498,10 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
     intent = resolve_intent(user_message, intent)
     read_only = intent == 'discuss'
     tools = [spec for spec in TOOL_SPECS if not (read_only and spec['function']['name'] in {'apply_operations', 'report_result', 'update_plan', 'start_from_shell'})]
-    if not skill_digest.find_shell():   # 没装带外壳的 skill，就别让它看见这个工具
-        tools = [spec for spec in tools if spec['function']['name'] != 'start_from_shell']
     emit({'type':'intent','intent':intent,'label':'正在分析设计，不会修改文件' if read_only else '正在理解修改需求'})
     meta = storage.load_meta(project_id)
+    if not skill_digest.find_shell(meta):   # 这个项目的风格没有外壳（或者选了「不选风格」），就别让它看见这个工具
+        tools = [spec for spec in tools if spec['function']['name'] != 'start_from_shell']
     page = storage.get_page(meta, page_id)
     saved_annotations = storage.active_annotations(meta, page_id) if include_annotations else []
     # 在哪个业务页面 / 哪个弹窗 / 哪个子页面、怎么点进去的：多选时每个元素都带上整次选择的上下文。
@@ -528,6 +545,11 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
                   f"页面骨架：{json.dumps(outline(working_source),ensure_ascii=False)}" + scene_text(scene))
     if runtime_feedback and not read_only:
         background += f"\n上次检查错误：{runtime_feedback[:2000]}"
+    if not read_only and is_fresh_shell(working_source):
+        # 按风格新建的项目，第一页就是这套风格的空外壳：不用再 start_from_shell，也不用翻源码找位置
+        shell_fresh = working_source
+        background += ("\n这一页是按项目风格刚建好的空外壳，还没写内容。" + SHELL_NOTE
+                       + "\n外壳现成的组件和样式类：" + json.dumps(shell_api(working_source), ensure_ascii=False))
     if repairing:
         background += ("\n现在的页面是你上一次改好、但运行检查报错、还没保存的那一版（已经包含你上次写的全部内容）。"
                        "只修上面的报错，不要从头再做，也不要重新调 start_from_shell。")
@@ -546,7 +568,7 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
                     + '\n参考截图定位已有代码并局部修改；不能声称从图片恢复了原始源码。'},
                    {"type":"image_url","image_url":{"url":reference['data_url']}}]
     prompt_path = SYSTEM_PROMPT_PATH.parent / 'discussion-system.md' if read_only else SYSTEM_PROMPT_PATH
-    messages = [{"role":"system","content":prompt_path.read_text("utf-8") + '\n\n' + spec + skills.index_block() + components.index_block() + memory.index_block(meta)}] + history + [{"role":"user","content":content}]
+    messages = [{"role":"system","content":prompt_path.read_text("utf-8") + '\n\n' + spec + skills.index_block(meta) + components.index_block() + memory.index_block(meta)}] + history + [{"role":"user","content":content}]
     tool_log, all_operations = [], []
     usage = {"prompt_tokens":0,"completion_tokens":0,"total_tokens":0}
     failures = argument_failures = truncations = 0
@@ -766,10 +788,10 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
                         raise PatchError(f"skill「{args.get('name')}」里没有 {args.get('path')}；"
                                          f"先用 read_skill 看正文里写的是哪个路径") from exc
                 elif fn == "start_from_shell":
-                    found = skill_digest.find_shell()
+                    found = skill_digest.find_shell(meta)
                     if not found:
-                        raise PatchError("装了的 skill 里没有页面外壳，照常用 apply_operations 写")
-                    if len(working_source) > SHELL_MAX_EXISTING:
+                        raise PatchError("这个项目的风格里没有页面外壳，照常用 apply_operations 写")
+                    if len(working_source) > SHELL_MAX_EXISTING and not is_fresh_shell(working_source):
                         raise PatchError("页面已经有内容了，不能整页换成外壳；用 apply_operations 局部修改")
                     skill_name, rel, shell = found
                     check = verify_source(shell)
@@ -780,16 +802,7 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
                     read_seen.clear(); read_regions.clear()
                     all_operations.append({"action": "start_from_shell", "skill": skill_name, "path": rel})
                     output = {"ok": True, "chars": len(shell),
-                              "note": ("外壳已经放进页面（样式、布局、菜单、路由、弹窗、Toast 都在）。**不用再读源码找位置**：\n"
-                                       "下一步直接调一次 apply_operations，用一条 {action:'shell_add', nav, pages, bind, script} 把这页写完——"
-                                       "nav 是菜单分组，pages 是页面方法，bind 是 bindPage 里的代码，script 是数据、状态和辅助函数；外壳的「首页」占位会自动删掉。\n"
-                                       "要改外壳本身的某一处时才用 replace_source_text。三处的含义：\n"
-                                       "1. /*PA:NAV*/ 后面那行菜单配置 → 这次要的一级分组和二级页面（key 就是 URL hash）\n"
-                                       "2. /*PA:PAGES*/ 后面的 home(){...} → 每个二级页面一个方法，返回 pageShell(标题, 说明, 内容HTML, 右上按钮HTML)\n"
-                                       "3. /*PA:BIND*/ 函数体 → 按 page 绑定这一页的按钮、筛选、行操作（或 PageEvents.on(page, …)；不要 document.addEventListener，会串页）\n"
-                                       "组件直接用 ZeroUI.Button / Tag / Field / Pager / Empty / Toast / Modal / ConfirmModal / Drawer / openModal / openDrawer 和 Card()，"
-                                       "签名见系统提示里的要点。样式类沿用外壳里的（card、metric-grid、data-table、lnk、tw 等），不要另写一套 CSS。"
-                                       "尽量一两次 apply_operations 把整页内容写完，不要拆成十几次小改。"),
+                              "note": "外壳已经放进页面。" + SHELL_NOTE,
                               "placeholders": [m for m in ("/*PA:NAV*/", "/*PA:PAGES*/", "/*PA:BIND*/") if m in shell],
                               "api": shell_api(shell)}
                 elif fn == "search_skill_file":

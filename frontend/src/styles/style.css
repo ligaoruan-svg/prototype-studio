@@ -266,6 +266,13 @@ input[type=color]::-webkit-color-swatch { border: none; border-radius: 2px; }
 }
 .mobile-project-picker { display: none; }
 .files-dialog { width: min(660px, calc(100vw - 32px)); }
+.new-dialog, .style-dialog { width: min(680px, calc(100vw - 32px)); }
+.style-field { margin-top: 18px; }
+.style-label { display: flex; align-items: baseline; gap: 8px; font-size: 12px; font-weight: 550; margin-bottom: 8px; }
+.style-label small { font-weight: 400; color: var(--subtle); font-size: 11px; }
+.style-field .spec-notice { margin-top: 8px; }
+.style-shelf { margin-bottom: 4px; }
+.style-legacy { margin: 0 0 10px; padding: 8px 10px; border-radius: 9px; background: var(--quiet); }
 .image-actions { flex-wrap: wrap; }
 .file-picker { position: relative; display: flex; align-items: center; gap: 4px; min-width: 0; color: var(--muted); font-size: 12.5px; }
 .file-picker select { appearance: none; border: 0; background: none; max-width: 180px; padding: 4px 16px 4px 2px; font-size: 12.5px; color: var(--muted); text-overflow: ellipsis; cursor: pointer; }

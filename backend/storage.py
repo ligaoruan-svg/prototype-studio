@@ -72,7 +72,7 @@ def save_meta(meta: dict[str, Any]) -> None:
 
 
 @_locked
-def create_project(name: str) -> dict[str, Any]:
+def create_project(name: str, style: str | None = None) -> dict[str, Any]:
     pid = safe_id("p")
     pdir = project_dir(pid)
     (pdir / "source").mkdir(parents=True)
@@ -86,8 +86,18 @@ def create_project(name: str) -> dict[str, Any]:
         "annotations": [],
         "chat": [],
     }
+    if style:
+        meta["style"] = style   # 这个项目用哪套风格，见 skills.style_of
     save_meta(meta)
     return meta
+
+
+@_locked
+def set_style(project_id: str, style: str) -> None:
+    meta = load_meta(project_id)
+    meta["style"] = style
+    meta["updated_at"] = now_iso()
+    save_meta(meta)
 
 
 def list_projects() -> list[dict[str, Any]]:

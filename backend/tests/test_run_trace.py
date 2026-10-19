@@ -87,7 +87,7 @@ class 运行记录(unittest.TestCase):
         from backend import skill_digest
         shell = (ROOT / 'prompts/skills/零碳园区_UI_Skill包_v3/assets/页面外壳.html').read_text(encoding='utf-8')
         old = skill_digest.find_shell
-        skill_digest.find_shell = lambda: ('零碳', 'assets/页面外壳.html', shell)
+        skill_digest.find_shell = lambda *a: ('零碳', 'assets/页面外壳.html', shell)
         try:
             add = ('apply_operations', {'operations': [{'action': 'shell_add', 'nav': "{key:'q',label:'配额',items:[{key:'quota',label:'配额'}]}",
                                                          'pages': "quota(){return pageShell('配额','','<p>配额</p>')}"}]})

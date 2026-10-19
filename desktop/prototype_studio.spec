@@ -14,6 +14,7 @@ VERSION = re.search(r'VERSION = "([^"]+)"', open(os.path.join(ROOT, 'backend', '
 datas = [
     (os.path.join(ROOT, 'frontend', 'dist'), 'frontend/dist'),
     (os.path.join(ROOT, 'sample', 'starter.html'), 'sample'),
+    (os.path.join(ROOT, 'prompts', 'styles'), 'prompts/styles'),   # 软件自带的几套风格（只读，人人都有）
 ] + [(os.path.join(ROOT, 'prompts', name), 'prompts')
      for name in ('agent-system.md', 'discussion-system.md', 'design-spec.md')]
 hidden = (collect_submodules('uvicorn')

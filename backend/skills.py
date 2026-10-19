@@ -17,7 +17,7 @@ import shutil
 import zipfile
 from pathlib import Path, PurePosixPath
 
-from .paths import SKILLS_DIR as ROOT
+from .paths import SKILLS_DIR as ROOT, STYLES_DIR as BUILTIN
 SAFE_NAME = re.compile(r"[\w一-龥-]{1,40}")
 TEXT_SUFFIX = {".html", ".htm", ".md", ".markdown", ".css", ".txt", ".json", ".svg", ".js"}
 MAX_SKILLS = 12
@@ -72,7 +72,29 @@ def _purpose(body: str) -> str:
     return "（SKILL.md 里没写 description，模型不知道什么时候该用它）"
 
 
-def _entry(folder: Path) -> dict | None:
+SHELL_FILE = re.compile(r"(外壳|shell)\.html?$", re.I)
+LAYOUTS = {"sidebar", "topbar", "screen", "mobile"}
+
+
+def _preview(folder: Path, meta: dict, files: list[str]) -> dict:
+    """选风格的卡片上画缩略图用：布局、主色、底色。frontmatter 里写了就用，没写就去外壳的 :root 里找"""
+    shell = next((f for f in files if SHELL_FILE.search(f)), "")
+    tokens = {}
+    if shell:
+        try:
+            root = re.search(r":root\s*\{([^}]*)\}", (folder / shell).read_text("utf-8", errors="replace"))
+            tokens = dict(re.findall(r"--([\w-]+)\s*:\s*([^;]+);", root.group(1))) if root else {}
+        except OSError:
+            tokens = {}
+    color = lambda v: v.strip() if re.fullmatch(r"#[0-9a-fA-F]{3,8}", (v or "").strip()) else ""
+    layout = meta.get("layout", "").strip()
+    return {"layout": layout if layout in LAYOUTS else "sidebar",
+            "primary": color(meta.get("primary")) or color(tokens.get("primary")) or "#2f6fed",
+            "background": color(meta.get("background")) or color(tokens.get("bg")) or "#f6f7f9",
+            "has_shell": bool(shell)}
+
+
+def _entry(folder: Path, builtin: bool = False) -> dict | None:
     skill_md = folder / "SKILL.md"
     if not skill_md.is_file():
         return None
@@ -82,7 +104,8 @@ def _entry(folder: Path) -> dict | None:
     description = meta.get("description", "").strip() or _purpose(body)
     return {"name": meta.get("name", "").strip() or folder.name,
             "folder": folder.name, "description": description[:160],
-            "files": files[:MAX_FILES], "chars": len(body)}
+            "files": files[:MAX_FILES], "chars": len(body), "builtin": builtin,
+            **_preview(folder, meta, files)}
 
 
 def listing() -> list[dict]:
@@ -97,13 +120,65 @@ def listing() -> list[dict]:
     return out[:MAX_SKILLS]
 
 
-def _folder(name: str) -> Path:
+def builtin_listing() -> list[dict]:
+    """软件自带的风格：打在安装包里、只读，所有人都有"""
+    if not BUILTIN.exists():
+        return []
+    order = ["简洁后台", "数据大屏", "移动端App"]
+    folders = sorted((f for f in BUILTIN.iterdir() if f.is_dir() and SAFE_NAME.fullmatch(f.name)),
+                     key=lambda f: (order.index(f.name) if f.name in order else len(order), f.name))
+    return [item for item in (_entry(f, builtin=True) for f in folders) if item]
+
+
+def _folder(name: str, builtin: bool | None = None) -> Path:
+    """按名字找 skill 文件夹：先找用户自己装的，再找软件自带的风格（builtin 指定了就只找那一边）"""
     if not SAFE_NAME.fullmatch(name or ""):
         raise ValueError("skill 名无效")
-    folder = ROOT / name
-    if not folder.is_dir() or folder.resolve().parent != ROOT.resolve():
-        raise FileNotFoundError(name)
-    return folder
+    roots = [ROOT, BUILTIN] if builtin is None else [BUILTIN if builtin else ROOT]
+    for root in roots:
+        folder = root / name
+        if folder.is_dir() and folder.resolve().parent == root.resolve():
+            return folder
+    raise FileNotFoundError(name)
+
+
+# ---------- 每个项目选一套风格 ----------
+# 项目的 meta["style"]：
+#   "builtin:简洁后台"  软件自带的风格        "mine:文件夹名"  自己导入的 skill
+#   "none"              不选风格：只按设计规范，AI 自己定样子（导入的旧原型默认这项，保持原样）
+#   没有这个字段         以前建的项目：照旧用装了的全部 skill，行为不变
+def style_of(meta: dict | None) -> str:
+    value = str((meta or {}).get("style") or "")
+    return value if value else "legacy"
+
+
+def check_style(value: str) -> str:
+    value = str(value or "").strip()
+    if value == "none":
+        return value
+    kind, _, name = value.partition(":")
+    if kind not in {"builtin", "mine"} or not name:
+        raise ValueError("风格无效")
+    try:
+        _folder(name, builtin=kind == "builtin")
+    except FileNotFoundError as exc:
+        raise ValueError(f"找不到这套风格：{name}") from exc
+    return value
+
+
+def active(meta: dict | None) -> list[dict]:
+    """这个项目现在生效的 skill。选的那套被删了就当没选"""
+    style = style_of(meta)
+    if style == "legacy":
+        return listing()
+    if style == "none":
+        return []
+    kind, _, name = style.partition(":")
+    try:
+        item = _entry(_folder(name, builtin=kind == "builtin"), builtin=kind == "builtin")
+    except (ValueError, FileNotFoundError):
+        return []
+    return [item] if item else []
 
 
 def read(name: str) -> str:
@@ -124,7 +199,7 @@ def read_file(name: str, relative: str) -> str:
 
 def remove(name: str) -> bool:
     try:
-        shutil.rmtree(_folder(name))
+        shutil.rmtree(_folder(name, builtin=False))   # 软件自带的风格删不掉
         return True
     except (ValueError, FileNotFoundError):
         return False
@@ -195,8 +270,8 @@ def import_archive(raw: bytes) -> dict:
 INLINE_BUDGET = 8000
 
 
-def index_block() -> str:
-    items = listing()
+def index_block(meta: dict | None = None) -> str:
+    items = active(meta)
     if not items:
         return ""
     inlined, listed, used = [], [], 0
@@ -212,11 +287,14 @@ def index_block() -> str:
         else:
             listed.append(item)
 
-    parts = ["\n\n# 这个项目装了的 skill"]
+    chosen = style_of(meta) != "legacy"
+    parts = ["\n\n# 这个项目选的风格" if chosen else "\n\n# 这个项目装了的 skill"]
     if inlined:
         parts.append(
-            "下面是用户为这个项目装好的 skill 正文，**默认就按它做**——他装进来就是要用的，"
-            "不必再判断该不该用。正文里提到的文件（组件库、规范等）**要点已经替你摘在每个 skill 后面**："
+            ("下面是用户给这个项目选的风格（一套 skill），**这个项目的页面都按它做**，不用再判断该不该用。"
+             if chosen else
+             "下面是用户为这个项目装好的 skill 正文，**默认就按它做**——他装进来就是要用的，"
+             "不必再判断该不该用。") + "正文里提到的文件（组件库、规范等）**要点已经替你摘在每个 skill 后面**："
             "规范的目录和硬约束、组件库的设计 Token 和组件签名。正文要求「先读规范、再读组件库」，读这份要点就算读过了，"
             "**不要整份读原文**——整份读进来，之后每一步都要重发一遍，一页要多花几十万 tokens。"
             "确实要看某一节的原文（比如表格行高怎么写），按要点里的行号用 read_skill_file 只读那一节，"

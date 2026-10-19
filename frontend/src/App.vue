@@ -52,6 +52,10 @@ const imageInput = ref(null), reference = ref(null)
 const specDraft = ref(''), specSaved = ref(''), specInput = ref(null), specNotice = ref('')
 const componentList = ref([]), componentInput = ref(null), specTab = ref('spec')
 const memoryCount = ref(0), skillList = ref([])
+// 风格：新建原型时选一套，之后在「设计规范 → 风格」里能换。上次新建选的那套记着，下次默认还是它
+const DEFAULT_STYLE = 'builtin:简洁后台'
+const styleList = ref({ builtin: [], mine: [] }), styleInput = ref(null)
+const newStyle = ref((() => { try { return localStorage.getItem('pa-new-style') || DEFAULT_STYLE } catch { return DEFAULT_STYLE } })())
 const fileManagerRevision = ref(0)
 const runs = ref([]), canvasWidth = ref(0), previewScroll = ref(null), pendingHighlights = ref([]), savedAt = ref('')
 const validationDetails = ref(''), composerIntent = ref('auto'), previewHash = ref('')
@@ -798,14 +802,50 @@ async function pointAt(run) {
 }
 
 
+const styleValues = () => [...styleList.value.builtin.map(s => 'builtin:' + s.folder), ...styleList.value.mine.map(s => 'mine:' + s.folder), 'none']
+async function loadStyles() {
+  try { styleList.value = await api('/api/styles') } catch { return }
+  if (!styleValues().includes(newStyle.value)) newStyle.value = styleValues().includes(DEFAULT_STYLE) ? DEFAULT_STYLE : styleValues()[0]
+}
+// 「导入风格」：和组件库里导入 skill 包是同一个接口；装好就选上它
+async function importStyle(event) {
+  const file = event.target.files?.[0]; event.target.value = ''
+  if (!file) return
+  dialogBusy.value = true; dialogError.value = ''; specNotice.value = ''
+  try {
+    const data = new FormData(); data.append('file', file); data.append('name', file.name)
+    const result = await api('/api/components', { method: 'POST', body: data })
+    const shelf = await api('/api/components')
+    componentList.value = shelf.components; skillList.value = shelf.skills || []
+    await loadStyles()
+    if (result.kind !== 'skill') { specNotice.value = '这个包里没有 SKILL.md，按单个组件装上了，不能当风格用'; return }
+    const value = 'mine:' + result.name
+    const item = styleList.value.mine.find(s => s.folder === result.name)
+    specNotice.value = `已导入「${result.name}」` + (item && !item.has_shell ? '。它没有页面外壳，只当规矩用，不能一键起页面' : '')
+    if (dialogType.value === 'new') newStyle.value = value
+    else if (project.value) { dialogBusy.value = false; await changeStyle(value) }
+  } catch (e) { dialogError.value = e.message } finally { dialogBusy.value = false }
+}
+async function changeStyle(value) {
+  if (!project.value) return
+  dialogBusy.value = true; dialogError.value = ''; specNotice.value = ''
+  try {
+    await api(`/api/projects/${project.value.id}/style`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ style: value }) })
+    project.value = { ...project.value, style: value }
+    const item = [...styleList.value.builtin, ...styleList.value.mine].find(s => value.endsWith(':' + s.folder))
+    specNotice.value = value === 'none' ? '已改成不选风格：之后只按设计规范来' : `已换成「${t(item?.name || value)}」：之后新做的页面和修改按这套来`
+  } catch (e) { dialogError.value = e.message } finally { dialogBusy.value = false }
+}
+
 async function openDialog(type) {
   dialogType.value = type; dialogError.value = ''
   if (type === 'settings') configDraft.value = { base_url: model.value.base_url || 'https://api.deepseek.com', model: model.value.model || 'deepseek-flash', api_key: '', supports_vision: !!model.value.supports_vision, max_tokens: model.value.max_tokens || 32000, context_budget: model.value.context_budget || 200000, max_rounds: model.value.max_rounds || 24, stream: model.value.stream !== false, keepInspector: keepInspector.value }
-  if (type === 'new') { projectName.value = ''; brief.value = '' }
+  if (type === 'new') { projectName.value = ''; brief.value = ''; specNotice.value = ''; await loadStyles() }
   if (type === 'files') fileManagerRevision.value++
   if (type === 'spec') {
     specNotice.value = ''; specTab.value = 'spec'
     try {
+      await loadStyles()
       specDraft.value = specSaved.value = (await api('/api/design-spec')).content
       const shelf = await api('/api/components')
       componentList.value = shelf.components; skillList.value = shelf.skills || []
@@ -884,7 +924,8 @@ async function createProject() {
   if (!projectName.value.trim()) return
   dialogBusy.value = true; dialogError.value = ''
   try {
-    const result = await post('/api/projects/new', { name: projectName.value })
+    const result = await post('/api/projects/new', { name: projectName.value, style: newStyle.value })
+    try { localStorage.setItem('pa-new-style', newStyle.value) } catch { /* 记不住就算了 */ }
     await loadProjects(result.id)
     input.value = brief.value; dialog.value.close(); await toAI(); toast('原型骨架已创建')
     if (brief.value.trim() && model.value.has_key) { dialogBusy.value = false; await runAgent('', '', { intent: 'edit' }) }
@@ -971,7 +1012,7 @@ onUnmounted(() => { window.removeEventListener('message', onMessage); window.rem
 
 // 拆出去的界面块（AppHeader / ConversationPanel / InspectorPanel / StudioDialog）用到的状态和函数：按原名交给它们
 provide('studio', {
-  TOOLS, activeRun, addComponent, aiOnly, annotations, applySuggestion, boardOpen, brief,
+  TOOLS, activeRun, addComponent, styleList, styleInput, newStyle, importStyle, changeStyle, aiOnly, annotations, applySuggestion, boardOpen, brief,
   busy, canEdit, canvasWidth, chatBox, chooseAnswer, choosePage, chooseProject,
   closeDialog, closeSelection, colors, commentDraft, commentToAI, componentInput, componentList, composer,
   composerIntent, copyMessage, createProject, currentRuns, device, dialog, dialogBusy, dialogError,

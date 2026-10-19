@@ -16,6 +16,7 @@ HOME = Path(os.environ['PROTOTYPE_STUDIO_HOME']).expanduser() if os.environ.get(
 
 DATA_DIR = HOME / 'data'
 PROMPTS = APP_ROOT / 'prompts'                    # 系统提示词：随程序升级
+STYLES_DIR = PROMPTS / 'styles'                   # 软件自带的几套风格：只读，随程序升级（scripts/生成内置风格.py 生成）
 USER_PROMPTS = HOME / 'prompts'                   # 用户改过的规范、装的组件和 skill
 SPEC_FILE = USER_PROMPTS / 'design-spec.md'
 SKILLS_DIR = USER_PROMPTS / 'skills'

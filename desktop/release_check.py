@@ -27,6 +27,13 @@ def check(app: Path) -> list[str]:
             problems.append(f'混进了你装的 {folder.name}：{folder}')
         if folder.is_dir() and folder.name == 'data' and (folder / 'projects').exists():
             problems.append(f'混进了 data 文件夹（项目和模型设置）：{folder}')
+    styles = [f for f in app.rglob('styles') if f.is_dir() and f.parent.name == 'prompts']
+    if not styles or not any((f / '简洁后台' / 'SKILL.md').is_file() for f in styles):
+        problems.append('没打进软件自带的风格（prompts/styles）：新建原型时没有风格可选')
+    for folder in styles:
+        for path in folder.rglob('*'):
+            if path.is_file() and '零碳' in path.read_text('utf-8', errors='ignore'):
+                problems.append(f'自带风格里混进了你自己的 skill 内容：{path}')
     keys = own_keys()
     for root, _, files in os.walk(app):
         for name in files:
