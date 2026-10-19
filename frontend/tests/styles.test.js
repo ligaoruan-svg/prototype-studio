@@ -2,6 +2,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { appSource } from './appSource.js'
 
 const read = path => readFileSync(new URL('../src/' + path, import.meta.url), 'utf8')
 
@@ -17,7 +18,7 @@ test('选风格的卡片：内置、我的、不选风格、导入风格', () =>
 })
 
 test('新建原型带上选的风格；设计规范里有「风格」一栏', () => {
-  const app = read('App.vue'), dialog = read('components/layout/StudioDialog.vue')
+  const app = appSource(), dialog = read('components/layout/StudioDialog.vue')
   assert.match(app, /post\('\/api\/projects\/new', \{ name: projectName\.value, style: newStyle\.value \}\)/)
   assert.match(app, /\/api\/projects\/\$\{project\.value\.id\}\/style/)
   assert.match(dialog, /<StylePicker v-model="newStyle"/)

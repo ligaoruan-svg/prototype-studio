@@ -2,6 +2,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { appSource } from './appSource.js'
 
 test('桌面版：有 pywebview 接口就交给它，取消了不报「已导出」', async () => {
   const calls = []
@@ -11,7 +12,7 @@ test('桌面版：有 pywebview 接口就交给它，取消了不报「已导出
   assert.equal(await saveFile('a.html', '<p>'), false)
   assert.equal(await downloadUrl('/api/x'), true)
   assert.deepEqual(calls, [['save', 'a.html', '<p>'], ['dl', '/api/x']])
-  const app = readFileSync(new URL('../src/App.vue', import.meta.url), 'utf8')
+  const app = appSource()
   assert.match(app, /saveFile\(fileName, html\)\.then\(saved =>/)
   assert.match(app, /downloadUrl\(zip \?/)
   assert.doesNotMatch(app, /window\.location\.assign\(zip/)

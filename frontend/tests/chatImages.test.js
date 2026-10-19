@@ -2,6 +2,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { appSource } from './appSource.js'
 
 const panel = readFileSync(new URL('../src/components/layout/ConversationPanel.vue', import.meta.url), 'utf8')
 
@@ -12,8 +13,8 @@ test('历史消息显示截图和点选位置', () => {
 })
 
 test('改好保存后，点选 / 框选的目标自动取消', () => {
-  const app = readFileSync(new URL('../src/App.vue', import.meta.url), 'utf8')
-  assert.match(app, /current\.committed = true; closeSelection\(\)/)
+  const app = appSource()
+  assert.match(app, /current\.committed = true; (s\.)?closeSelection\(\)/)
 })
 
 test('讨论卡：建议改好之后打勾、不再挂「按这个改」', () => {

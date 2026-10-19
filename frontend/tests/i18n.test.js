@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import en from '../src/locales/en.js'
+import { appSource } from './appSource.js'
 
 globalThis.localStorage = { getItem: () => 'en', setItem() {} }
 const { t, setLocale, locale } = await import('../src/lib/i18n.js')
@@ -56,5 +57,5 @@ test('「···」菜单里有语言切换；请求带上界面语言', () => {
   const header = readFileSync(join(src, 'components/layout/AppHeader.vue'), 'utf8')
   assert.match(header, /v-for="l in LANGUAGES"/)
   assert.match(header, /@click="setLocale\(l\.id\)"/)
-  assert.match(readFileSync(join(src, 'App.vue'), 'utf8'), /lang: locale\.value/)
+  assert.match(appSource(), /lang: locale\.value/)
 })

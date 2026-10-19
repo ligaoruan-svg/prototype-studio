@@ -2,9 +2,10 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { appSource } from './appSource.js'
 
 const panel = readFileSync(new URL('../src/components/layout/InspectorPanel.vue', import.meta.url), 'utf8')
-const app = readFileSync(new URL('../src/App.vue', import.meta.url), 'utf8')
+const app = appSource()
 const bridge = readFileSync(new URL('../../backend/bridge.py', import.meta.url), 'utf8')
 
 test('属性按 尺寸 / 布局 / 文字 / 填充 / 边框 / 效果 分组', () => {

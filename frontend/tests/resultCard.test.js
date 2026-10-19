@@ -1,10 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { appSource } from './appSource.js'
 
 const source = readFileSync(new URL('../src/components/chat/ResultCard.vue', import.meta.url), 'utf8')
-// App.vue 的界面拆到了 components/layout 下；这些检查看的是整个外壳，拼在一起看
-const app = ['../src/App.vue', '../src/components/layout/ConversationPanel.vue', '../src/components/layout/InspectorPanel.vue',
+// App.vue 的界面拆到了 components/layout 下、逻辑拆到了 composables 下；这些检查看的是整个外壳，拼在一起看
+const app = appSource() + '\n' + ['../src/components/layout/ConversationPanel.vue', '../src/components/layout/InspectorPanel.vue',
   '../src/components/layout/AppHeader.vue', '../src/components/layout/StudioDialog.vue'].map(f => readFileSync(new URL(f, import.meta.url), 'utf8')).join('\n')
 
 test('every event the card fires is declared', () => {
@@ -105,7 +106,7 @@ test('多选走和拉框同一条路', () => {
 
 test('取消掉最后一个会通知父层清空', () => {
   assert.match(bridge, /SELECTION_CLEARED/)
-  assert.match(app, /SELECTION_CLEARED'\) clearSelectionOnly\(\)/)
+  assert.match(app, /SELECTION_CLEARED'\) (s\.)?clearSelectionOnly\(\)/)
 })
 
 test('模型的旁白和它接下来做的事排在一起', () => {
