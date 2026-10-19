@@ -37,13 +37,13 @@ a{color:inherit;text-decoration:none}
 svg{display:block}
 .breadcrumb{font-size:12px;color:var(--text-3);margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .page-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:16px}
-.page-head h1{margin:0;font-size:var(--fs-title);line-height:1.35;font-weight:600;color:var(--text-1)}
+.page-head h1{margin:0;font-family:var(--font-display);font-size:var(--fs-title);line-height:1.35;font-weight:600;color:var(--text-1)}
 .page-head p{margin:4px 0 0;font-size:13px;color:var(--text-3)}
 .page-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--card-radius);box-shadow:var(--card-shadow);overflow:hidden}
 .card+.card,.grid+.card,.card+.grid,.metric-grid+.card,.metric-grid+.grid,.grid+.grid{margin-top:var(--gap)}
 .card-hd{min-height:46px;padding:0 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px}
-.card-title{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:600;color:var(--text-1)}
+.card-title{display:flex;align-items:center;gap:8px;font-family:var(--font-display);font-size:15px;font-weight:600;color:var(--text-1)}
 .card-title::before{content:"";display:var(--title-bar);width:3px;height:14px;border-radius:2px;background:var(--primary)}
 .card-desc{color:var(--text-3);font-size:12px}
 .card-bd{padding:16px}
@@ -288,21 +288,46 @@ LAYOUTS = {
         "label": "左侧菜单",
         "css": r"""
 .app{display:flex;min-height:100vh;background:var(--bg)}
-.sidebar{width:216px;flex:0 0 216px;position:sticky;top:0;height:100vh;overflow-y:auto;background:var(--side-bg);color:var(--side-text);padding:16px 12px 24px}
-.brand{display:flex;align-items:center;gap:10px;padding:4px 8px 16px;color:#fff;font-size:15px;font-weight:600;min-width:0}
+.sidebar{width:216px;flex:0 0 216px;position:sticky;top:0;height:100vh;overflow-y:auto;background:var(--side-bg);color:var(--side-text);padding:16px 12px 24px;box-shadow:inset -1px 0 var(--side-line)}
+.brand{display:flex;align-items:center;gap:10px;padding:4px 8px 16px;color:var(--side-brand);font-size:15px;font-weight:600;min-width:0}
 .brand-mark{width:28px;height:28px;border-radius:8px;background:var(--primary);color:#fff;display:grid;place-items:center;flex:0 0 auto}
 .brand-mark svg{width:16px;height:16px}
 .brand-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .nav-label{font-size:12px;color:var(--side-muted);padding:14px 10px 4px}
 .nav-i{display:block;padding:8px 10px;margin:1px 0;border-radius:8px;color:var(--side-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.nav-i:hover{background:var(--side-hover);color:#fff}
-.nav-i.on{background:var(--side-on);color:#fff;font-weight:500}
+.nav-i:hover{background:var(--side-hover);color:var(--side-hover-text)}
+.nav-i.on{background:var(--side-on);color:var(--side-on-text);font-weight:500}
 .main{flex:1;min-width:0}
 .content{padding:22px 28px 32px;min-width:0}
 @media(max-width:960px){.app{flex-direction:column}.sidebar{position:sticky;z-index:20;width:100%;height:auto;flex:0 0 auto;display:flex;align-items:center;gap:8px;overflow-x:auto;padding:8px 12px}.brand{padding:0 8px 0 0}.nav{display:flex;gap:2px}.nav-group{display:flex;gap:2px}.nav-label{display:none}.content{padding:16px}}
 """,
         "js": r"""function renderLayout(){document.getElementById('app').innerHTML=`<div class="app"><aside class="sidebar"><div class="brand"><div class="brand-mark">${SVG.logo}</div><span class="brand-name">${esc(APP_NAME)}</span></div><nav class="nav" id="nav"></nav></aside><main class="main"><section class="content" id="content"></section></main></div>`}
 function renderNav(page){document.getElementById('nav').innerHTML=navGroups().map(g=>`<div class="nav-group">${g.label?`<div class="nav-label">${esc(g.label)}</div>`:''}${g.items.map(i=>`<a href="#${i.key}" class="nav-i ${i.key===page?'on':''}">${esc(i.label)}</a>`).join('')}</div>`).join('')}""",
+    },
+    "topbar": {
+        "label": "中台 · 顶部一级导航 + 左侧二级菜单",
+        "css": r"""
+.app{min-height:100vh;display:flex;flex-direction:column;background:var(--bg)}
+.top{height:56px;flex:0 0 56px;position:sticky;top:0;z-index:30;display:flex;align-items:stretch;gap:24px;padding:0 20px;background:var(--side-bg);color:var(--side-text);box-shadow:inset 0 -1px var(--side-line)}
+.brand{display:flex;align-items:center;gap:10px;color:var(--side-brand);font-size:15px;font-weight:600;white-space:nowrap}
+.brand-mark{width:28px;height:28px;border-radius:8px;background:var(--primary);color:#fff;display:grid;place-items:center;flex:0 0 auto}
+.brand-mark svg{width:16px;height:16px}
+.topnav{display:flex;align-items:stretch;gap:2px;min-width:0;overflow-x:auto}
+.top-i{display:flex;align-items:center;padding:0 14px;color:var(--side-text);white-space:nowrap;box-shadow:inset 0 -2px transparent}
+.top-i:hover{color:var(--side-hover-text);background:var(--side-hover)}
+.top-i.on{color:var(--side-on-text);font-weight:500;box-shadow:inset 0 -2px var(--primary);background:var(--side-on)}
+.body{flex:1;display:flex;align-items:flex-start;min-width:0}
+.subnav{width:200px;flex:0 0 200px;position:sticky;top:56px;height:calc(100vh - 56px);overflow-y:auto;background:var(--card);border-right:1px solid var(--line);padding:14px 10px}
+.subnav-title{font-size:12px;color:var(--text-3);padding:2px 10px 8px}
+.nav-i{display:block;padding:8px 12px;margin:1px 0;border-radius:var(--control-radius);color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nav-i:hover{background:var(--row-hover);color:var(--text-1)}
+.nav-i.on{background:var(--primary-weak);color:var(--primary);font-weight:500}
+.content{flex:1;min-width:0;padding:20px 24px 32px}
+.breadcrumb{display:none}
+@media(max-width:960px){.body{flex-direction:column;align-items:stretch}.subnav{position:static;width:100%;height:auto;display:flex;gap:4px;overflow-x:auto;border-right:0;border-bottom:1px solid var(--line);padding:6px 10px}.subnav-title{display:none}.content{padding:16px}}
+""",
+        "js": r"""function renderLayout(){document.getElementById('app').innerHTML=`<div class="app"><header class="top"><div class="brand"><div class="brand-mark">${SVG.logo}</div><span>${esc(APP_NAME)}</span></div><nav class="topnav" id="topnav"></nav></header><div class="body"><aside class="subnav" id="nav"></aside><main class="content" id="content"></main></div></div>`}
+function renderNav(page){const groups=navGroups(),cur=groups.find(g=>g.items.some(i=>i.key===page))||groups[0];document.getElementById('topnav').innerHTML=groups.map(g=>`<a href="#${g.items[0].key}" class="top-i ${g===cur?'on':''}">${esc(g.label||g.items[0].label)}</a>`).join('');const nav=document.getElementById('nav');nav.style.display=cur&&cur.items.length>1?'':'none';nav.innerHTML=cur?`<div class="subnav-title">${esc(cur.label)}</div>`+cur.items.map(i=>`<a href="#${i.key}" class="nav-i ${i.key===page?'on':''}">${esc(i.label)}</a>`).join(''):''}""",
     },
     "screen": {
         "label": "大屏 · 顶部切换",
@@ -332,7 +357,7 @@ function renderNav(page){const items=navItems();document.getElementById('nav').i
         "css": r"""
 .app{max-width:430px;min-height:100vh;margin:0 auto;background:var(--bg);display:flex;flex-direction:column;position:relative;box-shadow:0 0 0 1px var(--line)}
 .m-top{position:sticky;top:0;z-index:40;background:var(--card);padding:14px 16px 12px;border-bottom:1px solid var(--line)}
-.m-top h1{margin:0;font-size:var(--fs-title);line-height:1.35;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.m-top h1{margin:0;font-family:var(--font-display);font-size:var(--fs-title);line-height:1.35;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .content{flex:1;padding:12px 14px 88px;min-width:0}
 .tabbar{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:430px;height:62px;background:var(--card);border-top:1px solid var(--line);display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);z-index:45;padding-bottom:env(safe-area-inset-bottom)}
 .tab{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:11px;color:var(--text-3);min-width:0}
@@ -368,7 +393,14 @@ BASE_TOKENS = {
     "outer-bg": "var(--bg)", "title-bar": "none", "metric-color": "var(--text-1)", "gap": "14px",
     "fs-control": "var(--fs)", "table-min": "960px", "modal-w": "480px", "modal-wide": "680px",
     "toast": "rgba(17,24,39,.92)", "toast-error": "rgba(201,48,44,.95)",
+    "font-display": "var(--font-sans)",
+    # 菜单（左侧菜单、中台顶栏）默认是深色底白字；浅色菜单的风格自己覆盖
+    "side-bg": "#14213d", "side-text": "#c9d2e3", "side-muted": "#7f8ba3", "side-hover": "rgba(255,255,255,.06)", "side-on": "rgba(255,255,255,.1)",
+    "side-hover-text": "#ffffff", "side-on-text": "#ffffff", "side-brand": "#ffffff", "side-line": "transparent",
 }
+CATEGORY = {"sidebar": "后台", "topbar": "中台", "screen": "中台", "mobile": "手机"}
+# 选风格时的排列：按分类，分类里按这个顺序
+ORDER = ["简洁后台", "企业蓝", "极简黑白", "业务中台", "数据中台", "数据大屏", "移动端App", "温暖柔和", "活力电商"]
 
 STYLES = [
     {
@@ -460,14 +492,248 @@ STYLES = [
 - 指标卡一排 2 张；一屏不要塞太多卡片，留白比 PC 多。
 """,
     },
+    {
+        "name": "企业蓝", "layout": "sidebar", "primary": "#1677ff", "background": "#f5f5f5",
+        "description": "国内最常见的企业后台：白色侧边菜单、标准蓝、紧凑表格，接近 Ant Design 的观感。适合审批、CRM、ERP 这类信息量大的系统。",
+        "tokens": {
+            "bg": "#f5f5f5", "card": "#ffffff", "control-bg": "#ffffff", "line": "#f0f0f0", "line-strong": "#d9d9d9",
+            "text-1": "#1f1f1f", "text-2": "#595959", "text-3": "#8c8c8c",
+            "primary": "#1677ff", "primary-hover": "#0958d9", "primary-weak": "#e6f4ff", "primary-ring": "rgba(22,119,255,.15)", "on-primary": "#ffffff",
+            "danger": "#ff4d4f", "danger-hover": "#d9363e", "danger-weak": "#fff1f0",
+            "success": "#389e0d", "success-weak": "#f6ffed", "warning": "#d46b08", "warning-weak": "#fff7e6",
+            "head-bg": "#fafafa", "row-hover": "#fafafa", "mask": "rgba(0,0,0,.45)", "toast": "rgba(0,0,0,.82)",
+            "side-bg": "#ffffff", "side-text": "#595959", "side-muted": "#8c8c8c", "side-hover": "#f5f5f5", "side-on": "#e6f4ff",
+            "side-hover-text": "#1f1f1f", "side-on-text": "#1677ff", "side-brand": "#1f1f1f", "side-line": "#f0f0f0",
+            "card-radius": "8px", "control-radius": "6px", "btn-radius": "6px", "modal-radius": "8px",
+            "card-shadow": "none", "modal-shadow": "0 6px 16px rgba(0,0,0,.08),0 9px 28px 8px rgba(0,0,0,.05)",
+            "fs": "14px", "fs-title": "20px", "ctl-h": "32px", "th-h": "44px", "td-h": "50px", "metric-fs": "26px",
+        },
+        "rules": """\
+## 用途
+国内企业后台：审批流、CRM、ERP、工单、配置中心。信息量大，讲究规整、密度适中、一眼找到操作。
+
+## 视觉基调
+白色侧边菜单 + 浅灰底 + 白卡片，标准蓝只用在主按钮、链接、选中态。整体克制、规整，像成熟的企业软件。
+
+## 配色怎么用
+- 主色蓝 = 能点的东西（主按钮、链接、选中菜单），别拿来做大面积背景。
+- 状态四色：success 绿通过、warning 橙待处理、danger 红驳回或异常、info 蓝进行中；neutral 灰是草稿、停用。
+
+## 布局
+- 菜单分组 ≤ 6 个、每组 ≤ 8 页；页面头 → 筛选卡片 → 表格卡片，和 Ant Design Pro 的列表页一个结构。
+- 筛选项多于 4 个时，只露常用的 3 个，其余收进「展开」。
+- 表格行高 50、表头 44；金额右对齐加 `num`；操作列固定在最右，最多 3 个文字链接。
+
+## 要做 / 不要做
+- 要：表单两列 `.form-grid`，标签在上；详情用 Drawer（560 宽）分组展示。
+- 不要：彩色大卡片、渐变、插画；不要一页放两个主按钮。
+""",
+    },
+    {
+        "name": "极简黑白", "layout": "sidebar", "primary": "#171717", "background": "#fafafa",
+        "description": "黑白灰极简：浅灰侧栏、细边框、黑色主按钮，参考 Linear、Vercel 这类工具的克制感。适合 SaaS 控制台、开发者工具、设置页。",
+        "tokens": {
+            "bg": "#fafafa", "card": "#ffffff", "control-bg": "#ffffff", "line": "#ebebeb", "line-strong": "#d4d4d4",
+            "text-1": "#0a0a0a", "text-2": "#404040", "text-3": "#737373",
+            "primary": "#171717", "primary-hover": "#404040", "primary-weak": "#f2f2f2", "primary-ring": "rgba(23,23,23,.12)", "on-primary": "#ffffff",
+            "danger": "#dc2626", "danger-hover": "#b91c1c", "danger-weak": "#fef2f2",
+            "success": "#15803d", "success-weak": "#f0fdf4", "warning": "#a16207", "warning-weak": "#fefce8",
+            "head-bg": "#fafafa", "row-hover": "#f7f7f7", "mask": "rgba(0,0,0,.4)", "toast": "rgba(10,10,10,.92)",
+            "side-bg": "#fafafa", "side-text": "#525252", "side-muted": "#a3a3a3", "side-hover": "#f0f0f0", "side-on": "#ebebeb",
+            "side-hover-text": "#0a0a0a", "side-on-text": "#0a0a0a", "side-brand": "#0a0a0a", "side-line": "#ebebeb",
+            "card-radius": "10px", "control-radius": "8px", "btn-radius": "8px", "modal-radius": "12px",
+            "card-shadow": "0 1px 2px rgba(0,0,0,.03)", "modal-shadow": "0 24px 64px rgba(0,0,0,.16)",
+            "fs": "14px", "fs-title": "22px", "ctl-h": "32px", "th-h": "38px", "td-h": "44px", "metric-fs": "28px",
+        },
+        "rules": """\
+## 用途
+SaaS 控制台、开发者工具、团队设置、账单页。用户是熟练用户，要的是安静、快、信息清楚。
+
+## 视觉基调
+几乎只有黑白灰，靠字重、间距和 1px 细线分层次，不靠颜色。留白大，标题偏大、正文偏小，对比鲜明。
+
+## 配色怎么用
+- 黑色是主色：主按钮、选中态、重点数字。彩色只出现在状态（绿成功、红错误、黄提醒），而且只用在小标签和小圆点上。
+- 不要蓝色链接：链接用黑字 + 悬停底色（外壳的 .lnk 已经是这样）。
+
+## 布局
+- 页面头标题 22px，下面一句灰色说明；内容区宽，表格用细线分隔、不加斑马纹。
+- 设置类页面用一列卡片：每张卡片左边标题和说明、右边控件（`.grid.two` 左窄右宽）。
+- 数字、编号、时间用 `code` 类（等宽），对齐整齐。
+
+## 要做 / 不要做
+- 要：大量留白、少而准的文字；空状态一句话 + 一个按钮。
+- 不要：阴影、渐变、彩色图标、圆角大于 12px；不要用颜色区分本来用文字就能区分的东西。
+""",
+    },
+    {
+        "name": "业务中台", "layout": "topbar", "primary": "#1f6feb", "background": "#f2f4f7", "category": "中台",
+        "description": "顶部深色一级导航 + 左侧二级菜单：多个业务模块并列、每个模块下若干页面。适合运营中台、订单中台、供应链这类模块多的系统。",
+        "tokens": {
+            "bg": "#f2f4f7", "card": "#ffffff", "control-bg": "#ffffff", "line": "#e6e8ec", "line-strong": "#d5d9e0",
+            "text-1": "#1d2129", "text-2": "#4e5969", "text-3": "#86909c",
+            "primary": "#1f6feb", "primary-hover": "#1858c2", "primary-weak": "#e8f0fe", "primary-ring": "rgba(31,111,235,.16)", "on-primary": "#ffffff",
+            "danger": "#e5484d", "danger-hover": "#c93a3f", "danger-weak": "#fdeced",
+            "success": "#16a34a", "success-weak": "#eafaf0", "warning": "#c2620a", "warning-weak": "#fff4e5",
+            "head-bg": "#f7f8fa", "row-hover": "#f7f9fc", "mask": "rgba(15,27,45,.5)",
+            "side-bg": "#0f1b2d", "side-text": "#a9b4c4", "side-hover": "rgba(255,255,255,.06)", "side-on": "rgba(255,255,255,.08)",
+            "card-radius": "8px", "control-radius": "6px", "btn-radius": "6px", "modal-radius": "10px",
+            "card-shadow": "0 1px 2px rgba(15,27,45,.04)", "modal-shadow": "0 16px 48px rgba(15,27,45,.2)",
+            "fs": "14px", "fs-title": "18px", "ctl-h": "32px", "th-h": "42px", "td-h": "46px", "metric-fs": "24px",
+        },
+        "rules": """\
+## 用途
+模块多的业务中台：订单、商品、库存、结算、会员……每个模块下面若干页面，用户经常在模块之间跳。
+
+## 视觉基调
+顶部深色导航条压住整页，下面是浅灰工作区 + 白卡片。信息密，层级靠「顶部模块 → 左侧页面 → 卡片」三层清楚分开。
+
+## 布局（外壳已经做好）
+- NAV 的每个分组 = 顶部一个模块；分组里的 items = 左侧二级菜单。模块 4~8 个最合适，每个模块 2~8 页；只有一页的模块不显示左侧菜单。
+- 中台首页常用「工作台」：上面一排待办数字（指标卡，点了跳到对应列表），下面左宽右窄 `.grid.two`：左边待办列表、右边快捷入口和公告。
+- 列表页、详情页的写法和后台一样：筛选卡片 + 表格卡片 + 分页；详情用 Drawer。
+
+## 配色怎么用
+- 主色蓝只给主按钮、链接和选中态；顶栏深色不要再放彩色按钮。
+- 跨模块的状态颜色保持一致：同一个「待处理」在所有模块都是 warning。
+
+## 要做 / 不要做
+- 要：每个模块名短（2~4 字）；指标卡带「去处理」链接。
+- 不要：在页面里再做一排 Tabs 当模块导航（顶部已经有了）；不要一页塞两张以上的大表格。
+""",
+    },
+    {
+        "name": "数据中台", "layout": "topbar", "primary": "#5b5bd6", "background": "#f6f7fb", "category": "中台",
+        "description": "浅色顶栏 + 左侧二级菜单，指标卡和图表卡为主：数据看板、经营分析、报表中心。比大屏更适合日常在电脑上看和筛选。",
+        "tokens": {
+            "bg": "#f6f7fb", "card": "#ffffff", "control-bg": "#ffffff", "line": "#e7e8f0", "line-strong": "#d6d8e3",
+            "text-1": "#151827", "text-2": "#454a5e", "text-3": "#80869a",
+            "primary": "#5b5bd6", "primary-hover": "#4848c4", "primary-weak": "#efeffd", "primary-ring": "rgba(91,91,214,.18)", "on-primary": "#ffffff",
+            "danger": "#e5484d", "danger-hover": "#c93a3f", "danger-weak": "#fdeced",
+            "success": "#12a150", "success-weak": "#e7f8ee", "warning": "#b8650a", "warning-weak": "#fff3e3",
+            "head-bg": "#f8f8fc", "row-hover": "#f7f7fd", "mask": "rgba(21,24,39,.45)",
+            "side-bg": "#ffffff", "side-text": "#545a70", "side-hover": "#f4f4fa", "side-on": "#efeffd",
+            "side-hover-text": "#151827", "side-on-text": "#151827", "side-brand": "#151827", "side-line": "#e7e8f0",
+            "title-bar": "block", "metric-color": "var(--primary)",
+            "card-radius": "12px", "control-radius": "8px", "btn-radius": "8px", "modal-radius": "14px",
+            "card-shadow": "0 1px 3px rgba(21,24,39,.05)", "modal-shadow": "0 20px 56px rgba(21,24,39,.18)",
+            "fs": "14px", "fs-title": "20px", "ctl-h": "32px", "th-h": "40px", "td-h": "44px", "metric-fs": "28px",
+        },
+        "rules": """\
+## 用途
+数据看板、经营分析、报表中心、指标管理：在电脑上天天看、要能筛选和下钻。要投屏就用「数据大屏」。
+
+## 视觉基调
+浅色、干净、偏冷的靛蓝。数字是主角：指标卡数字大、用主题色；图表卡标题带竖条。
+
+## 布局（外壳已经做好）
+- NAV 分组 = 顶部一级（如「经营看板」「用户分析」「报表中心」），items = 左侧具体看板。
+- 一个看板从上到下：页面头右上放时间范围（今天 / 近 7 天 / 近 30 天，用一组按钮，选中的是 primary）→ 一排 4 个指标卡 → 2~3 列图表卡 → 明细表格。
+- 图表用 ZeroUI.Bars、ZeroUI.Meter，或内联 SVG 画折线；每张图表卡标题写清单位和时间（「近 7 日成交额（万元）」）。
+
+## 配色怎么用
+- 一张图只用一个主色，最多再加一个灰色做对比；涨用 `.up` 绿、跌用 `.down` 红。
+- 不要彩虹色的饼图和柱子。
+
+## 要做 / 不要做
+- 要：每个指标写清口径（metric-foot 里写「较昨日」「近 30 天」）；点指标卡或图表能下钻到明细（跳页或 Drawer）。
+- 不要：一屏超过 12 个指标；不要只有图没有数字。
+""",
+    },
+    {
+        "name": "温暖柔和", "layout": "mobile", "primary": "#c2603d", "background": "#f6f2ec",
+        "description": "米色底、陶土色主色、大圆角、标题用衬线字，温和有质感。适合内容、阅读、生活方式、预约类的手机页面。",
+        "tokens": {
+            "bg": "#f6f2ec", "outer-bg": "#ebe5dc", "card": "#fffdf9", "control-bg": "#fffdf9", "line": "#ece5da", "line-strong": "#ddd3c5",
+            "text-1": "#2b2620", "text-2": "#5a5248", "text-3": "#8a8073",
+            "primary": "#c2603d", "primary-hover": "#a44e30", "primary-weak": "#f7e9e2", "primary-ring": "rgba(194,96,61,.18)", "on-primary": "#ffffff",
+            "danger": "#b3402f", "danger-hover": "#953426", "danger-weak": "#f8e5e1",
+            "success": "#4c7a52", "success-weak": "#e9f1e8", "warning": "#9a6a1c", "warning-weak": "#f8efdc",
+            "head-bg": "#f3ede4", "row-hover": "#f8f3ec", "mask": "rgba(43,38,32,.45)", "toast": "rgba(43,38,32,.92)",
+            "font-display": "Georgia,\"Songti SC\",\"STSong\",\"Noto Serif SC\",serif",
+            "card-radius": "18px", "control-radius": "12px", "btn-radius": "14px", "modal-radius": "22px",
+            "card-shadow": "0 1px 2px rgba(43,38,32,.04)", "modal-shadow": "0 18px 48px rgba(43,38,32,.2)", "gap": "14px",
+            "fs": "15px", "fs-title": "22px", "ctl-h": "44px", "th-h": "38px", "td-h": "46px", "metric-fs": "24px",
+            "fs-control": "15px", "table-min": "520px",
+        },
+        "rules": """\
+## 用途
+手机上的内容、阅读、生活方式、预约、社区类页面：要让人觉得舒服、有温度，而不是工具感。
+
+## 视觉基调
+米色纸张底 + 奶白卡片 + 陶土色点缀；标题用衬线字（外壳已经设好），正文无衬线。圆角大、间距松，像一本杂志。
+
+## 配色怎么用
+- 陶土色只用在主按钮、选中的 Tab、少量强调文字；大面积是米色和奶白。
+- 不要纯黑纯白：文字是深棕灰，背景是米色（外壳变量已经是这样）。
+
+## 布局（外壳已经做好）
+- 底部 Tab 和「移动端App」一样：NAV 写一个分组，页面放 items 里，前 5 个是 Tab。
+- 首页常用：一句问候或标题 → 一张大的推荐卡片 → 一列内容卡片（图片占位 + 标题 + 一行摘要）。图片用带圆角的色块占位，不要外链图片。
+- 一屏一个重点；主操作放在底部，用 `kind:'primary block'` 撑满宽。
+
+## 要做 / 不要做
+- 要：文案口语、亲切（「今天想读点什么？」）；卡片之间留足间距。
+- 不要：密集表格、小字号、硬朗的直角；不要冷色调的蓝色按钮。
+""",
+    },
+    {
+        "name": "活力电商", "layout": "mobile", "primary": "#ff5a1f", "background": "#f5f5f7",
+        "description": "橙红主色、价格醒目、商品卡片两列排，热闹有购买欲。适合商城、外卖、团购、会员这类用户端手机页面。",
+        "tokens": {
+            "bg": "#f5f5f7", "outer-bg": "#e8e8ec", "card": "#ffffff", "control-bg": "#ffffff", "line": "#eeeeef", "line-strong": "#dcdce0",
+            "text-1": "#1a1a1a", "text-2": "#4a4a4f", "text-3": "#8e8e93",
+            "primary": "#ff5a1f", "primary-hover": "#e8470f", "primary-weak": "#fff0e8", "primary-ring": "rgba(255,90,31,.2)", "on-primary": "#ffffff",
+            "danger": "#e5252a", "danger-hover": "#c81d22", "danger-weak": "#fdeaea",
+            "success": "#1a9f5a", "success-weak": "#e8f7ef", "warning": "#b25e00", "warning-weak": "#fff3e0",
+            "head-bg": "#f7f7f9", "row-hover": "#f7f7f9", "mask": "rgba(0,0,0,.5)",
+            "metric-color": "var(--primary)",
+            "card-radius": "12px", "control-radius": "8px", "btn-radius": "999px", "modal-radius": "16px",
+            "card-shadow": "none", "modal-shadow": "0 16px 48px rgba(0,0,0,.2)", "gap": "10px",
+            "fs": "14px", "fs-title": "18px", "ctl-h": "40px", "th-h": "36px", "td-h": "44px", "metric-fs": "22px",
+            "fs-control": "14px", "table-min": "520px",
+        },
+        "rules": """\
+## 用途
+用户端的商城、外卖、团购、会员页面：首页、商品列表、商品详情、购物车、订单、我的。
+
+## 视觉基调
+浅灰底 + 白卡片 + 橙红主色，价格和促销醒目，信息排得紧凑但不乱，有逛街的热闹感。
+
+## 配色怎么用
+- 橙红 = 价格、主按钮（加入购物车、立即购买）、促销标签；同一屏橙红元素不要超过 3 处，否则什么都不突出。
+- 价格写法：`<b style="color:var(--primary)">¥<span style="font-size:20px">99</span>.00</b>`，原价用灰色删除线。
+
+## 布局（外壳已经做好）
+- 底部 Tab 一般是：首页、分类、购物车、订单、我的（icon 用 home / grid / list / bell / user）。
+- 商品列表两列卡片 `.grid.two`：图片色块占位（1:1）+ 两行标题 + 价格 + 销量；详情页底部固定一条「加入购物车 / 立即购买」。
+- 搜索框放在首页顶部第一屏；分类页左边一列分类、右边商品。
+
+## 要做 / 不要做
+- 要：数字真实可信（¥ 129.00、已售 2.3 万）；按钮写清动作。
+- 不要：满屏渐变和闪烁动效；不要把重要信息只用颜色表达（促销要有文字「限时」「满减」）。
+""",
+    },
 ]
 
 COMMON_RULES = """\
-## 通用写法（三套内置风格都一样）
+## 通用写法（所有内置风格都一样）
 - 新页面从外壳起步：页面还是空的就 start_from_shell，已经是外壳就直接 apply_operations 一条 shell_add 写 nav / pages / bind / script。
 - 样式只用外壳里的类和 CSS 变量（var(--primary) 等），不要另写一套颜色、字号、圆角；确实要加样式，也引用这些变量。
 - 不要僵尸交互：分页、筛选、开关、按钮、行操作都要有真实效果，至少 ZeroUI.Toast 一句。提交时按钮进 loading 防止重复点。
 - 示例数据用中性的名字和编号（张三、李四、王五；SO-20261018-0012），不用真实人名。
+
+## 体验底线
+- 每页先想清楚「用户来这页干什么」：最重要的数字或操作放在最显眼的位置，其余往后放。
+- 列表要有空状态（ZeroUI.Empty）；表单必填标星、错误写在字段下面、提交后有结果反馈。
+- 危险操作二次确认，并写清后果（「删除后不能恢复」）；按钮写具体动作（「提交审核」「加入购物车」），少用「确定」「OK」。
+- 状态不能只靠颜色：标签里要有文字。正文不要用浅灰字，放在彩色底上的字要够清楚。
+
+## 不要做（一眼就像 AI 做的）
+- 紫蓝渐变、霓虹发光、到处加阴影；用 emoji 当图标。
+- 什么都包一张卡片、卡片里再套卡片；一排三张一模一样的「图标 + 标题 + 一段话」卡片。
+- 所有内容居中；每个区块都加一个大标题和一句空洞的介绍。
+- 弹跳、抖动的动画；随手发明新的颜色、字号、圆角（用外壳的变量）。
 
 ## 外壳里现成的组件
 - ZeroUI.Button({label,kind:'primary'|'danger'|'danger-solid',icon:SVG.plus,id}) · ZeroUI.Tag({text,kind:'info'|'success'|'warning'|'danger'|'neutral'}) · ZeroUI.Field({label,type:'text'|'select'|'textarea',options,required,full,id})
@@ -486,8 +752,11 @@ def build(style: dict) -> tuple[str, str]:
     shell = (SKELETON.replace("%%NAME%%", style["name"]).replace("%%TOKENS%%", token_css)
              .replace("%%LAYOUT%%", layout["label"]).replace("%%LAYOUT_CSS%%", layout["css"].strip())
              .replace("%%LAYOUT_JS%%", layout["js"].strip()))
+    category = style.get("category") or CATEGORY[style["layout"]]
+    order = ORDER.index(style["name"]) + 1 if style["name"] in ORDER else len(ORDER) + STYLES.index(style) + 1
     skill = (f"---\nname: {style['name']}\ndescription: {style['description']}\n"
-             f"layout: {style['layout']}\nprimary: \"{style['primary']}\"\nbackground: \"{style['background']}\"\n---\n"
+             f"category: {category}\norder: {order}\nlayout: {style['layout']}\n"
+             f"primary: \"{style['primary']}\"\nbackground: \"{style['background']}\"\nside: \"{tokens['side-bg']}\"\n---\n"
              f"# {style['name']}\n\n{style['rules']}\n{COMMON_RULES}")
     return skill, shell
 

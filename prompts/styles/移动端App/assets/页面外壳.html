@@ -18,6 +18,16 @@
   --modal-wide:680px;
   --toast:rgba(17,24,39,.92);
   --toast-error:rgba(201,48,44,.95);
+  --font-display:var(--font-sans);
+  --side-bg:#14213d;
+  --side-text:#c9d2e3;
+  --side-muted:#7f8ba3;
+  --side-hover:rgba(255,255,255,.06);
+  --side-on:rgba(255,255,255,.1);
+  --side-hover-text:#ffffff;
+  --side-on-text:#ffffff;
+  --side-brand:#ffffff;
+  --side-line:transparent;
   --bg:#f2f4f7;
   --card:#ffffff;
   --control-bg:#ffffff;
@@ -63,13 +73,13 @@ a{color:inherit;text-decoration:none}
 svg{display:block}
 .breadcrumb{font-size:12px;color:var(--text-3);margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .page-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:16px}
-.page-head h1{margin:0;font-size:var(--fs-title);line-height:1.35;font-weight:600;color:var(--text-1)}
+.page-head h1{margin:0;font-family:var(--font-display);font-size:var(--fs-title);line-height:1.35;font-weight:600;color:var(--text-1)}
 .page-head p{margin:4px 0 0;font-size:13px;color:var(--text-3)}
 .page-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--card-radius);box-shadow:var(--card-shadow);overflow:hidden}
 .card+.card,.grid+.card,.card+.grid,.metric-grid+.card,.metric-grid+.grid,.grid+.grid{margin-top:var(--gap)}
 .card-hd{min-height:46px;padding:0 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px}
-.card-title{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:600;color:var(--text-1)}
+.card-title{display:flex;align-items:center;gap:8px;font-family:var(--font-display);font-size:15px;font-weight:600;color:var(--text-1)}
 .card-title::before{content:"";display:var(--title-bar);width:3px;height:14px;border-radius:2px;background:var(--primary)}
 .card-desc{color:var(--text-3);font-size:12px}
 .card-bd{padding:16px}
@@ -216,7 +226,7 @@ a.list-item:hover,button.list-item:hover{background:var(--row-hover)}
 /* ===== 布局：手机 · 底部 Tab ===== */
 .app{max-width:430px;min-height:100vh;margin:0 auto;background:var(--bg);display:flex;flex-direction:column;position:relative;box-shadow:0 0 0 1px var(--line)}
 .m-top{position:sticky;top:0;z-index:40;background:var(--card);padding:14px 16px 12px;border-bottom:1px solid var(--line)}
-.m-top h1{margin:0;font-size:var(--fs-title);line-height:1.35;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.m-top h1{margin:0;font-family:var(--font-display);font-size:var(--fs-title);line-height:1.35;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .content{flex:1;padding:12px 14px 88px;min-width:0}
 .tabbar{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:430px;height:62px;background:var(--card);border-top:1px solid var(--line);display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);z-index:45;padding-bottom:env(safe-area-inset-bottom)}
 .tab{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:11px;color:var(--text-3);min-width:0}

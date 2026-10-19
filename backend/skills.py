@@ -74,6 +74,7 @@ def _purpose(body: str) -> str:
 
 SHELL_FILE = re.compile(r"(外壳|shell)\.html?$", re.I)
 LAYOUTS = {"sidebar", "topbar", "screen", "mobile"}
+CATEGORIES = {"sidebar": "后台", "topbar": "中台", "screen": "中台", "mobile": "手机"}   # 选风格时按这个分组
 
 
 def _preview(folder: Path, meta: dict, files: list[str]) -> dict:
@@ -88,9 +89,14 @@ def _preview(folder: Path, meta: dict, files: list[str]) -> dict:
             tokens = {}
     color = lambda v: v.strip() if re.fullmatch(r"#[0-9a-fA-F]{3,8}", (v or "").strip()) else ""
     layout = meta.get("layout", "").strip()
-    return {"layout": layout if layout in LAYOUTS else "sidebar",
+    layout = layout if layout in LAYOUTS else "sidebar"
+    order = meta.get("order", "").strip()
+    return {"layout": layout,
+            "category": meta.get("category", "").strip()[:8] or CATEGORIES[layout],
+            "order": int(order) if order.isdigit() else 99,
             "primary": color(meta.get("primary")) or color(tokens.get("primary")) or "#2f6fed",
             "background": color(meta.get("background")) or color(tokens.get("bg")) or "#f6f7f9",
+            "side": color(meta.get("side")) or color(tokens.get("side-bg")) or "#ffffff",
             "has_shell": bool(shell)}
 
 
@@ -124,10 +130,9 @@ def builtin_listing() -> list[dict]:
     """软件自带的风格：打在安装包里、只读，所有人都有"""
     if not BUILTIN.exists():
         return []
-    order = ["简洁后台", "数据大屏", "移动端App"]
-    folders = sorted((f for f in BUILTIN.iterdir() if f.is_dir() and SAFE_NAME.fullmatch(f.name)),
-                     key=lambda f: (order.index(f.name) if f.name in order else len(order), f.name))
-    return [item for item in (_entry(f, builtin=True) for f in folders) if item]
+    folders = [f for f in BUILTIN.iterdir() if f.is_dir() and SAFE_NAME.fullmatch(f.name)]
+    items = [item for item in (_entry(f, builtin=True) for f in folders) if item]
+    return sorted(items, key=lambda i: (i["order"], i["name"]))
 
 
 def _folder(name: str, builtin: bool | None = None) -> Path:

@@ -13,7 +13,7 @@ try:
 except ImportError:
     server = None
 
-BUILTIN = ["简洁后台", "数据大屏", "移动端App"]
+BUILTIN = ["简洁后台", "企业蓝", "极简黑白", "业务中台", "数据中台", "数据大屏", "移动端App", "温暖柔和", "活力电商"]
 
 
 def skill_zip(name: str, shell: bool = True) -> bytes:
@@ -30,7 +30,8 @@ class 内置风格(unittest.TestCase):
     def test_三套都在_带外壳_能过检查(self):
         items = skills.builtin_listing()
         self.assertEqual([i["name"] for i in items], BUILTIN)
-        self.assertEqual([i["layout"] for i in items], ["sidebar", "screen", "mobile"])
+        self.assertEqual([i["category"] for i in items], ["后台"] * 3 + ["中台"] * 3 + ["手机"] * 3)
+        self.assertEqual({i["layout"] for i in items}, {"sidebar", "topbar", "screen", "mobile"})
         for item in items:
             self.assertTrue(item["builtin"] and item["has_shell"])
             shell = skill_digest.find_shell({"style": "builtin:" + item["folder"]})[2]

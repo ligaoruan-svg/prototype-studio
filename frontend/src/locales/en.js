@@ -1053,5 +1053,20 @@ export default {
   "已换成「{0}」：之后新做的页面和修改按这套来": "Switched to \"{0}\": new pages and edits will follow it",
   "已改成不选风格：之后只按设计规范来": "Switched to no style: only the design spec applies from now on",
   "已换成「{0}」：之后新做的页面和修改按这套来；还是空的页面已经换成新风格的样子": "Switched to \"{0}\": new pages and edits will follow it; blank pages now use the new style",
-  "已改成不选风格：之后只按设计规范来；还是空的页面已经换成新风格的样子": "Switched to no style: only the design spec applies; blank pages were reset"
+  "已改成不选风格：之后只按设计规范来；还是空的页面已经换成新风格的样子": "Switched to no style: only the design spec applies; blank pages were reset",
+  "后台": "Admin",
+  "中台": "Platform",
+  "我的 · 其他": "Mine & other",
+  "企业蓝": "Enterprise Blue",
+  "极简黑白": "Minimal Mono",
+  "业务中台": "Business Platform",
+  "数据中台": "Data Platform",
+  "温暖柔和": "Warm & Soft",
+  "活力电商": "Vibrant Shop",
+  "国内最常见的企业后台：白色侧边菜单、标准蓝、紧凑表格，接近 Ant Design 的观感。适合审批、CRM、ERP 这类信息量大的系统。": "The most common Chinese enterprise admin look: white side menu, standard blue, compact tables, close to Ant Design. For approvals, CRM, ERP and other information-heavy systems.",
+  "黑白灰极简：浅灰侧栏、细边框、黑色主按钮，参考 Linear、Vercel 这类工具的克制感。适合 SaaS 控制台、开发者工具、设置页。": "Black, white and gray minimalism: light gray sidebar, hairline borders, black primary buttons, inspired by the restraint of tools like Linear and Vercel. For SaaS consoles, developer tools and settings pages.",
+  "顶部深色一级导航 + 左侧二级菜单：多个业务模块并列、每个模块下若干页面。适合运营中台、订单中台、供应链这类模块多的系统。": "Dark top navigation for modules plus a left submenu: many business modules side by side, each with several pages. For operations, order and supply-chain platforms.",
+  "浅色顶栏 + 左侧二级菜单，指标卡和图表卡为主：数据看板、经营分析、报表中心。比大屏更适合日常在电脑上看和筛选。": "Light top bar plus a left submenu, built around metric and chart cards: dashboards, business analytics, report centers. Better than the data wall for everyday desktop viewing and filtering.",
+  "米色底、陶土色主色、大圆角、标题用衬线字，温和有质感。适合内容、阅读、生活方式、预约类的手机页面。": "Beige background, terracotta accent, large radii and serif headings: calm with texture. For content, reading, lifestyle and booking mobile pages.",
+  "橙红主色、价格醒目、商品卡片两列排，热闹有购买欲。适合商城、外卖、团购、会员这类用户端手机页面。": "Orange-red accent, prominent prices, two-column product cards: lively and shoppable. For customer-facing mall, delivery, group-buy and membership mobile pages."
 }
