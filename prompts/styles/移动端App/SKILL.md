@@ -12,6 +12,7 @@ background: "#f2f4f7"
 
 ## 这套风格的规矩
 - 底部 Tab = NAV 里按顺序排的前 5 个页面（分组名不显示）；页面可以加 `icon:'home'|'grid'|'list'|'bell'|'user'` 指定图标。超过 5 个的页面（详情、设置）用链接 `#页面key` 进入。
+- NAV 和别的风格一样写成分组，页面放在 items 里，不要直接写页面数组：shell_add 的 nav 写 `{key:'app',label:'App',items:[{key:'home',label:'首页',icon:'home'},{key:'orders',label:'订单',icon:'list'},{key:'me',label:'我的',icon:'user'}]}`。
 - 页面标题显示在顶部栏里（pageShell 的第一个参数），页面里不用再写大标题。
 - 列表用 `.list` + ZeroUI.ListItem({title,desc,extra,id}) 或一张张卡片；不要横向很宽的表格。
 - 点击区域至少 44px 高；一屏底部的主操作用 `ZeroUI.Button({label:'提交',kind:'primary block'})` 撑满宽度。

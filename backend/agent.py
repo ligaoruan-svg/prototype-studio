@@ -84,7 +84,7 @@ TOOL_SPECS = [
                                 "region": {"type": "string"},
                                 "position": {"type": "string", "enum": ["before", "after", "inside", "replace"],
                                              "description": "仅 insert_component 使用：相对 selector 的位置，默认 after"},
-                                "nav": {"type": "string", "description": "仅 shell_add：要加的一级菜单分组，如 {key:'order',label:'订单管理',items:[{key:'refund',label:'退款审核'}]}"},
+                                "nav": {"type": "string", "description": "仅 shell_add：要加的一级菜单分组（页面一定放在分组的 items 里，手机风格也一样），如 {key:'order',label:'订单管理',items:[{key:'refund',label:'退款审核'}]}；多个分组用逗号隔开，不要外面再包 []"},
                                 "pages": {"type": "string", "description": "仅 shell_add：Pages 里的页面方法，如 refund(){return pageShell('退款审核','说明',内容HTML,右上按钮)}"},
                                 "bind": {"type": "string", "description": "仅 shell_add：放进 bindPage(page) 的代码，如 if(page==='quota'){...}"},
                                 "script": {"type": "string", "description": "仅 shell_add：数据、状态对象、辅助函数、PageEvents.on(...)，放在页面方法前面"},

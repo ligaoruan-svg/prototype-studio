@@ -241,7 +241,9 @@ const UI=ZeroUI;
 const NAV=[/*PA:NAV*/
   {key:'biz',label:'业务模块',items:[{key:'home',label:'首页'}]}
 ];
-const navItems=()=>NAV.flatMap(g=>g.items.map(i=>({...i,group:g.label})));
+// 菜单写成了扁平的页面列表、或者多包了一层 [] 也认：散的页面收进一个不显示名字的分组，不会因为 g.items 是 undefined 整页崩掉
+const navGroups=()=>NAV.flat().reduce((out,g)=>{if(!g)return out;if(Array.isArray(g.items))out.push(g);else{const last=out[out.length-1];if(last&&last.loose)last.items.push(g);else out.push({key:'main',label:'',items:[g],loose:true})}return out},[]);
+const navItems=()=>navGroups().flatMap(g=>g.items.map(i=>({...i,group:g.label})));
 const Card=({title,desc='',body='',extra=''})=>`<section class="card"><div class="card-hd"><div><div class="card-title">${esc(title)}</div>${desc?`<div class="card-desc">${esc(desc)}</div>`:''}</div>${extra}</div><div class="card-bd">${body}</div></section>`;
 
 // ===== 业务页面：每个二级菜单一项，返回这一页的 HTML（用 pageShell 包一层）=====
@@ -252,11 +254,11 @@ const Shell={title:''};
 function pageShell(title,desc,body,actions=''){
   const meta=navItems().find(i=>i.key===Router.current());
   Shell.title=title;
-  return `<div class="breadcrumb">${esc(meta?meta.group:'')} / ${esc(title)}</div><div class="page-head"><div><h1>${esc(title)}</h1>${desc?`<p>${esc(desc)}</p>`:''}</div><div class="page-actions">${actions}</div></div>${body}`;
+  return `<div class="breadcrumb">${meta&&meta.group?esc(meta.group)+' / ':''}${esc(title)}</div><div class="page-head"><div><h1>${esc(title)}</h1>${desc?`<p>${esc(desc)}</p>`:''}</div><div class="page-actions">${actions}</div></div>${body}`;
 }
 const Router={
-  current(){const key=location.hash.replace(/^#/,'');return navItems().some(x=>x.key===key)?key:NAV[0].items[0].key},
-  render(){const page=this.current();const meta=navItems().find(i=>i.key===page);Shell.title=meta.label;renderNav(page);document.getElementById('content').innerHTML=(Pages[page]||(()=>pageShell(meta.label,'',ZeroUI.Empty({title:'建设中',text:'这一页还没有内容。',action:'返回首页'}))))();const t=document.getElementById('pageTitle');if(t)t.textContent=Shell.title;bindPage(page)}
+  current(){const key=location.hash.replace(/^#/,''),items=navItems();return items.some(x=>x.key===key)?key:(items[0]||{key:'home'}).key},
+  render(){const page=this.current();const meta=navItems().find(i=>i.key===page)||{key:page,label:'首页',group:''};Shell.title=meta.label;renderNav(page);document.getElementById('content').innerHTML=(Pages[page]||(()=>pageShell(meta.label,'',ZeroUI.Empty({title:'建设中',text:'这一页还没有内容。',action:'返回首页'}))))();const t=document.getElementById('pageTitle');if(t)t.textContent=Shell.title;bindPage(page)}
 };
 // ===== 布局（这套风格的菜单和页面框架）=====
 %%LAYOUT_JS%%
@@ -270,10 +272,10 @@ const PageEvents={_list:[],on(page,type,selector,fn){this._list.push({page,type,
 ['click','change','input','keydown'].forEach(type=>document.addEventListener(type,e=>{const page=Router.current();for(const h of PageEvents._list){if(h.type!==type||h.page!==page)continue;const el=e.target.closest&&e.target.closest(h.selector);if(el)h.fn(el,e)}}));
 // ===== 每页的交互绑定：页面渲染完会调用一次，按 page 分开写 =====
 function bindPage(page){/*PA:BIND*/
-  const empty=document.getElementById('emptyAction');if(empty)empty.onclick=()=>{location.hash='#'+NAV[0].items[0].key};
+  const empty=document.getElementById('emptyAction');if(empty)empty.onclick=()=>{location.hash='#'+navItems()[0].key};
 }
 // 等整页的脚本都加载完再渲染：每页的函数常写在后面单独的 <script> 里，提前渲染会报「xxxPage is not defined」
-function boot(){renderLayout();window.addEventListener('hashchange',()=>{Router.render();window.scrollTo(0,0)});if(!location.hash)location.hash='#'+NAV[0].items[0].key;Router.render();}
+function boot(){renderLayout();window.addEventListener('hashchange',()=>{Router.render();window.scrollTo(0,0)});if(!location.hash&&navItems().length)location.hash='#'+navItems()[0].key;Router.render();}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
 </script>
 </body>
@@ -300,7 +302,7 @@ LAYOUTS = {
 @media(max-width:960px){.app{flex-direction:column}.sidebar{position:sticky;z-index:20;width:100%;height:auto;flex:0 0 auto;display:flex;align-items:center;gap:8px;overflow-x:auto;padding:8px 12px}.brand{padding:0 8px 0 0}.nav{display:flex;gap:2px}.nav-group{display:flex;gap:2px}.nav-label{display:none}.content{padding:16px}}
 """,
         "js": r"""function renderLayout(){document.getElementById('app').innerHTML=`<div class="app"><aside class="sidebar"><div class="brand"><div class="brand-mark">${SVG.logo}</div><span class="brand-name">${esc(APP_NAME)}</span></div><nav class="nav" id="nav"></nav></aside><main class="main"><section class="content" id="content"></section></main></div>`}
-function renderNav(page){document.getElementById('nav').innerHTML=NAV.map(g=>`<div class="nav-group"><div class="nav-label">${esc(g.label)}</div>${g.items.map(i=>`<a href="#${i.key}" class="nav-i ${i.key===page?'on':''}">${esc(i.label)}</a>`).join('')}</div>`).join('')}""",
+function renderNav(page){document.getElementById('nav').innerHTML=navGroups().map(g=>`<div class="nav-group">${g.label?`<div class="nav-label">${esc(g.label)}</div>`:''}${g.items.map(i=>`<a href="#${i.key}" class="nav-i ${i.key===page?'on':''}">${esc(i.label)}</a>`).join('')}</div>`).join('')}""",
     },
     "screen": {
         "label": "大屏 · 顶部切换",
@@ -449,6 +451,7 @@ STYLES = [
 
 ## 这套风格的规矩
 - 底部 Tab = NAV 里按顺序排的前 5 个页面（分组名不显示）；页面可以加 `icon:'home'|'grid'|'list'|'bell'|'user'` 指定图标。超过 5 个的页面（详情、设置）用链接 `#页面key` 进入。
+- NAV 和别的风格一样写成分组，页面放在 items 里，不要直接写页面数组：shell_add 的 nav 写 `{key:'app',label:'App',items:[{key:'home',label:'首页',icon:'home'},{key:'orders',label:'订单',icon:'list'},{key:'me',label:'我的',icon:'user'}]}`。
 - 页面标题显示在顶部栏里（pageShell 的第一个参数），页面里不用再写大标题。
 - 列表用 `.list` + ZeroUI.ListItem({title,desc,extra,id}) 或一张张卡片；不要横向很宽的表格。
 - 点击区域至少 44px 高；一屏底部的主操作用 `ZeroUI.Button({label:'提交',kind:'primary block'})` 撑满宽度。

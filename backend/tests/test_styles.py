@@ -42,6 +42,21 @@ class 内置风格(unittest.TestCase):
             self.assertFalse(agent.is_fresh_shell(filled))   # 写了内容就不再是空外壳
             self.assertNotIn("{key:'home',label:'首页'}", filled)
 
+    def test_菜单只写了页面或多包一层也能用(self):
+        shell = skill_digest.find_shell({"style": "builtin:移动端App"})[2]
+        for nav in ("[{key:'a',label:'甲',icon:'home'},{key:'b',label:'乙'}]",   # 这次真出过的：多包一层 []、没有分组
+                    "{key:'a',label:'甲'},{key:'b',label:'乙'}"):
+            out = patcher.shell_add(shell, nav=nav, pages="a(){return pageShell('甲','',Card({title:'t',body:'b'}))}")
+            line = out.split("const NAV=[/*PA:NAV*/\n", 1)[1].split("\n", 1)[0]
+            self.assertTrue(line.strip().startswith("{key:'main',label:'功能',items:[{key:'a'"), line)
+        normal = "{key:'g',label:'组',items:[{key:'a',label:'甲'}]}"
+        out = patcher.shell_add(shell, nav=normal)
+        self.assertIn("/*PA:NAV*/\n  " + normal + ",", out)
+        for item in skills.builtin_listing():   # 外壳自己也兜着：散的页面不会让 g.items.map 崩掉
+            text = skill_digest.find_shell({"style": "builtin:" + item["folder"]})[2]
+            self.assertIn("const navGroups=()=>NAV.flat()", text)
+            self.assertNotIn("NAV[0].items", text)
+
     def test_生成脚本和仓库里的一致(self):
         sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
         import importlib

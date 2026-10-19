@@ -339,6 +339,11 @@ def shell_add(source: str, nav: str = "", pages: str = "", bind: str = "", scrip
         raise PatchError("shell_add 至少要写 nav、pages、bind、script 中的一项")
     clean = lambda text: str(text or "").strip().rstrip(",")
     if nav:
+        nav = clean(nav)
+        if nav.startswith("[") and nav.endswith("]"):      # 多包了一层 []：外壳的 NAV 本身就是数组
+            nav = clean(nav[1:-1])
+        if not re.search(r"\bitems\s*:", nav):            # 只写了页面没写分组：收进一个分组，否则外壳读 g.items 整页崩掉
+            nav = "{key:'main',label:'功能',items:[" + nav + "]}"
         source = source.replace(nav_at + "\n  " + SHELL_HOME_NAV + "\n", nav_at + "\n", 1)
         source = source.replace(nav_at, nav_at + "\n  " + clean(nav) + ",", 1)
     if pages:
