@@ -1027,5 +1027,7 @@ export default {
   "导出失败，请重试": "Export failed, please retry",
   "指着：{0}": "Pointing at: {0}",
   "{0} 个元素": "{0} elements",
-  "图片已经清掉了": "The image has been cleaned up"
+  "图片已经清掉了": "The image has been cleaned up",
+  "已改好": "Done",
+  "已经按这些建议改好了，要再调整直接在下面说": "These suggestions have been applied. To adjust further, just say so below."
 }

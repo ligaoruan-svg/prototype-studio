@@ -13,6 +13,22 @@ const {
   runAgent, saveNote, selected, selectionPlace, setMode, showChat, showGuide, showPanel,
   smallerRequest, stopAgent, switchModel, switchingModel, toAI, tool, undo, useRephrase
 } = inject('studio')
+// 讨论卡上的建议有没有已经照着改好：后面有一条「按已讨论的建议修改」带着它的做法，
+// 而且紧跟着的回复真的改了页面（失败、停止的不算）
+function appliedFor(message) {
+  const list = message.discussion?.suggestions
+  if (!list?.length) return []
+  const all = messages.value, at = all.indexOf(message), done = []
+  for (let j = at + 1; j < all.length; j++) {
+    const m = all[j]
+    if (m.role !== 'user' || !String(m.content || '').startsWith('按已讨论的建议修改')) continue
+    const rest = all.slice(j + 1)
+    const replyIndex = rest.findIndex(x => x.role === 'assistant'), nextUser = rest.findIndex(x => x.role === 'user')
+    if (replyIndex === -1 || (nextUser !== -1 && nextUser < replyIndex) || !rest[replyIndex].changed) continue
+    for (const s of list) if (s.instruction && m.content.includes(s.instruction)) done.push(s.instruction)
+  }
+  return done
+}
 </script>
 
 <template>
@@ -22,7 +38,7 @@ const {
 
     <div ref="chatBox" class="messages" aria-live="polite">
       <div v-if="!messages.length && !pendingUser && showGuide" class="conversation-empty compact-guide"><h2>{{ $t('先聊清楚，再动手。') }}</h2><p>{{ $t('可以一起评价设计、比较方案；确定方向后，只改需要调整的位置。') }}</p><button v-for="suggestion in ['现在的设计怎么样？', '有哪些地方值得优化？', selected ? '调整选中区域的对齐' : '检查一下交互有没有漏的']" :key="suggestion" class="prompt-suggestion" :disabled="!page" @click="input = suggestion; toAI()">{{ $t(suggestion) }}<ChevronRight :size="14" /></button><button class="text-button dismiss-guide" @click="hideGuide">{{ $t('不再显示') }}</button></div>
-      <article v-for="message in messages" :key="message.id" class="message" :class="message.role"><div class="message-author"><span>{{ message.role === 'user' ? $t('你') : $t('设计助手') }}</span><time>{{ formatTime(message.created_at) }}</time></div><ResultCard v-if="message.role === 'assistant' && (message.report || message.clarification || message.discussion || message.changed)" :result="message" :selftest="selftests[message.change_id]" :locked="locked" :can-undo="page?.last_undo_id === message.change_id" @undo="undo" @choose="chooseAnswer" @apply="applySuggestion" @discuss="discussSuggestion" @custom="customSuggestion" @rephrase="useRephrase" @forget="forgetFromCard" /><p v-else>{{ message.content }}</p><span v-if="message.role === 'user' && message.target" class="message-target"><SquareMousePointer :size="12" />{{ $t('指着：{0}', [$t(message.target)]) }}</span><img v-if="message.role === 'user' && message.image" class="message-shot" loading="lazy" :src="`/api/projects/${project.id}/chat-images/${message.image}`" :alt="message.image_name || $t('参考截图缩略图')" @error="$event.target.style.display = 'none'"><div class="message-tools"><button class="icon-button" :aria-label="$t('复制这条内容')" :title="$t('复制')" @click="copyMessage(message.report?.summary || message.discussion?.answer || message.content)"><Copy :size="13" /></button><button v-if="message.role === 'user'" class="icon-button" :aria-label="$t('编辑后重新发送')" :title="$t('编辑后重发')" :disabled="locked" @click="editAndResend(message)"><Pencil :size="13" /></button></div></article>
+      <article v-for="message in messages" :key="message.id" class="message" :class="message.role"><div class="message-author"><span>{{ message.role === 'user' ? $t('你') : $t('设计助手') }}</span><time>{{ formatTime(message.created_at) }}</time></div><ResultCard v-if="message.role === 'assistant' && (message.report || message.clarification || message.discussion || message.changed)" :result="message" :applied="appliedFor(message)" :selftest="selftests[message.change_id]" :locked="locked" :can-undo="page?.last_undo_id === message.change_id" @undo="undo" @choose="chooseAnswer" @apply="applySuggestion" @discuss="discussSuggestion" @custom="customSuggestion" @rephrase="useRephrase" @forget="forgetFromCard" /><p v-else>{{ message.content }}</p><span v-if="message.role === 'user' && message.target" class="message-target"><SquareMousePointer :size="12" />{{ $t('指着：{0}', [$t(message.target)]) }}</span><img v-if="message.role === 'user' && message.image" class="message-shot" loading="lazy" :src="`/api/projects/${project.id}/chat-images/${message.image}`" :alt="message.image_name || $t('参考截图缩略图')" @error="$event.target.style.display = 'none'"><div class="message-tools"><button class="icon-button" :aria-label="$t('复制这条内容')" :title="$t('复制')" @click="copyMessage(message.report?.summary || message.discussion?.answer || message.content)"><Copy :size="13" /></button><button v-if="message.role === 'user'" class="icon-button" :aria-label="$t('编辑后重新发送')" :title="$t('编辑后重发')" :disabled="locked" @click="editAndResend(message)"><Pencil :size="13" /></button></div></article>
       <article v-if="pendingUser && !messages.some(m => m.role === 'user' && m.content === pendingUser && m === messages[messages.length - 1])" class="message user"><div class="message-author">{{ $t('你') }}</div><p>{{ pendingUser }}</p><img v-if="pendingRef" class="message-shot" :src="pendingRef.data_url" :alt="$t(pendingRef.name)"></article>
                   <ExecutionCard v-for="run in currentRuns" :key="run.id" :run="run" :locked="locked" @retry="runAgent(run.request, '', run.options)" @repair="repairRun(run)" @settings="openDialog('settings')" @select="setMode('select')" @fill="smallerRequest(run)" @point="pointAt(run)" @dismiss="run.status = 'dismissed'" @stop="stopAgent" />
 

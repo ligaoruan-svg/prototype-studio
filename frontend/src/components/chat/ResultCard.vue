@@ -1,7 +1,8 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { Check, Undo2, ChevronDown, AlertCircle, BookmarkCheck, MessageCircle, Sparkles } from 'lucide-vue-next'
-const props = defineProps({ result: Object, canUndo: Boolean, locked: Boolean, checking: Boolean, selftest: Object })
+// applied：这张卡上已经照着改好（并保存）的建议的 instruction，由对话记录推出来，刷新后也对
+const props = defineProps({ result: Object, canUndo: Boolean, locked: Boolean, checking: Boolean, selftest: Object, applied: { type: Array, default: () => [] } })
 const emit = defineEmits(['undo', 'choose', 'apply', 'discuss', 'custom', 'rephrase', 'forget'])
 const report = computed(() => props.result?.report)
 const discussion = computed(() => props.result?.discussion)
@@ -17,13 +18,16 @@ const suggestions = computed(() => discussion.value?.suggestions || [])
 const defaultPick = () => suggestions.value.some(s => 'recommended' in s) ? new Set(suggestions.value.flatMap((s, i) => s.recommended ? [i] : [])) : null
 const picked = ref(defaultPick())   // null = 全选
 const opened = ref(new Set())
-const isPicked = i => !picked.value || picked.value.has(i)
+// 已经改好的建议：打勾、不能再选；全改好了就不再挂「按这个改」
+const isDone = i => props.applied.includes(suggestions.value[i]?.instruction)
+const allDone = computed(() => suggestions.value.length > 0 && suggestions.value.every((_, i) => isDone(i)))
+const isPicked = i => !isDone(i) && (!picked.value || picked.value.has(i))
 const chosen = computed(() => suggestions.value.filter((_, i) => isPicked(i)))
 function togglePick(i) { const next = new Set(picked.value ?? suggestions.value.map((_, k) => k)); next.has(i) ? next.delete(i) : next.add(i); picked.value = next }
 function toggleOpen(i) { const next = new Set(opened.value); next.has(i) ? next.delete(i) : next.add(i); opened.value = next }
 const applyLabel = computed(() => {
-  const n = chosen.value.length, all = suggestions.value.length
-  if (all === 1) return '按这个改'
+  const n = chosen.value.length, all = suggestions.value.filter((_, i) => !isDone(i)).length
+  if (all === 1 && suggestions.value.length === 1) return '按这个改'
   if (!n) return '先勾选要改的'
   return n === all ? `全部修改（${n} 条）` : `修改选中的 ${n} 条`
 })
@@ -40,15 +44,16 @@ const statuses = { completed: '已完成', partial: '部分完成', unprocessed:
     <div v-if="suggestions.length" class="suggest-box">
       <div class="suggest-head"><Sparkles :size="13" /><span>{{ $t('可以这样改') }}</span><small v-if="suggestions.length > 1">{{ $t('勾选要做的，一次交给 AI') }}</small></div>
       <ul class="suggest-list">
-        <li v-for="(s, i) in suggestions" :key="i" :class="{ off: !isPicked(i) }">
-          <label class="suggest-row"><input v-if="suggestions.length > 1" type="checkbox" :checked="isPicked(i)" :disabled="locked" @change="togglePick(i)"><span class="suggest-text"><span class="suggest-title">{{ $t(s.label) }}<em v-if="s.recommended && suggestions.length > 1">{{ $t('推荐') }}</em></span><small v-if="s.summary">{{ s.summary }}</small></span></label>
+        <li v-for="(s, i) in suggestions" :key="i" :class="{ off: !isPicked(i) && !isDone(i), done: isDone(i) }">
+          <label class="suggest-row"><Check v-if="isDone(i)" :size="15" class="suggest-check" /><input v-else-if="suggestions.length > 1" type="checkbox" :checked="isPicked(i)" :disabled="locked" @change="togglePick(i)"><span class="suggest-text"><span class="suggest-title">{{ $t(s.label) }}<em v-if="isDone(i)" class="done-tag">{{ $t('已改好') }}</em><em v-else-if="s.recommended && suggestions.length > 1">{{ $t('推荐') }}</em></span><small v-if="s.summary">{{ s.summary }}</small></span></label>
           <button type="button" class="suggest-icon" :class="{ open: opened.has(i) }" :aria-label="opened.has(i) ? $t('收起说明') : $t('看具体怎么改')" :title="opened.has(i) ? $t('收起说明') : $t('看具体怎么改')" @click="toggleOpen(i)"><ChevronDown :size="14" /></button>
           <button type="button" class="suggest-icon" :aria-label="$t('继续聊这条')" :title="$t('继续聊这条')" :disabled="locked" @click="$emit('discuss', s)"><MessageCircle :size="13" /></button>
           <p v-if="opened.has(i)" class="suggest-detail"><b>{{ $t('交给 AI 的具体做法') }}</b>{{ s.instruction }}</p>
         </li>
       </ul>
-      <div class="suggest-other"><input v-model="other" maxlength="500" :disabled="locked" :placeholder="$t('都不想要？直接说你的想法')" :aria-label="$t('其他想法')" @keydown.enter.prevent="sendOther"><button type="button" class="text-button" :disabled="locked || !other.trim()" @click="sendOther">{{ $t('发送') }}</button></div>
-      <button class="primary suggest-apply" :disabled="locked || !chosen.length" @click="applyChosen">{{ $t(applyLabel) }}</button>
+      <p v-if="allDone" class="suggest-done"><Check :size="13" />{{ $t('已经按这些建议改好了，要再调整直接在下面说') }}</p>
+      <div v-else class="suggest-other"><input v-model="other" maxlength="500" :disabled="locked" :placeholder="$t('都不想要？直接说你的想法')" :aria-label="$t('其他想法')" @keydown.enter.prevent="sendOther"><button type="button" class="text-button" :disabled="locked || !other.trim()" @click="sendOther">{{ $t('发送') }}</button></div>
+      <button v-if="!allDone" class="primary suggest-apply" :disabled="locked || !chosen.length" @click="applyChosen">{{ $t(applyLabel) }}</button>
     </div>
     <ol v-if="report?.annotations?.length" class="opinion-results"><li v-for="item in report.annotations" :key="item.id" :class="item.status"><span>{{ $t(item.number) }}</span><div><b>{{ item.note || item.name }}</b><small>{{ $t(statuses[item.status]) }}{{ item.reason ? $t('：') + item.reason : '' }}</small></div></li></ol>
     <div v-for="item in remembered" :key="item.id" class="remembered" :class="{ gone: forgotten.has(item.id) }"><BookmarkCheck :size="13" /><span v-if="!forgotten.has(item.id)">{{ $t('记住了：{0}', [item.text]) }}<small>{{ item.scope === 'global' ? $t('记在你的习惯里，以后所有项目都照这个来') : $t('以后这个项目的所有页面都照这个来') }}</small></span><span v-else>{{ $t('已忘掉：{0}', [item.text]) }}</span><button v-if="!forgotten.has(item.id)" type="button" class="text-button" :disabled="locked" @click="forget(item)">{{ $t('不用记') }}</button></div>
@@ -95,6 +100,10 @@ const statuses = { completed: '已完成', partial: '部分完成', unprocessed:
 .suggest-icon svg{transition:transform .15s}.suggest-icon.open svg{transform:rotate(180deg)}
 .suggest-detail{grid-column:1/-1;margin:0 0 6px;padding:7px 9px;border-radius:7px;background:var(--quiet);font-size:11.5px;line-height:1.7;color:#5f5a52}
 .suggest-apply{width:100%;margin-top:8px}
+.suggest-check{flex:none;color:var(--ok, #1f8a4c);margin-top:2px}
+li.done .suggest-title{color:var(--muted)}
+em.done-tag{background:#e7f6ee !important;color:#1f8a4c !important}
+.suggest-done{display:flex;align-items:center;gap:6px;margin:8px 0 0;font-size:12px;color:#1f8a4c}
 .retry-hint{margin-top:11px}.retry-hint>span{display:block;font-size:11px;color:var(--muted);margin-bottom:6px}.retry-hint button{width:100%;text-align:left;white-space:normal;line-height:1.6;font-size:12px;padding:8px 10px}
 .result-assumption,.deleted-note{margin-top:8px;font-size:11px;color:var(--muted)}
 .scope-note{display:flex;align-items:flex-start;gap:5px;margin-top:8px;font-size:11px;line-height:1.6;color:#906323}.scope-note svg{flex-shrink:0;margin-top:3px}.deleted-note{display:flex;align-items:center;gap:5px}.clarification button{margin:8px 6px 0 0;white-space:normal;text-align:left;line-height:1.5}
