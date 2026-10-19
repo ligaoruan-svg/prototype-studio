@@ -4,234 +4,27 @@ import json
 import time
 import re
 import logging
-from pathlib import Path
 from typing import Any
 
 from .deepseek_client import chat, DeepSeekError
-from .patcher import apply_operations, verify_source, PatchError, regions, outline, new_issues, SHELL_HOME_PAGE
+from .patcher import apply_operations, verify_source, PatchError, regions, outline, new_issues
 from . import storage
 from .transactions import stage
 from .errors import WorkError, error_payload
 from .experience import element_name, tool_label, compact_messages, changed_targets, result_report, scope_report, step_detail
 from .conversation import resolve_intent, discussion_result, history_context
 from . import components, memory, skills, skill_digest
+# 工具清单、读源码、拼背景拆在旁边三个文件里；下面这些名字在这里也能用（测试和别的模块按 agent.xxx 取）
+from .agent_tools import TOOL_SPECS, OPERATION_ACTIONS
+from .agent_source import READ_CAP, read_budget, inspect_output, expand_components, locate_lines, lines_text, _num, _slice_lines, _search_source  # noqa: F401
+from .agent_lookup import LOOKUP_TOOLS, SKILL_READ_LIMIT, run_lookup  # noqa: F401
+from .agent_context import CONTEXT_KEYS, context_text, scene_text, language_note, SHELL_NOTE, is_fresh_shell, shell_api
 
 logger = logging.getLogger(__name__)
 
 from .paths import PROMPTS, SPEC_FILE
 SYSTEM_PROMPT_PATH = PROMPTS / "agent-system.md"
 
-TOOL_SPECS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "inspect_page",
-            "description": "读取当前页面摘要、标注目标和相关 DOM 片段。",
-            "parameters": {"type": "object", "properties": {}},
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "search_source",
-            "description": "在当前 HTML 源码中搜索关键词并返回附近上下文。",
-            "parameters": {
-                "type": "object",
-                "properties": {"query": {"type": "string"}},
-                "required": ["query"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "read_source_slice",
-            "description": "按行读取当前 HTML 的一段源码。",
-            "parameters": {
-                "type": "object",
-                "properties": {"start": {"type": "integer"}, "end": {"type": "integer"}},
-                "required": ["start", "end"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "apply_operations",
-            "description": "对当前页面执行局部 DOM/CSS/JS 修改。一次可以提交多条操作。插入现成组件用 insert_component（只写 name 和 selector，原文由系统插入，不要自己抄一遍）。从页面外壳起步的页面，加新页面用 shell_add 一次写完 nav/pages/bind/script，不用先读源码找位置。",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "operations": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "action": {
-                                    "type": "string",
-                                    "enum": [
-                                        "set_text", "set_html", "set_attr", "remove_attr", "add_class",
-                                        "remove_class", "insert_before", "insert_after", "replace_outer_html",
-                                        "remove", "append_style", "append_script", "replace_source_text",
-                                        "replace_region", "set_token", "set_style", "insert_component", "shell_add"
-                                    ],
-                                },
-                                "selector": {"type": "string"},
-                                "name": {"type": "string"},
-                                "value": {"type": "string"},
-                                "old": {"type": "string"},
-                                "new": {"type": "string"},
-                                "region": {"type": "string"},
-                                "position": {"type": "string", "enum": ["before", "after", "inside", "replace"],
-                                             "description": "仅 insert_component 使用：相对 selector 的位置，默认 after"},
-                                "nav": {"type": "string", "description": "仅 shell_add：要加的一级菜单分组（页面一定放在分组的 items 里，手机风格也一样），如 {key:'order',label:'订单管理',items:[{key:'refund',label:'退款审核'}]}；多个分组用逗号隔开，不要外面再包 []"},
-                                "pages": {"type": "string", "description": "仅 shell_add：Pages 里的页面方法，如 refund(){return pageShell('退款审核','说明',内容HTML,右上按钮)}"},
-                                "bind": {"type": "string", "description": "仅 shell_add：放进 bindPage(page) 的代码，如 if(page==='quota'){...}"},
-                                "script": {"type": "string", "description": "仅 shell_add：数据、状态对象、辅助函数、PageEvents.on(...)，放在页面方法前面"},
-                            },
-                            "required": ["action"],
-                        },
-                    }
-                },
-                "required": ["operations"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "verify_page",
-            "description": "校验当前 HTML 结构和指定元素/文本是否存在。",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "assertions": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {"selector": {"type": "string"}, "contains": {"type": "string"}, "exists": {"type": "boolean"}},
-                            "required": ["selector"],
-                        },
-                    }
-                },
-            },
-        },
-    },
-]
-
-TOOL_SPECS.extend([
-    {"type":"function","function":{"name":"read_skill",
-     "description":"这轮任务符合某个 skill 的适用说明时，取它的正文来照着做。",
-     "parameters":{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}}},
-    {"type":"function","function":{"name":"read_skill_file",
-     "description":("按行取 skill 正文里引用的文件，path 用正文里写的相对路径。组件库这类文件很大，"
-                    "一次只给一段；返回里有 truncated 就按它给的行号往后接着读。"
-                    "不要整份通读——读完就没额度写页面了。知道要找什么就用 search_skill_file。"),
-     "parameters":{"type":"object","properties":{"name":{"type":"string"},"path":{"type":"string"},
-                   "start":{"type":"integer","description":"起始行，默认 1"},
-                   "end":{"type":"integer","description":"结束行，默认 start+200"}},
-                   "required":["name","path"]}}},
-    {"type":"function","function":{"name":"start_from_shell",
-     "description":("页面还是空白骨架、要从零做一整页时，先调它：程序把 skill 里的「页面外壳」整份放进页面——"
-                    "样式、顶栏、左侧菜单、hash 路由、弹窗 / 抽屉 / Toast 等组件函数都现成，不花你的输出额度。"
-                    "之后你只写三处：/*PA:NAV*/ 菜单配置、/*PA:PAGES*/ 每页内容、/*PA:BIND*/ 交互绑定。"
-                    "页面已经有内容时不能用。"),
-     "parameters":{"type":"object","properties":{}}}},
-    {"type":"function","function":{"name":"search_skill_file",
-     "description":("在 skill 的附带文件里搜关键词，只拿回命中处附近的内容。要用组件库里的某个组件"
-                    "（表格、Modal、分页…）时用这个，比整份读快得多，也不会把额度耗光。"),
-     "parameters":{"type":"object","properties":{"name":{"type":"string"},"path":{"type":"string"},
-                   "query":{"type":"string","description":"组件名或类名，如「Form Modal」「data-table」"}},
-                   "required":["name","path","query"]}}},
-])
-
-TOOL_SPECS.extend([
-    {"type":"function","function":{"name":"remember",
-     "description":"用户说了以后还算数的约定时记下来，一次一条。一次性指令、你的推测、页面内容都不要记。",
-     "parameters":{"type":"object","properties":{"note":{"type":"string","description":"用你自己的话写成一句"},
-       "category":{"type":"string","enum":list(memory.CATEGORIES)},
-       "scope":{"type":"string","enum":["project","global"],"description":"project 只对这个项目；global 是他在所有项目里的个人习惯"}},"required":["note"]}}},
-    {"type":"function","function":{"name":"search_chats",
-     "description":"在这个项目以前的全部对话里按关键词查（对话记录只带了最近几条）。用户说「上次那个」「之前说过的」时用。",
-     "parameters":{"type":"object","properties":{"query":{"type":"string","description":"一到三个关键词，空格隔开"}},"required":["query"]}}},
-    {"type":"function","function":{"name":"forget",
-     "description":"用户说不用再守某条约定时，传它的 id 删掉。",
-     "parameters":{"type":"object","properties":{"id":{"type":"string"}},"required":["id"]}}},
-])
-
-TOOL_SPECS.append({"type": "function", "function": {
-    "name": "read_component", "description": "取一个可复用组件的原文，照它的结构写，不要另起炉灶。",
-    "parameters": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}}})
-
-TOOL_SPECS.append({"type": "function", "function": {
-    "name": "read_region", "description": "读取一个 region 的原始代码，作为精确补丁的依据。",
-    "parameters": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}
-}})
-
-
-TOOL_SPECS.extend([
-    {"type":"function","function":{"name":"answer_user","description":"回答设计问题并给出可选的局部修改建议；不执行修改。",
-     "parameters":{"type":"object","properties":{"answer":{"type":"string"},"suggestions":{"type":"array","maxItems":3,"items":{"type":"object","properties":{"label":{"type":"string","description":"10 个字以内的短标题"},"summary":{"type":"string","description":"给用户看的一句话说明，20 个字以内，说清改完是什么样"},"instruction":{"type":"string","description":"交给修改执行的完整指令，用户默认看不到"},"recommended":{"type":"boolean","description":"最推荐的那一条标 true，只标一条"}},"required":["label","summary","instruction"]}}},"required":["answer"]}}},
-    {"type":"function","function":{"name":"report_result","description":"结束本轮修改前汇报结论和每条意见的真实处理结果。",
-     "parameters":{"type":"object","properties":{"summary":{"type":"string"},"assumptions":{"type":"array","items":{"type":"string"},"maxItems":2},
-     "annotations":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"status":{"type":"string","enum":["completed","partial","unprocessed"]},"reason":{"type":"string"}},"required":["id","status"]}},
-     "retry_hint":{"type":"string","description":"没能改成时，写一句用户可以直接发送的换种说法；改成了就留空。"}},
-     "required":["summary","annotations"]}}},
-    {"type":"function","function":{"name":"update_plan","description":("改动需要三步以上时，先列出计划，只列一次——之后程序按你每轮的修改自动推进状态，不要再调它更新。"
-                                                                    "步骤用页面上的叫法，不写选择器。从零做页面时同时写 brief（业务梳理）。"),
-     "parameters":{"type":"object","properties":{"steps":{"type":"array","minItems":2,"maxItems":6,"items":{"type":"object","properties":{
-     "title":{"type":"string"},"status":{"type":"string","enum":["pending","active","done"]}},"required":["title","status"]}},
-     "brief":{"type":"string","description":"从零做页面时的业务梳理，3–5 行：谁用、管什么、有哪些状态和规则、哪些操作合理哪些不该有、页面要先回答用户哪几个问题"}},"required":["steps"]}}},
-    {"type":"function","function":{"name":"ask_user","description":"改动方向存在重大歧义、删除数据或大范围重排时，先问一个问题，不做修改。",
-     "parameters":{"type":"object","properties":{"question":{"type":"string"},"options":{"type":"array","minItems":2,"maxItems":3,"items":{"type":"string"}}},"required":["question","options"]}}}
-])
-
-
-
-SAFE_PAGE_PATH = re.compile(r"(?:[a-z][a-z0-9-]{0,20}/)?[a-z][a-z0-9-]{0,30}\.html")
-# 共享样式和脚本只能落在 assets/ 下，不允许写到别处去。
-
-
-
-def expand_components(ops: list[dict]) -> list[dict]:
-    """把 insert_component 换成真正的插入操作。
-
-    让模型重抄一遍组件原文既浪费输出额度，也是输出被截断的主要原因；
-    它只写名字，内容由这里填。
-    """
-    slots = {"before": "insert_before", "after": "insert_after",
-             "inside": "append_html", "replace": "replace_outer_html"}
-    for op in ops:
-        if op.get("action") != "insert_component":
-            continue
-        name = str(op.get("name", ""))
-        try:
-            op["value"] = components.read(name)
-        except (ValueError, FileNotFoundError) as exc:
-            raise PatchError(f"没有这个组件：{name}。可用的见系统提示里的组件清单") from exc
-        op["action"] = slots.get(str(op.get("position", "after")), "insert_after")
-        if not op.get("selector"):
-            raise PatchError("插入组件要指定 selector，说明插在哪个元素旁边")
-    return ops
-
-
-def _num(value, default: int) -> int:
-    """模型给的行号可能是 null、"12"、12.0，取不到就用默认值，不能让一个参数把整轮工作抛成内部错误"""
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return default
-
-
-def read_budget(context_budget: int) -> int:
-    """一次读取最多给多少字符。
-
-    跟上下文预算挂钩：窗口大就一次多给点，省得来回分段读；
-    但永远不超过预算的四分之一——一次读掉一半上下文，剩下的不够干活。
-    """
-    return min(READ_CAP, max(12_000, context_budget // 4))
-READ_CAP = 20_000           # 一次读最多这么多字：读进来的每一字之后每一步都要重发，要多看就接着读下一段
-SKILL_READ_LIMIT = 8000     # skill 附带文件一次最多给这么多字；整份读大文件只给目录
 SHELL_MAX_EXISTING = 8000   # 页面比这还大就算「已有内容」，不许整页换成外壳
 STALE_ROUNDS = 2            # 规范、组件库、读过的源码，用过这么多轮后收成一句话（不等攒满上下文预算）
 IDLE_LIMIT = 4       # 连续这么多轮只读不改，就催它下手或收工
@@ -255,166 +48,6 @@ SOURCE_READS = {"inspect_page", "search_source", "read_source_slice", "read_regi
 SOURCE_KEEP_ROUNDS = 8   # 源码读取最多留这么多轮，再久就算没改也收起（防止一直攒）
 READ_ONLY_TOOLS = {"inspect_page", "search_source", "read_source_slice", "read_region", "search_chats",
                    "read_component", "read_skill", "read_skill_file", "search_skill_file"}
-
-
-def _slice_lines(lines: list[str], start: int, end: int, budget: int = 12_000) -> dict:
-    """按行给源码，并且如实说自己给到了哪一行。
-
-    以前是把整段拼好再 [:12000] 一刀切，返回的 end 仍是模型要求的那个行号。
-    模型请求 1–530 行、实际只拿到前 156 行，却被告知已经读到 530 行——
-    它当然会觉得自己读完了，找不到东西就再读一遍，来回空转。
-    现在按行累加到预算为止，返回真实到达的行号，并告诉它从哪一行接着读。
-    """
-    picked, size = [], 0
-    for i in range(start - 1, end):
-        row = f"{i+1}: {lines[i]}"
-        if picked and size + len(row) + 1 > budget:
-            break
-        picked.append(row)
-        size += len(row) + 1
-    reached = start - 1 + len(picked)
-    out = {"start": start, "end": reached, "total_lines": len(lines),
-           "content": "\n".join(picked)}
-    if reached < end:
-        out["truncated"] = True
-        out["note"] = (f"这次只给到第 {reached} 行（一次最多 {budget} 字符）。"
-                       f"要看后面的内容，从 start={reached + 1} 继续读。")
-    return out
-
-
-def _search_source(source: str, query: str) -> dict:
-    """搜索结果同样如实：命中几处、给了几处。"""
-    if not query:
-        return {"hits": 0, "context": "没有给搜索词。"}
-    lines = source.splitlines()
-    hits = [i for i, line in enumerate(lines) if query.lower() in line.lower()]
-    if not hits:
-        return {"hits": 0, "context": f"整个页面里没有「{query}」。"
-                "如果这正是你要改的东西，说明页面上并不存在它，不要再换范围重读——"
-                "直接把这个事实汇报给用户。"}
-    radius, chunks = 6, []
-    for hit in hits[:5]:
-        s, e = max(0, hit - radius), min(len(lines), hit + radius + 1)
-        chunks.append("\n".join(f"{i+1}: {lines[i]}" for i in range(s, e)))
-    out = {"hits": len(hits), "lines": [i + 1 for i in hits[:20]],
-           "context": "\n---\n".join(chunks)[:8000]}
-    if len(hits) > 5:
-        out["note"] = f"共命中 {len(hits)} 处，上面只展开了前 5 处的上下文；全部行号见 lines。"
-    return out
-
-
-GENERIC_CLASS = re.compile(r"^(btn|button|active|show|open|is-|has-|el-|ant-|col-|row|flex|grid|text-|mt-|mb-|ml-|mr-|p[xytblr]?-|m[xytblr]?-|w-|h-|d-)", re.I)
-
-
-def locate_lines(source: str, target: dict, limit: int = 3) -> list[dict]:
-    """选中的元素大概在源码哪几行。
-
-    原型多是脚本拼出来的，预览里的选择器（nth-of-type 之类）在源码里根本对不上，
-    以前 AI 只能拿着文字一段段翻。这里把元素身上能在源码里找到的东西——文字、id、data-pid、
-    data-action、onclick、不太通用的 class——拿去对行，几样同时挤在一小段里的位置最可能就是它。
-    """
-    lines = source.splitlines()
-    html = str(target.get("outer_html") or "")[:5000]
-    tokens: dict[str, int] = {}
-    def add(token: str, weight: int):
-        token = token.strip()
-        if 2 <= len(token) <= 60 and not token.isdigit():
-            tokens[token] = max(tokens.get(token, 0), weight)
-    for piece in re.split(r"\s*\n\s*|\s{2,}", str(target.get("text") or "")[:500]):
-        add(piece, 3)
-    for m in re.finditer(r"""(?:\sid|\sname|\sdata-[\w-]+|\shref=["']#)\s*=?\s*["']?([^"'\s>]{2,60})["']""", html):
-        add(m.group(1), 4)
-    m = re.search(r"""onclick\s*=\s*["']([A-Za-z_$][\w$.]*)\s*\(""", html)
-    if m:
-        add(m.group(1), 4)
-    for sel_id in re.findall(r"#([\w-]{3,})", str(target.get("selector") or "")):
-        add(sel_id, 4)
-    first = re.search(r"""class\s*=\s*["']([^"']+)["']""", html)
-    for cls in (first.group(1).split() if first else []):
-        if len(cls) >= 4 and not GENERIC_CLASS.match(cls) and "$" not in cls:
-            add(cls, 1)
-    if not tokens or not lines:
-        return []
-    picked = sorted(tokens.items(), key=lambda kv: -kv[1])[:12]
-    hits: dict[int, set] = {}
-    weight: dict[str, float] = {}
-    for token, w in picked:
-        rows = [i for i, line in enumerate(lines) if token in line]
-        # 到处都有的词（「查看」「保存」）说明不了位置：命中的行越多分量越轻，太泛的直接不用；
-        # 真正靠得住的是几样东西挤在同一小段里
-        if not rows or len(rows) > 300:
-            continue
-        weight[token] = w * (1 if len(rows) <= 15 else 0.5 if len(rows) <= 60 else 0.25)
-        for i in rows:
-            hits.setdefault(i, set()).add(token)
-    if not weight:
-        return []
-    scored = []
-    for i in hits:
-        near = set().union(*(hits.get(j, set()) for j in range(i - 4, i + 5)))
-        score = sum(weight[t] for t in near)
-        if (len(near) >= 2 and score >= 1.5) or score >= 3:
-            scored.append((score, -i, near))
-    out = []
-    for score, neg_i, near in sorted(scored, reverse=True):
-        i = -neg_i
-        if any(abs(i + 1 - o["line"]) <= 8 for o in out):
-            continue
-        out.append({"line": i + 1, "matched": sorted(near, key=lambda t: -weight[t])[:5], "snippet": lines[i].strip()[:160]})
-        if len(out) >= limit:
-            break
-    return out
-
-
-def lines_text(hints: list[dict]) -> str:
-    if not hints:
-        return ""
-    return " 源码里大概在：" + "；".join(f"第 {h['line']} 行（对上了 {'、'.join(h['matched'][:3])}）" for h in hints)
-
-
-CONTEXT_KEYS = ("in_modal", "in_subpage", "modal_trail", "view_route")
-
-
-def context_text(a: dict) -> str:
-    return "".join(f" {k}={a[k]!r}" for k in CONTEXT_KEYS if a.get(k))
-
-
-def scene_text(scene: dict | None) -> str:
-    """预览现场写成几行话：用户说「点了没反应」「报错了」时，AI 直接知道是哪个按钮、发生了什么。"""
-    if not isinstance(scene, dict):
-        return ""
-    text = lambda v, n=60: str(v or "").replace("\n", " ")[:n]
-    lines = []
-    if scene.get("route"):
-        lines.append(f"预览停在：{text(scene['route'], 120)}")
-    for c in [c for c in (scene.get("clicks") or []) if isinstance(c, dict)][-5:]:
-        what = []
-        if text(c.get("hashBefore"), 120) != text(c.get("hashAfter"), 120):
-            what.append(f"地址 {text(c.get('hashBefore'), 120) or '（空）'} → {text(c.get('hashAfter'), 120) or '（空）'}")
-        what.append("弹出了弹窗" if c.get("opened") else "内容有变化" if c.get("changed") else "页面没有任何变化")
-        errors = [text(e, 200) for e in (c.get("errors") or [])[:3]]
-        if errors:
-            what.append("报错：" + "；".join(errors))
-        lines.append(f"- 点了「{text(c.get('label'), 40)}」<{text(c.get('tag'), 12)}> selector={text(c.get('selector'), 200)} → {'，'.join(what)}")
-    errors = [text(e, 300) for e in (scene.get("errors") or [])[-5:]]
-    if errors:
-        lines.append("页面报过的错：" + "；".join(errors))
-    if not lines:
-        return ""
-    return ("\n用户在预览里的现场（按时间先后，最后一条最近）。用户说「点了没反应」「报错」「这里不对」时，"
-            "先按这里的 selector 和报错去源码里找，不要从头通读：\n" + "\n".join(lines))
-
-
-LANG_NAMES = {'zh': '中文', 'en': 'English'}
-
-
-def language_note(lang: str) -> str:
-    """界面不是中文时补一句：程序代发的指令（「按已讨论的建议修改」「【自检】……」）是中文写的，
-    不能让 AI 照着它们的语言回复"""
-    name = LANG_NAMES.get(lang.split('-')[0], lang)
-    return (f"\n\n（用户的界面语言是 {name}。回复、汇报、计划、提问和选项都用用户自己说话的语言；"
-            f"上面这句如果是程序代发的中文指令、看不出用户用什么语言，就用 {name}。"
-            f"新建页面时，页面上的文字也用这种语言。）")
 
 
 def run_agent(project_id: str, page_id: str, user_message: str, *args, **kwargs) -> dict[str, Any]:
@@ -451,46 +84,6 @@ def _trace_rounds(trace: list[dict]) -> list[dict]:
                           "error": str(out.get("error") or "")[:200], "args": len(json.dumps(item.get("args") or {}, ensure_ascii=False))})
         rounds.append({**{k: v for k, v in r.items() if k != "start"}, "calls": calls})
     return rounds
-
-
-SHELL_NOTE = ("外壳里样式、布局、菜单、路由、弹窗、Toast 都在。**不用再读源码找位置**：\n"
-                                       "下一步直接调一次 apply_operations，用一条 {action:'shell_add', nav, pages, bind, script} 把这页写完——"
-                                       "nav 是菜单分组，pages 是页面方法，bind 是 bindPage 里的代码，script 是数据、状态和辅助函数；外壳的「首页」占位会自动删掉。\n"
-                                       "要改外壳本身的某一处时才用 replace_source_text。三处的含义：\n"
-                                       "1. /*PA:NAV*/ 后面那行菜单配置 → 这次要的一级分组和二级页面（key 就是 URL hash）\n"
-                                       "2. /*PA:PAGES*/ 后面的 home(){...} → 每个二级页面一个方法，返回 pageShell(标题, 说明, 内容HTML, 右上按钮HTML)\n"
-                                       "3. /*PA:BIND*/ 函数体 → 按 page 绑定这一页的按钮、筛选、行操作（或 PageEvents.on(page, …)；不要 document.addEventListener，会串页）\n"
-                                       "组件直接用 ZeroUI.Button / Tag / Field / Pager / Empty / Toast / Modal / ConfirmModal / Drawer / openModal / openDrawer 和 Card()，"
-                                       "签名见系统提示里的要点。样式类沿用外壳里的（card、metric-grid、data-table、lnk、tw 等），不要另写一套 CSS。"
-                                       "尽量一两次 apply_operations 把整页内容写完，不要拆成十几次小改。")
-
-
-OPERATION_ACTIONS = set(next(t for t in TOOL_SPECS if t["function"]["name"] == "apply_operations")
-                        ["function"]["parameters"]["properties"]["operations"]["items"]["properties"]["action"]["enum"])
-
-
-def is_fresh_shell(source: str) -> bool:
-    """页面是还没写内容的外壳（按风格新建项目时第一页就是它）：外壳自带的「首页」占位还在"""
-    return "const Pages={/*PA:PAGES*/\n  " + SHELL_HOME_PAGE in (source or "")
-
-
-def shell_api(shell: str) -> dict:
-    """外壳里现成能用的：组件函数和参数、页面函数、样式类。放进 start_from_shell 的返回里，模型不用再翻源码看怎么写。"""
-    objects = re.findall(r"^\s{2}(\w+):\(\{([^}]*)\}", shell, re.M)          # Button:({label,kind…})=>
-    plain = re.findall(r"^\s{2}(\w+):\((\w[^)]*)\)=>", shell, re.M)          # Toast:(message,type='')=>
-    helpers = re.findall(r"^const (\w+)=\(\{([^}]*)\}\)=>", shell, re.M)
-    funcs = re.findall(r"^function (\w+)\(([^)]*)\)", shell, re.M)
-    css = sorted(set(re.findall(r"(?:^|[},])\.([a-z][\w-]*)", shell.split("</style>")[0], re.M)))
-    sig = lambda args: re.sub(r"=('[^']*'|`[^`]*`|\[\]|\{\}|[\w.]+)", "", args).replace(" ", "")
-    return {"ZeroUI": [f"ZeroUI.{n}({{{sig(a)}}})" for n, a in objects if not n.startswith("_")]
-                      + [f"ZeroUI.{n}({sig(a)})" for n, a in plain if not n.startswith("_")],
-            "helpers": [f"{n}({{{sig(a)}}})" for n, a in helpers] + [f"{n}({a})" for n, a in funcs if n in {"pageShell", "bindPage"}],
-            "events": "PageEvents.on('页面key','click','选择器',(el,e)=>{...})：只在那一页触发",
-            "notes": ["ZeroUI.openModal(ZeroUI.Modal({...}), (close, 确定按钮)=>{...}, 触发按钮)：校验不过就 return，不调 close",
-                      "改完数据后 Router.render() 重画当前页；每页的状态放自己的对象里（const planState={page:1}）",
-                      "不要 location.reload()、不要在 document 上挂 click 监听",
-                      "表格包在 <div class=\"tw\"> 里（宽了会横向滚动），不要自己起 table-wrap 之类的类名"],
-            "css": css[:120]}
 
 
 def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, model: str,
@@ -774,45 +367,9 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
                                       "下一步直接一次 apply_operations，用 {action:'shell_add', nav, pages, bind, script} 把这页写完。"),
                               'api': shell_api(working_source)}
                 elif fn == "inspect_page":
-                    from bs4 import BeautifulSoup
-                    soup = BeautifulSoup(working_source,"html.parser")
-                    targets = []
-                    for a in anns:
-                        try: node = soup.select_one(a["selector"])
-                        except Exception: node = None
-                        # 只给定位要用的字段：以前把整条标注（outer_html 5000 字、样式、坐标…）原样塞进来，16 个目标就超过 10 万字
-                        brief = {k: a[k] for k in ("id", "selector", "note", "name", "tag", "text", "kind", "in_modal", "modal_trail", "in_subpage") if a.get(k)}
-                        targets.append({**brief,"found":bool(node),"html":str(node)[:2200] if node else str(a.get("outer_html",""))[:2200],
-                                        "source_lines":locate_lines(working_source, a)})
-                    for node in soup(['script','style']): node.decompose()
-                    output = {"title":page.get("title"),"chars":len(working_source),"annotations":targets,"regions":outline(working_source),
-                              "page_text":(soup.body or soup).get_text(' ',strip=True)[:5000],
-                              "headings":[h.get_text(' ',strip=True)[:120] for h in soup.select('h1,h2,h3')[:24]],
-                              "actions":[n.get_text(' ',strip=True)[:80] or n.get('aria-label','') for n in soup.select('button,a,input[type=submit]')[:30]]}
-                elif fn == "read_skill":
-                    try:
-                        output = {"name": args.get("name"), "content": skills.read(str(args.get("name","")))}
-                    except (ValueError, FileNotFoundError) as exc:
-                        raise PatchError(f"没有这个 skill：{args.get('name')}。可用的见系统提示里的清单") from exc
-                elif fn == "read_skill_file":
-                    try:
-                        whole = skills.read_file(str(args.get("name","")), str(args.get("path","")))
-                        lines = whole.splitlines()
-                        if "start" not in args and len(whole) > SKILL_READ_LIMIT:
-                            # 想整份读一个大文件：要点已经在系统提示里了，这里只给目录，让它按行号读需要的那一节
-                            output = {"name": args.get("name"), "path": args.get("path"), "whole_file_refused": True,
-                                      "note": (f"这个文件有 {len(whole)} 字，整份读进来以后每一步都要重发，不给整份。"
-                                               "它的要点（目录、硬约束、组件签名）已经在系统提示里。确实要看原文，"
-                                               "按下面的行号带上 start / end 只读那一节，或用 search_skill_file 搜组件名。"),
-                                      "outline": skill_digest.outline(whole)}
-                        else:
-                            a = max(1, _num(args.get("start"), 1))
-                            b = min(len(lines), _num(args.get("end"), a + 200))
-                            output = {"name": args.get("name"), "path": args.get("path"),
-                                      **_slice_lines(lines, a, b, min(budget, SKILL_READ_LIMIT))}
-                    except (ValueError, FileNotFoundError) as exc:
-                        raise PatchError(f"skill「{args.get('name')}」里没有 {args.get('path')}；"
-                                         f"先用 read_skill 看正文里写的是哪个路径") from exc
+                    output = inspect_output(working_source, page, anns)
+                elif fn in LOOKUP_TOOLS:
+                    output = run_lookup(fn, args, project_id, budget, remembered)
                 elif fn == "start_from_shell":
                     found = skill_digest.find_shell(meta)
                     if not found:
@@ -831,39 +388,6 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
                               "note": "外壳已经放进页面。" + SHELL_NOTE,
                               "placeholders": [m for m in ("/*PA:NAV*/", "/*PA:PAGES*/", "/*PA:BIND*/") if m in shell],
                               "api": shell_api(shell)}
-                elif fn == "search_skill_file":
-                    try:
-                        whole = skills.read_file(str(args.get("name","")), str(args.get("path","")))
-                    except (ValueError, FileNotFoundError) as exc:
-                        raise PatchError(f"skill「{args.get('name')}」里没有 {args.get('path')}") from exc
-                    output = {"name": args.get("name"), "path": args.get("path"),
-                              "query": args.get("query",""),
-                              **_search_source(whole, str(args.get("query","")))}
-                elif fn == "remember":
-                    try:
-                        if memory.paused(project_id):
-                            raise PatchError("用户暂停了记忆，这次不记；照常把事情做完")
-                        saved = memory.add(project_id, str(args.get("note", "")), str(args.get("category", "")),
-                                           str(args.get("scope", "project")), "said")
-                    except ValueError as exc:
-                        raise PatchError(str(exc)) from exc
-                    output = {"ok": True, **saved}
-                    if not saved.get("duplicate"):
-                        remembered.append({"id": saved["id"], "text": saved["text"], "scope": saved.get("scope", "project")})
-                elif fn == "search_chats":
-                    found = storage.search_chat_log(project_id, str(args.get("query", "")))
-                    output = {"hits": len(found), "results": [{"who": "用户" if r.get("role") == "user" else "设计助手",
-                              "when": str(r.get("created_at", ""))[:16], "page": r.get("page", ""), "text": r.get("content", "")} for r in found]}
-                    if not found:
-                        output["note"] = "以前的对话里没有这些词。别再换词反复查，直接问用户或按现有信息处理。"
-                elif fn == "forget":
-                    output = {"ok": memory.remove(project_id, str(args.get("id", ""))),
-                              "id": args.get("id")}
-                elif fn == "read_component":
-                    try:
-                        output = components.preview(str(args.get("name", "")))
-                    except (ValueError, FileNotFoundError) as exc:
-                        raise PatchError(f"没有这个组件：{args.get('name')}。可用的见系统提示里的组件清单") from exc
                 elif fn == "read_region":
                     name = args.get("name","")
                     bounds = regions(working_source)
