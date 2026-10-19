@@ -140,7 +140,7 @@ def get_page(meta: dict[str, Any], page_id: str) -> dict[str, Any]:
 
 
 # 发消息时带的截图：以前只在发送那一刻显示，存进对话的只有文字，刷新或做完就没了。
-# 现在存成文件跟着这条消息走；对话只留最近 40 条，被挤掉的消息的截图一起清掉
+# 现在存成文件跟着这条消息走，一直留着（只在彻底删除项目时一起删）
 CHAT_IMAGE_TYPES = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}
 CHAT_IMAGE_MAX = 8 * 1024 * 1024
 
@@ -170,19 +170,6 @@ def chat_image_path(project_id: str, image_id: str) -> Path | None:
         if path.exists():
             return path
     return None
-
-
-def _prune_chat_images(project_id: str, chat: list[dict[str, Any]]) -> None:
-    folder = project_dir(project_id) / "chat_images"
-    if not folder.is_dir():
-        return
-    keep = {m.get("image") for m in chat if m.get("image")}
-    for path in folder.iterdir():
-        if path.stem not in keep:
-            try:
-                path.unlink()
-            except OSError:
-                pass
 
 
 def shot_path(project_id: str, ann_id: str) -> Path:
@@ -444,7 +431,7 @@ CHAT_DIFF_LINES = 80
 
 def compact_diff(diff):
     """存进对话记录的改动只留前 80 行、每行 240 字。以前整份 diff（最多 400 行 × 1600 字）跟着对话存进
-    project.json 保留 40 条，文件能涨到几十 MB，而项目列表、每张预览图片都要整份读它"""
+    project.json 保留很多条，文件能涨到几十 MB，而项目列表、每张预览图片都要整份读它"""
     hunks, left = [], CHAT_DIFF_LINES
     for hunk in diff.get('hunks', []):
         if left <= 0: break
@@ -456,28 +443,33 @@ def compact_diff(diff):
     return {**diff, 'hunks': hunks, 'truncated': bool(diff.get('truncated')) or shown < total}
 
 
+# 对话框里显示、project.json 里存的条数。给 AI 的上下文只取最近 10 条（conversation.history_context），
+# 所以这里多存不多花 token；全部历史另外记在 chat_log.jsonl
+CHAT_KEEP = 200
+
+
 @_locked
 def append_chat(project_id: str, role: str, content: str, extra: dict[str, Any] | None = None) -> None:
     meta = load_meta(project_id)
-    # seq 一直往上数：project.json 里只留最近 40 条，记忆整理靠它知道「上次整理到哪了」
+    # seq 一直往上数：project.json 里只留最近 CHAT_KEEP 条，记忆整理靠它知道「上次整理到哪了」
     meta["chat_seq"] = int(meta.get("chat_seq", 0) or 0) + 1
     entry = {"id": safe_id("msg"), "role": role, "content": content, "created_at": now_iso(), "seq": meta["chat_seq"]}
     if extra:
         entry.update(extra)
     meta.setdefault("chat", []).append(entry)
-    meta["chat"] = meta["chat"][-40:]
-    if entry.get("image"):
-        _prune_chat_images(project_id, meta["chat"])
+    meta["chat"] = meta["chat"][-CHAT_KEEP:]
     for item in meta["chat"]:   # 旧版本存进来的整份 diff 顺手瘦身
         if isinstance(item.get("diff"), dict) and sum(len(h.get("lines", [])) for h in item["diff"].get("hunks", [])) > CHAT_DIFF_LINES:
             item["diff"] = compact_diff(item["diff"])
     meta["updated_at"] = now_iso()
     save_meta(meta)
-    # 完整的对话另外按行追加一份：40 条之前的也能被「查以前的对话」找到
+    # 完整的对话另外按行追加一份：更早的也能被「查以前的对话」找到，截图编号也记着
     try:
         page = next((p.get("title", "") for p in meta.get("pages", []) if p["id"] == entry.get("page_id")), "")
-        line = json.dumps({"seq": entry["seq"], "role": role, "content": str(content)[:2000], "created_at": entry["created_at"],
-                           "page": page}, ensure_ascii=False)
+        record = {"seq": entry["seq"], "role": role, "content": str(content)[:2000], "created_at": entry["created_at"], "page": page}
+        if entry.get("image"):
+            record["image"] = entry["image"]
+        line = json.dumps(record, ensure_ascii=False)
         with open(project_dir(project_id) / "chat_log.jsonl", "a", encoding="utf-8") as fh:
             fh.write(line + "\n")
     except OSError:

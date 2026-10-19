@@ -99,10 +99,10 @@ class 两层记忆(unittest.TestCase):
         with self.assertRaises(ValueError):
             memory.edit_by_instruction(self.a, "随便改改", lambda p: "好的")
 
-    def test_以前的对话查得到_超过四十条也在(self):
-        for i in range(45):
+    def test_以前的对话查得到_超过对话框条数也在(self):
+        for i in range(storage.CHAT_KEEP + 5):
             storage.append_chat(self.a, "user", f"第 {i} 句：主色用 #1f6feb" if i == 2 else f"第 {i} 句")
-        self.assertEqual(len(storage.load_meta(self.a)["chat"]), 40)
+        self.assertEqual(len(storage.load_meta(self.a)["chat"]), storage.CHAT_KEEP)
         hits = storage.search_chat_log(self.a, "主色")
         self.assertEqual(len(hits), 1)
         self.assertIn("#1f6feb", hits[0]["content"])

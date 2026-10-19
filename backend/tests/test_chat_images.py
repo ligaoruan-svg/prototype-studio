@@ -1,4 +1,4 @@
-"""发消息时带的截图和点选位置跟着消息存下来：刷新、做完、重开项目都还在；消息被挤出最近 40 条时截图一起清掉。"""
+"""发消息时带的截图和点选位置跟着消息存下来：刷新、做完、重开项目都还在；对话框里留最近 200 条，截图全部留着。"""
 import base64
 import sys
 import tempfile
@@ -41,15 +41,17 @@ class 对话里的截图(unittest.TestCase):
         with self.assertRaises(ValueError):
             storage.chat_image_path(self.pid, '../config')
 
-    def test_消息被挤掉_截图一起清掉(self):
+    def test_留最近200条_截图全部留着(self):
         first = storage.save_chat_image(self.pid, PNG)
         storage.append_chat(self.pid, 'user', '第一条', {'image': first})
-        for i in range(40):
+        for i in range(210):
             storage.append_chat(self.pid, 'assistant', f'回复 {i}')
-        last = storage.save_chat_image(self.pid, PNG)
-        storage.append_chat(self.pid, 'user', '最新', {'image': last})
-        self.assertIsNone(storage.chat_image_path(self.pid, first))
-        self.assertIsNotNone(storage.chat_image_path(self.pid, last))
+        chat = storage.load_meta(self.pid)['chat']
+        self.assertEqual(len(chat), 200)
+        self.assertEqual(chat[-1]['content'], '回复 209')
+        self.assertIsNotNone(storage.chat_image_path(self.pid, first))   # 消息挤出对话框了，截图还在
+        log = (storage.project_dir(self.pid) / 'chat_log.jsonl').read_text('utf-8')
+        self.assertIn(first, log)                                          # 全部历史里也记着
 
 
 if __name__ == '__main__':
