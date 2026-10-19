@@ -8,8 +8,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from backend import agent, patcher, skill_digest, skills, storage   # noqa: E402
-try:
-    from backend import server   # 要装了 fastapi 才能测接口
+try:   # 要装了 fastapi 才能测接口
+    from fastapi import HTTPException
+    from backend.routes import projects as server, settings as settings_routes
 except ImportError:
     server = None
 
@@ -139,7 +140,7 @@ class 每个项目一套风格(unittest.TestCase):
         self.assertEqual(server.get_project(meta["id"])["style"], "none")
 
     def test_风格不对就不建(self):
-        with self.assertRaises(server.HTTPException):
+        with self.assertRaises(HTTPException):
             server.new_project(server.NewProjectIn(name="x", style="builtin:没有"))
         self.assertEqual(storage.list_projects(), [])
 
@@ -152,7 +153,7 @@ class 每个项目一套风格(unittest.TestCase):
         self.assertEqual(server.get_project(pid)["style"], "legacy")
         self.assertEqual(server.set_project_style(pid, server.StyleIn(style="mine:我的风格"))["style"], "mine:我的风格")
         self.assertEqual(storage.load_meta(pid)["style"], "mine:我的风格")
-        with self.assertRaises(server.HTTPException):
+        with self.assertRaises(HTTPException):
             server.set_project_style(pid, server.StyleIn(style="mine:没有"))
 
     def test_换风格时空页面跟着换_写过内容的不动(self):
@@ -173,7 +174,7 @@ class 每个项目一套风格(unittest.TestCase):
         self.assertEqual(storage.read_page(pid, page), filled)
 
     def test_风格清单(self):
-        out = server.list_styles()
+        out = settings_routes.list_styles()
         self.assertEqual([i["name"] for i in out["builtin"]], BUILTIN)
         self.assertEqual({i["folder"] for i in out["mine"]}, {"我的风格", "只有说明"})
 

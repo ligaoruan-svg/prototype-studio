@@ -58,7 +58,7 @@ def fake_chat(key,model,messages,*args,**kwargs):
     time.sleep(1.2)
     kickoff=next(m['content'] for m in messages if m['role']=='user')
     if isinstance(kickoff,list): kickoff=kickoff[0]['text']
-    request=kickoff.split('用户本轮要求：')[-1]
+    request=kickoff.split('用户这轮说的是：')[-1]   # agent 背景资料后面接的就是用户这轮的原话
     if '网络失败' in request: raise WorkError('network','模拟网络连接失败')
     if '超长输出' in request: return {'choices':[{'finish_reason':'length','message':{'content':'未完成的输出'}}]}
     if '卡片' in request: return answer('ask_user',{'question':'整块区域改成卡片，还是每一行分别改成卡片？','options':['整块改成卡片','每行一张卡片']})

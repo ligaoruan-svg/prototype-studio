@@ -83,7 +83,8 @@ export function useAgentRun(s) {
         if (again) { followUp = selfTestRequest(report.issues); followRound = selfRound + 1 }
         status.value = again ? '自检发现问题 · 马上自动修一轮' : report.issues.length ? `已保存 · 自检还剩 ${report.issues.length} 个问题` : '已保存 · 自检通过'
       }
-      else status.value = result.clarification ? '等待你确认' : result.discussion ? '讨论完成 · 未修改文件' : '没有改动页面'
+      // 改好了、没跑自检：状态栏留着检查保存时写的「已保存 · 刚刚」。以前这里不看改没改，小改动保存了也显示「没有改动页面」
+      else if (!result.changed) status.value = result.clarification ? '等待你确认' : result.discussion ? '讨论完成 · 未修改文件' : '没有改动页面'
       lastResult.value = result
       await s.refresh(false); projects.value = await api('/api/projects')
       current.status = 'complete'
