@@ -100,6 +100,17 @@ class 运行记录(unittest.TestCase):
         self.assertTrue(t['rounds'][2]['calls'][0]['ok'])
         self.assertTrue(out['changed'])
 
+    def test_选了风格_规范的视觉部分让给风格(self):
+        self.script(msg(EDIT))
+        self.run_agent()
+        self.assertNotIn('以风格为准', self.sent[0][0]['content'])   # 以前的项目：规范照旧是全部视觉依据
+        storage.set_style(self.pid, 'builtin:简洁后台')
+        self.script(msg(EDIT))
+        self.run_agent()
+        system = self.sent[0][0]['content']
+        self.assertIn('以风格为准', system)
+        self.assertLess(system.index('以风格为准'), system.index('# 这个项目选的风格'))
+
     def test_外壳刚放好整份读给要点_连着读也不算拒绝(self):
         from backend import skill_digest
         shell = (ROOT / 'prompts/styles/数据大屏/assets/页面外壳.html').read_text(encoding='utf-8')
