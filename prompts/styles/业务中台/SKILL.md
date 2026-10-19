@@ -1,6 +1,7 @@
 ---
 name: 业务中台
 description: 顶部深色一级导航 + 左侧二级菜单：多个业务模块并列、每个模块下若干页面。适合运营中台、订单中台、供应链这类模块多的系统。
+tagline: 顶部模块 + 左侧菜单
 category: 中台
 order: 4
 layout: topbar

@@ -1,6 +1,7 @@
 ---
 name: 简洁后台
 description: PC 管理后台：左侧深色菜单、白底卡片、筛选 + 表格 + 分页。适合订单、用户、商品、配置这类增删改查页面。
+tagline: 深色侧栏 · 通用后台
 category: 后台
 order: 1
 layout: sidebar

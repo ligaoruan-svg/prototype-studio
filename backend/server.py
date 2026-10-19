@@ -485,6 +485,14 @@ def list_styles():
     return {"builtin": skills.builtin_listing(), "mine": skills.listing()}
 
 
+@app.get("/api/styles/{kind}/{name}/preview.png")
+def style_preview(kind: str, name: str):
+    path = skills.preview_path(kind, name) if kind in {"builtin", "mine"} else None
+    if not path:
+        raise HTTPException(404, "没有预览图")
+    return FileResponse(path, media_type="image/png", headers={"Cache-Control": "max-age=3600"})
+
+
 @app.put("/api/projects/{project_id}/style")
 def set_project_style(project_id: str, body: StyleIn):
     try:

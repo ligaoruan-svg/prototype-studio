@@ -1,6 +1,7 @@
 ---
 name: 企业蓝
 description: 国内最常见的企业后台：白色侧边菜单、标准蓝、紧凑表格，接近 Ant Design 的观感。适合审批、CRM、ERP 这类信息量大的系统。
+tagline: 白色侧栏 · 接近 Ant Design
 category: 后台
 order: 2
 layout: sidebar

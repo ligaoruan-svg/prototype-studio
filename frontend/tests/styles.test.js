@@ -10,6 +10,8 @@ test('选风格的卡片：内置、我的、不选风格、导入风格', () =>
   assert.match(picker, /'builtin:' \+ s\.folder/)
   assert.match(picker, /'mine:' \+ s\.folder/)
   assert.match(picker, /value: 'none', name: '不选风格'/)
+  assert.match(picker, /const TABS = \['后台', '中台', '手机', '自定义'\]/)   // 分页签，一次只看一类
+  assert.match(picker, /\/preview\.png/)
   assert.match(picker, /emit\('import'\)/)
   assert.match(picker, /!card\.has_shell/)   // 没外壳的「我的」要说清楚只能当规矩用
 })

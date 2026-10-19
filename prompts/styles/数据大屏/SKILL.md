@@ -1,6 +1,7 @@
 ---
 name: 数据大屏
 description: 深色数据大屏：顶部标题和时间、大号指标、柱状图和占比条。适合投屏、监控、经营看板，一屏看全。
+tagline: 深色 · 投屏监控
 category: 中台
 order: 6
 layout: screen

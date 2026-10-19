@@ -1,6 +1,7 @@
 ---
 name: 活力电商
 description: 橙红主色、价格醒目、商品卡片两列排，热闹有购买欲。适合商城、外卖、团购、会员这类用户端手机页面。
+tagline: 橙红 · 商城外卖
 category: 手机
 order: 9
 layout: mobile

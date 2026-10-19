@@ -745,6 +745,12 @@ COMMON_RULES = """\
 """
 
 
+# 选风格卡片上的一句短说明（卡片窄，长说明会被截断；完整说明放在下面）
+TAGLINES = {"简洁后台": "深色侧栏 · 通用后台", "企业蓝": "白色侧栏 · 接近 Ant Design", "极简黑白": "黑白灰 · SaaS 控制台",
+            "业务中台": "顶部模块 + 左侧菜单", "数据中台": "指标图表 · 分析看板", "数据大屏": "深色 · 投屏监控",
+            "移动端App": "绿色 · 通用手机端", "温暖柔和": "米色衬线 · 内容生活", "活力电商": "橙红 · 商城外卖"}
+
+
 def build(style: dict) -> tuple[str, str]:
     layout = LAYOUTS[style["layout"]]
     tokens = {**BASE_TOKENS, **style["tokens"]}
@@ -755,7 +761,7 @@ def build(style: dict) -> tuple[str, str]:
     category = style.get("category") or CATEGORY[style["layout"]]
     order = ORDER.index(style["name"]) + 1 if style["name"] in ORDER else len(ORDER) + STYLES.index(style) + 1
     skill = (f"---\nname: {style['name']}\ndescription: {style['description']}\n"
-             f"category: {category}\norder: {order}\nlayout: {style['layout']}\n"
+             f"tagline: {TAGLINES.get(style['name'], '')}\ncategory: {category}\norder: {order}\nlayout: {style['layout']}\n"
              f"primary: \"{style['primary']}\"\nbackground: \"{style['background']}\"\nside: \"{tokens['side-bg']}\"\n---\n"
              f"# {style['name']}\n\n{style['rules']}\n{COMMON_RULES}")
     return skill, shell

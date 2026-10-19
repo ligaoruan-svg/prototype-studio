@@ -1069,5 +1069,20 @@ export default {
   "浅色顶栏 + 左侧二级菜单，指标卡和图表卡为主：数据看板、经营分析、报表中心。比大屏更适合日常在电脑上看和筛选。": "Light top bar plus a left submenu, built around metric and chart cards: dashboards, business analytics, report centers. Better than the data wall for everyday desktop viewing and filtering.",
   "米色底、陶土色主色、大圆角、标题用衬线字，温和有质感。适合内容、阅读、生活方式、预约类的手机页面。": "Beige background, terracotta accent, large radii and serif headings: calm with texture. For content, reading, lifestyle and booking mobile pages.",
   "橙红主色、价格醒目、商品卡片两列排，热闹有购买欲。适合商城、外卖、团购、会员这类用户端手机页面。": "Orange-red accent, prominent prices, two-column product cards: lively and shoppable. For customer-facing mall, delivery, group-buy and membership mobile pages.",
-  "这个项目选了风格：配色、字号、圆角这些视觉要求听风格的，这里只管内容怎么写和改动约束。没选风格的项目才把这里当全部视觉依据。": "This project has a style: colors, type sizes and radii follow the style, and this spec only covers content and editing rules. Projects without a style use this spec for all visual rules."
+  "这个项目选了风格：配色、字号、圆角这些视觉要求听风格的，这里只管内容怎么写和改动约束。没选风格的项目才把这里当全部视觉依据。": "This project has a style: colors, type sizes and radii follow the style, and this spec only covers content and editing rules. Projects without a style use this spec for all visual rules.",
+  "自定义": "Custom",
+  "当前选的在这一类": "The selected style is in this group",
+  "只按设计规范": "Design spec only",
+  "自己导入的风格": "Imported by you",
+  "没有页面外壳，只当规矩用": "No page shell; rules only",
+  "带 SKILL.md 的 zip": "A zip with SKILL.md",
+  "深色侧栏 · 通用后台": "Dark sidebar · general admin",
+  "白色侧栏 · 接近 Ant Design": "White sidebar · Ant Design-like",
+  "黑白灰 · SaaS 控制台": "Monochrome · SaaS console",
+  "顶部模块 + 左侧菜单": "Top modules + side menu",
+  "指标图表 · 分析看板": "Metrics & charts · analytics",
+  "深色 · 投屏监控": "Dark · big-screen monitoring",
+  "绿色 · 通用手机端": "Green · general mobile",
+  "米色衬线 · 内容生活": "Beige & serif · content",
+  "橙红 · 商城外卖": "Orange-red · shopping"
 }

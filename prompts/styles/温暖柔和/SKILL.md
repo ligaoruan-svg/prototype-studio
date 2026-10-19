@@ -1,6 +1,7 @@
 ---
 name: 温暖柔和
 description: 米色底、陶土色主色、大圆角、标题用衬线字，温和有质感。适合内容、阅读、生活方式、预约类的手机页面。
+tagline: 米色衬线 · 内容生活
 category: 手机
 order: 8
 layout: mobile

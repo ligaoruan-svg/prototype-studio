@@ -1,6 +1,7 @@
 ---
 name: 数据中台
 description: 浅色顶栏 + 左侧二级菜单，指标卡和图表卡为主：数据看板、经营分析、报表中心。比大屏更适合日常在电脑上看和筛选。
+tagline: 指标图表 · 分析看板
 category: 中台
 order: 5
 layout: topbar

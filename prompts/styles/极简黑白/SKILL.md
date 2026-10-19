@@ -1,6 +1,7 @@
 ---
 name: 极简黑白
 description: 黑白灰极简：浅灰侧栏、细边框、黑色主按钮，参考 Linear、Vercel 这类工具的克制感。适合 SaaS 控制台、开发者工具、设置页。
+tagline: 黑白灰 · SaaS 控制台
 category: 后台
 order: 3
 layout: sidebar

@@ -33,7 +33,9 @@ class 内置风格(unittest.TestCase):
         self.assertEqual([i["category"] for i in items], ["后台"] * 3 + ["中台"] * 3 + ["手机"] * 3)
         self.assertEqual({i["layout"] for i in items}, {"sidebar", "topbar", "screen", "mobile"})
         for item in items:
-            self.assertTrue(item["builtin"] and item["has_shell"])
+            self.assertTrue(item["builtin"] and item["has_shell"] and item["has_preview"] and item["tagline"])
+            self.assertNotIn("preview.png", item["files"])   # 预览图不算 skill 的附带文件，不进 AI 的清单
+            self.assertTrue(skills.preview_path("builtin", item["folder"]))
             shell = skill_digest.find_shell({"style": "builtin:" + item["folder"]})[2]
             self.assertTrue(agent.verify_source(shell)["ok"], item["name"])
             self.assertTrue(agent.is_fresh_shell(shell))

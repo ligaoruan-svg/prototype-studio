@@ -74,6 +74,7 @@ def _purpose(body: str) -> str:
 
 SHELL_FILE = re.compile(r"(外壳|shell)\.html?$", re.I)
 LAYOUTS = {"sidebar", "topbar", "screen", "mobile"}
+PREVIEW = "preview.png"   # 选风格卡片上的预览图（内置风格由 scripts/生成风格预览图.py 生成）
 CATEGORIES = {"sidebar": "后台", "topbar": "中台", "screen": "中台", "mobile": "手机"}   # 选风格时按这个分组
 
 
@@ -97,6 +98,8 @@ def _preview(folder: Path, meta: dict, files: list[str]) -> dict:
             "primary": color(meta.get("primary")) or color(tokens.get("primary")) or "#2f6fed",
             "background": color(meta.get("background")) or color(tokens.get("bg")) or "#f6f7f9",
             "side": color(meta.get("side")) or color(tokens.get("side-bg")) or "#ffffff",
+            "tagline": meta.get("tagline", "").strip()[:24],
+            "has_preview": (folder / PREVIEW).is_file(),
             "has_shell": bool(shell)}
 
 
@@ -106,7 +109,7 @@ def _entry(folder: Path, builtin: bool = False) -> dict | None:
         return None
     meta, body = split_frontmatter(skill_md.read_text("utf-8", errors="replace"))
     files = sorted(str(p.relative_to(folder)) for p in folder.rglob("*")
-                   if p.is_file() and p.name != "SKILL.md")
+                   if p.is_file() and p.name != "SKILL.md" and p.relative_to(folder).as_posix() != PREVIEW)
     description = meta.get("description", "").strip() or _purpose(body)
     return {"name": meta.get("name", "").strip() or folder.name,
             "folder": folder.name, "description": description[:160],
@@ -145,6 +148,14 @@ def _folder(name: str, builtin: bool | None = None) -> Path:
         if folder.is_dir() and folder.resolve().parent == root.resolve():
             return folder
     raise FileNotFoundError(name)
+
+
+def preview_path(kind: str, name: str) -> Path | None:
+    try:
+        path = _folder(name, builtin=kind == "builtin") / PREVIEW
+    except (ValueError, FileNotFoundError):
+        return None
+    return path if path.is_file() else None
 
 
 # ---------- 每个项目选一套风格 ----------

@@ -1,6 +1,7 @@
 ---
 name: 移动端App
 description: 手机 App / H5：430px 宽居中、顶部标题、底部 Tab 栏、圆角卡片和列表。适合用户端的下单、订单、个人中心这类页面。
+tagline: 绿色 · 通用手机端
 category: 手机
 order: 7
 layout: mobile
