@@ -489,6 +489,8 @@ export default {
   "记在你的习惯里，以后所有项目都照这个来": "Saved to your habits — all projects will follow this from now on",
   "记忆": "Memory",
   "记忆 {0}": "Memory {0}",
+  "缓存 {0}%": "{0}% cached",
+  "输入里有 {0} tokens 命中了模型服务的缓存，这部分通常按一折计费": "{0} input tokens hit the model provider's cache, usually billed at about a tenth of the price",
   "记忆开着": "Memory on",
   "设计助手": "Design assistant",
   "设计规范": "Design guidelines",

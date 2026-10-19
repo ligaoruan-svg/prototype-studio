@@ -456,6 +456,27 @@ def _script_issue(kind: str, code: str) -> str | None:
     return result.stderr[:900] if result.returncode else ""
 
 
+def describe_syntax(raw: str, first_line: int | None = None) -> str:
+    """node 的报错说成一句能直接照着改的话：页面第几行第几列、什么错、出错处前后的原文。
+    node 会先把出错的那一整行打出来——原型里一行常常就是一个两三千字的函数，以前截到 900 字，
+    真正的错误信息（SyntaxError: …）和指出位置的 ^ 都被截掉了，模型只能把整段重写一遍"""
+    rows = raw.splitlines()
+    head = re.match(r"\[stdin\]:(\d+)", rows[0]) if rows else None
+    if not head:
+        return raw[:900]
+    n = int(head[1])
+    code = rows[1] if len(rows) > 1 else ""
+    caret = next((r for r in rows[2:4] if r.strip() and set(r.strip()) <= {"^"}), "")
+    col = caret.find("^")
+    message = next((r.strip() for r in rows if re.match(r"\s*\w*Error\b", r)), "语法错误")
+    where = f"页面第 {first_line + n - 1} 行" if first_line else f"这段脚本第 {n} 行"
+    if col >= 0:
+        a, b = max(0, col - 160), min(len(code), col + 160)
+        near = ("…" if a else "") + code[a:col] + "⟪这里⟫" + code[col:b] + ("…" if b < len(code) else "")
+        return f"{where}第 {col + 1} 列 {message}。出错处前后的原文：{near}"
+    return f"{where} {message}。这一行开头：{code[:240]}"
+
+
 def issue_kind(issue: str) -> str:
     """问题的种类：「脚本 3 语法错误：…」和「脚本 4 语法错误：…」是同一种（脚本序号会随前面的增删变化）"""
     return re.sub(r"\d+", "N", issue.split("：", 1)[0])
@@ -508,7 +529,7 @@ def verify_source(source: str, assertions: list[dict] | None = None) -> dict:
                 syntax_checked = False
                 issues.append(f"脚本 {i} 语法检查未完成")
             elif problem:
-                issues.append(f"脚本 {i} 语法错误：{problem}")
+                issues.append(f"脚本 {i} 语法错误：{describe_syntax(problem, getattr(tag, 'sourceline', None))}")
     # 几段 <script> 共用一个全局作用域：两段里都写了 const planDevices，单看每段都没错，
     # 一运行第二段整段报错（Identifier has already been declared），页面就空了。拼起来再查一次
     classic = [str(tag.string) for tag in soup.find_all("script") if tag.string and not tag.get("src")

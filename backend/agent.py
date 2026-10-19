@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import time
 import re
@@ -19,6 +20,7 @@ from .agent_tools import TOOL_SPECS, OPERATION_ACTIONS
 from .agent_source import READ_CAP, read_budget, inspect_output, expand_components, locate_lines, lines_text, _num, _slice_lines, _search_source  # noqa: F401
 from .agent_lookup import LOOKUP_TOOLS, SKILL_READ_LIMIT, run_lookup  # noqa: F401
 from .agent_context import CONTEXT_KEYS, context_text, scene_text, language_note, SHELL_NOTE, is_fresh_shell, shell_api
+from .source_map import code_map, prefetch, changes_view
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +47,12 @@ REJECT_LIMIT = 3     # 同一个工具被同一个理由拒绝这么多次，就
 # 读的是页面源码：改之前都还要用（补丁要照着原文写），只有页面改过、读到的已经不是现在的样子了才收起。
 # 规范、组件库这些读完就是参考，过两轮就收——生成一页烧几十万 tokens 主要是它们
 SOURCE_READS = {"inspect_page", "search_source", "read_source_slice", "read_region"}
+SOURCE_VIEWS = SOURCE_READS | {"apply_operations"}   # 改完返回的落点和代码地图：页面再变就过时，和读到的源码一样收
 SOURCE_KEEP_ROUNDS = 8   # 源码读取最多留这么多轮，再久就算没改也收起（防止一直攒）
+# 语法错误被退回时，这次的改动先暂存：下一次只改出错的那一小段，不用把几千字重写一遍（实测一次退回后又读了九轮源码）
+DRAFT_NOTE = ("\n这次的改动整体已经暂存（还没写进页面），只差上面这一处语法错误。不用整段重写，也不用再读源码："
+              "下一次 apply_operations 只放一条 replace_source_text，把出错处前后的一小段改对"
+              "（old 照抄上面「出错处前后的原文」里的一段，去掉 ⟪这里⟫ 标记），程序会在暂存版上改，改对了整体一起写进页面。")
 READ_ONLY_TOOLS = {"inspect_page", "search_source", "read_source_slice", "read_region", "search_chats",
                    "read_component", "read_skill", "read_skill_file", "search_skill_file"}
 
@@ -147,7 +154,18 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
                   f"页面骨架：{json.dumps(outline(working_source),ensure_ascii=False)}" + scene_text(scene))
     if runtime_feedback and not read_only:
         background += f"\n上次检查错误：{runtime_feedback[:2000]}"
-    if not read_only and is_fresh_shell(working_source):
+    # 代码地图和预取片段：实测一页 23 轮里 16 轮只在读——搜一个名字、看到行号、再搜下一个，每轮重发全部上下文。
+    # 程序先把「什么在第几行」和用户点名的那几处原文给它，第一轮就能直接读那一小段或者动手
+    fresh_shell = is_fresh_shell(working_source)
+    source_map = code_map(working_source)
+    if source_map:
+        background += "\n代码地图（行号: 定义，只有名字没有正文；括号里的字数说明这一行很长，多半一整行就是一个函数）：\n" + source_map
+    if not fresh_shell:
+        found = prefetch(working_source, [user_message, runtime_feedback, scene_text(scene)],
+                         [h["line"] for a in anns for h in (a.get("source_lines") or [])])
+        if found:
+            background += "\n" + found
+    if not read_only and fresh_shell:
         # 按风格新建的项目，第一页就是这套风格的空外壳：不用再 start_from_shell，也不用翻源码找位置
         shell_fresh = working_source
         background += ("\n这一页是按项目风格刚建好的空外壳，还没写内容。" + SHELL_NOTE
@@ -178,7 +196,7 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
     prompt_path = SYSTEM_PROMPT_PATH.parent / 'discussion-system.md' if read_only else SYSTEM_PROMPT_PATH
     messages = [{"role":"system","content":prompt_path.read_text("utf-8") + '\n\n' + spec + skills.index_block(meta) + components.index_block() + memory.index_block(meta)}] + history + [{"role":"user","content":content}]
     tool_log, all_operations = [], []
-    usage = {"prompt_tokens":0,"completion_tokens":0,"total_tokens":0}
+    usage = {"prompt_tokens":0,"completion_tokens":0,"total_tokens":0,"cached_tokens":0}
     failures = argument_failures = truncations = 0
     incomplete = None
     read_regions, report, question, discussion = set(), None, None, None
@@ -195,6 +213,7 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
     source_version = 0    # 页面源码改过几次：读到的源码是不是已经过时，看它
     remembered = []       # 这一轮新记住的约定：结果卡片上要让用户看见，记错了能当场撤销
     budget = read_budget(context_budget)
+    draft = None          # (暂存的页面, 那次的操作)：改动只因语法错误被退回时先存着，下一次只修出错处
     # 同一个工具被同一个理由连续拒绝多少次。failures 只管补丁失败，
     # 别的拒绝（只讨论模式下调修改工具、区域太大、参数越界）原来一次都不计，
     # 模型可以一直撞同一堵墙直到轮次烧光。
@@ -210,11 +229,12 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
         for at, name, when, fingerprint, seen_version in reads:
             content = messages[at].get("content")
             age = round_no - when
-            stale = (age >= SOURCE_KEEP_ROUNDS or (age >= STALE_ROUNDS and seen_version != source_version)) if name in SOURCE_READS else age >= STALE_ROUNDS
+            stale = (age >= SOURCE_KEEP_ROUNDS or (age >= STALE_ROUNDS and seen_version != source_version)) if name in SOURCE_VIEWS else age >= STALE_ROUNDS
             if stale and isinstance(content, str) and len(content) > 1500 and '"collapsed": true' not in content:
                 # 说清收起的是哪一段（读的参数），它真要再看才知道读哪；只放开这一段的「读过了」拦截，别的照拦
                 messages[at]["content"] = json.dumps({"collapsed": True, "tool": name, "args": json.loads(fingerprint[1]),
-                    "summary": "这段读取结果前面用过了，已收起；还需要原文就按行号再读那一小段。"}, ensure_ascii=False)
+                    "summary": "这次修改已经应用；当时给的行号和代码地图已经过时，已收起。" if name == "apply_operations"
+                               else "这段读取结果前面用过了，已收起；还需要原文就按行号再读那一小段。"}, ensure_ascii=False)
                 read_seen.discard(fingerprint)
         # 已经应用的大段修改：参数原文（整页 HTML、几百行新代码）留在助手消息里会跟着每一步重发，改完过两轮收成一句话
         for at, when in writes:
@@ -249,11 +269,16 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
                 incomplete = (exc.code or 'network', f"模型服务中途出错（{str(exc)[:120]}）")
                 break
             raise
-        for key in usage:
-            usage[key] += (resp.get("usage") or {}).get(key,0) or 0
+        used = resp.get("usage") or {}
+        for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+            usage[key] += used.get(key, 0) or 0
+        # 命中模型服务前缀缓存的那部分输入（DeepSeek 叫 prompt_cache_hit_tokens，OpenAI 系放在 prompt_tokens_details 里）：
+        # 价格通常只有十分之一，记下来才知道这 50 万里真正按原价算的是多少
+        cached = used.get("prompt_cache_hit_tokens") or (used.get("prompt_tokens_details") or {}).get("cached_tokens") or 0
+        usage["cached_tokens"] += cached
         choices = resp.get("choices") or []
         trace.append({"round": round_no + 1, "finish": (choices[0].get("finish_reason") if choices else None),
-                      "prompt": (resp.get("usage") or {}).get("prompt_tokens"), "completion": (resp.get("usage") or {}).get("completion_tokens"),
+                      "prompt": used.get("prompt_tokens"), "completion": used.get("completion_tokens"), "cached": cached,
                       "start": len(tool_log), "_log": tool_log})
         version_at_round = source_version
         if not choices:
@@ -420,18 +445,47 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
                                 raise PatchError("先用精确补丁试一次；失败后才可以整块替换该区域")
                         if op.get("action")=="replace_source_text" and len(str(op.get("old") or ""))>24000:
                             raise PatchError("替换范围过大，请缩小到具体位置")
-                    new_source, logs = apply_operations(working_source,ops)
-                    check = verify_source(new_source)
-                    fresh = new_issues(baseline, check) if not check['ok'] else []
-                    if fresh: raise PatchError('修改检查失败：'+'；'.join(fresh))
-                    if new_source==working_source: raise PatchError("这次操作没有产生实际改动")
+                    # 先在页面上试；上次因语法错误暂存了一版，就再在暂存版上试（它多半只发来出错那一小段的修正）
+                    attempts, new_source, logs, via_draft = [], None, [], False
+                    for on_draft, base in [(False, working_source)] + ([(True, draft[0])] if draft else []):
+                        try:
+                            candidate_source, candidate_logs = apply_operations(base, copy.deepcopy(ops))
+                        except PatchError as exc:
+                            attempts.append((exc, None, on_draft)); continue
+                        check = verify_source(candidate_source)
+                        fresh = new_issues(baseline, check) if not check['ok'] else []
+                        if fresh:
+                            attempts.append((PatchError('修改检查失败：'+'；'.join(fresh)), (candidate_source, fresh), on_draft)); continue
+                        if candidate_source == working_source:
+                            attempts.append((PatchError("这次操作没有产生实际改动"), None, on_draft)); continue
+                        new_source, logs, via_draft = candidate_source, candidate_logs, on_draft
+                        break
+                    if new_source is None:
+                        applied = [a for a in attempts if a[1]]
+                        exc, built, from_draft = applied[-1] if applied else attempts[0]
+                        if built and all(re.match(r"脚本 \d+ 语法错误", i) for i in built[1]):
+                            draft = (built[0], (draft[1] if from_draft else []) + ops)
+                            raise PatchError(str(exc) + DRAFT_NOTE)
+                        raise exc
+                    if via_draft:
+                        ops = draft[1] + ops   # 暂存那次的操作也算这次改的（改动落点、结果卡片要用）
+                    draft = None
+                    before_edit = working_source
                     working_source = new_source; changed = working_source != source; source_version += 1
                     # 源码变了，之前读过的段落、读过的区域都不是现在的样子：允许重读，
                     # 也不能再拿改动前读到的区域原文去整块替换（会把刚才的修改冲掉）
                     read_seen.clear(); read_regions.clear()
                     all_operations.extend(ops); failures = 0
+                    view = changes_view(before_edit, working_source)
+                    todo = [p for p in plan if p["status"] != "done"]
                     output = {"ok":True,"logs":logs,"verified":True,
-                              "note":"已通过结构和脚本检查，不用再调 verify_page；全部改完就直接 report_result"}
+                              "note":("已通过结构和脚本检查，不用再调 verify_page，也不用再搜一遍核对——改到哪几行见 where。"
+                                      + (f"计划还剩 {len(todo) - 1} 步：已经想好怎么写的，合并进下一次 apply_operations 一起写，少一轮就少重发一遍上下文。"
+                                         if len(todo) > 1 else "全部改完就直接 report_result。")),
+                              "where": view}
+                    if abs(view["shift"]) >= 20:
+                        # 加了一大段（新页面、新函数），后面的行号全变了：给一份新的代码地图，接着改不用先搜位置
+                        output["map"] = code_map(working_source)
                 elif fn=="verify_page":
                     output = verify_source(working_source,args.get("assertions") or [])
                     if "/*PA:BIND*/" in working_source and not output["ok"] and all(
@@ -490,8 +544,8 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
                 raise WorkError("internal","工具内部异常，详情已写入本地服务日志") from exc
             tool_log.append({"tool":fn,"args":args,"output":output})
             messages.append({"role":"tool","tool_call_id":call.get("id"),"content":json.dumps(output,ensure_ascii=False)})
-            if fn in READ_ONLY_TOOLS:
-                reads.append((len(messages) - 1, fn, round_no, fingerprint, source_version))
+            if fn in READ_ONLY_TOOLS or (fn == "apply_operations" and output.get("ok")):
+                reads.append((len(messages) - 1, fn, round_no, fingerprint if fn in READ_ONLY_TOOLS else (fn, "{}"), source_version))
             failed = output.get("ok") is False
             if failed and fn == "apply_operations": apply_failed = True
             try:

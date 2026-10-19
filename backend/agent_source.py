@@ -8,6 +8,7 @@ import re
 
 from . import components
 from .patcher import PatchError, outline
+from .source_map import context_chunks
 
 SAFE_PAGE_PATH = re.compile(r"(?:[a-z][a-z0-9-]{0,20}/)?[a-z][a-z0-9-]{0,30}\.html")
 # 共享样式和脚本只能落在 assets/ 下，不允许写到别处去。
@@ -90,12 +91,11 @@ def _search_source(source: str, query: str) -> dict:
         return {"hits": 0, "context": f"整个页面里没有「{query}」。"
                 "如果这正是你要改的东西，说明页面上并不存在它，不要再换范围重读——"
                 "直接把这个事实汇报给用户。"}
-    radius, chunks = 6, []
-    for hit in hits[:5]:
-        s, e = max(0, hit - radius), min(len(lines), hit + radius + 1)
-        chunks.append("\n".join(f"{i+1}: {lines[i]}" for i in range(s, e)))
+    # 命中的那一行给全（太长只给命中附近），上下几行只给开头：原型脚本一行常常就是一整个函数，
+    # 以前上下各 6 行原样给，一次搜索 8000 字，十来次搜索就把上下文撑到两三万 tokens
+    radius = 6 if len(hits) <= 2 else 3
     out = {"hits": len(hits), "lines": [i + 1 for i in hits[:20]],
-           "context": "\n---\n".join(chunks)[:8000]}
+           "context": context_chunks(lines, hits[:5], query, radius=radius, cap=8000)}
     if len(hits) > 5:
         out["note"] = f"共命中 {len(hits)} 处，上面只展开了前 5 处的上下文；全部行号见 lines。"
     return out
