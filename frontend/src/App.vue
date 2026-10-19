@@ -627,7 +627,8 @@ async function runAgent(text = '', runtimeFeedback = '', options = {}) {
       }
     })
     current.result = result
-    if (result.changed) { current.status = 'checking'; Object.assign(result, await checkAndCommit(result)); current.committed = true }
+    // 改好保存了：页面已经变了，之前点选 / 框选的那几个元素（还显示着改之前的文字）就不再挂着
+    if (result.changed) { current.status = 'checking'; Object.assign(result, await checkAndCommit(result)); current.committed = true; closeSelection() }
     // 做完自检：改动不小（新做一页、一大块）时，像验收那样把每页按钮点一遍，有问题自动交回去修一轮
     if (result.changed && current.intent !== 'discuss' && (options.selfReview || (result.diff?.additions || 0) >= 30 || (result.change_count || 0) >= 6)) {
       status.value = '自检中 · 把每页的按钮点一遍'

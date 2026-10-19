@@ -10,3 +10,8 @@ test('历史消息显示截图和点选位置', () => {
   assert.match(panel, /\/chat-images\/\$\{message\.image\}/)
   assert.match(panel, /message\.target/)
 })
+
+test('改好保存后，点选 / 框选的目标自动取消', () => {
+  const app = readFileSync(new URL('../src/App.vue', import.meta.url), 'utf8')
+  assert.match(app, /current\.committed = true; closeSelection\(\)/)
+})
