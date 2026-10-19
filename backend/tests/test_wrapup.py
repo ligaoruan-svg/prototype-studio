@@ -48,7 +48,7 @@ class 收尾而不是报错(unittest.TestCase):
         out = agent.run_agent(self.pid, self.page, '点击页面没有反应', 'k', 'm', intent='edit', stream=False)
         self.assertFalse(out['changed'])
         self.assertTrue(out.get('clarification'))
-        self.assertEqual(self.seen_tools[-1], {'ask_user', 'report_result'}, '收尾那一轮只能提问或汇报')
+        self.assertEqual(self.seen_tools[-1], {'ask_user', 'report_result', 'apply_operations'}, '收尾那一轮不能再读，只能提问、汇报或直接改')
         self.assertLessEqual(len(self.seen_tools), agent.WRAPUP_AFTER + 1)
 
     def test_收尾轮用文字说明也算结论(self):

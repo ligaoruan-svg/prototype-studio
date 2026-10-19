@@ -100,6 +100,19 @@ class 运行记录(unittest.TestCase):
         self.assertTrue(t['rounds'][2]['calls'][0]['ok'])
         self.assertTrue(out['changed'])
 
+    def test_读了很久才动手_收尾时还能改(self):
+        # 自检一次报六个问题：读了 6 轮源码才想好怎么改。以前收尾只给「提问 / 汇报」，
+        # 它就自己编 replace_source_text 工具去调，连拒三次整次失败
+        reads = [msg(('search_source', {'query': f'q{i}'})) for i in range(6)]
+        self.script(*reads, msg(('replace_source_text', {'old': '旧标题', 'new': '新标题'})))
+        out = self.run_agent()
+        self.assertTrue(out['changed'])
+        self.assertIn('不是单独的工具', self.sent[6][-1]['content'])   # 第 7 轮确实进了收尾，收尾里照样能改
+        calls = [c for r in self.traces()[-1]['rounds'] for c in r['calls']]
+        self.assertEqual(calls[-2]['tool'], 'apply_operations')   # 动作名当工具调的，替它包成了 apply_operations
+        self.assertTrue(calls[-2]['ok'])
+        self.assertEqual(calls[-1]['tool'], 'report_result')
+
     def test_选了风格_规范的视觉部分让给风格(self):
         self.script(msg(EDIT))
         self.run_agent()

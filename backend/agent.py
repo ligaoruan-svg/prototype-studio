@@ -243,6 +243,11 @@ WRAPUP_PROMPT = ("别再读源码了，根据已经读到的内容收个尾，�
                  "2. 确认页面本来就没问题、不需要改 → report_result 说清依据；\n"
                  "3. 实在找不到 → report_result 写明查了哪几处、为什么对不上，并告诉用户怎么指给你"
                  "（点选那个元素，或在交互模式下把出问题的操作点一遍再发）。")
+# 修改模式下收尾也留着 apply_operations：自检一次报五六个问题，读源码本来就要好几轮，
+# 读完正要动手却只剩「提问 / 汇报」，模型就自己编一个 replace_source_text 工具去调，连拒三次整次失败
+WRAPUP_EDIT_PROMPT = ("别再读源码了，根据已经读到的内容收尾：\n"
+                      "0. 已经知道怎么改 → 现在就用一次 apply_operations 把能改的几处合并改掉（replace_source_text 等是 operations 里的 action，不是单独的工具），改完 report_result；\n"
+                      + WRAPUP_PROMPT.split("\n", 1)[1])
 REJECT_LIMIT = 3     # 同一个工具被同一个理由拒绝这么多次，就收手
 # 读的是页面源码：改之前都还要用（补丁要照着原文写），只有页面改过、读到的已经不是现在的样子了才收起。
 # 规范、组件库这些读完就是参考，过两轮就收——生成一页烧几十万 tokens 主要是它们
@@ -460,6 +465,10 @@ SHELL_NOTE = ("外壳里样式、布局、菜单、路由、弹窗、Toast 都�
                                        "尽量一两次 apply_operations 把整页内容写完，不要拆成十几次小改。")
 
 
+OPERATION_ACTIONS = set(next(t for t in TOOL_SPECS if t["function"]["name"] == "apply_operations")
+                        ["function"]["parameters"]["properties"]["operations"]["items"]["properties"]["action"]["enum"])
+
+
 def is_fresh_shell(source: str) -> bool:
     """页面是还没写内容的外壳（按风格新建项目时第一页就是它）：外壳自带的「首页」占位还在"""
     return "const Pages={/*PA:PAGES*/\n  " + SHELL_HOME_PAGE in (source or "")
@@ -587,6 +596,7 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
     # 页面原来就有的问题：之后的检查只拦新冒出来的，不能因为页面本来就有个坏脚本，任何修改都被拒
     baseline = verify_source(source)
     wrapup_round = None   # 从第几轮起进入收尾（只能提问或汇报）
+    wrapup_edit = False   # 是不是「读太久」的收尾：这种收尾还能直接改，改成了就回到正常处理
     reads = []            # (消息下标, 工具名, 第几轮, 读取指纹)：读规范、组件库、源码的结果，用过两轮就收起来
     writes = []           # (助手消息下标, 第几轮)：带大段修改参数的那条，用过两轮也收起来
     source_version = 0    # 页面源码改过几次：读到的源码是不是已经过时，看它
@@ -631,7 +641,8 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
                     if (stream and on_event) else None)
         try:
             wrapping = wrapup_round is not None and round_no >= wrapup_round
-            round_tools = [t for t in tools if t["function"]["name"] in WRAPUP_TOOLS] if wrapping else tools
+            allowed = WRAPUP_TOOLS | ({"apply_operations"} if wrapup_edit else set())
+            round_tools = [t for t in tools if t["function"]["name"] in allowed] if wrapping else tools
             resp = chat(api_key, model, messages, round_tools, base_url=base_url, max_tokens=max_tokens, on_delta=on_delta,
                         on_retry=lambda n, wait, exc: emit({"type":"model_retry","round":round_no+1,"attempt":n,
                                                             "label":f"模型服务忙，{wait} 秒后自动重试（第 {n} 次）"}),
@@ -744,6 +755,11 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
                     continue
                 read_seen.add(fingerprint)
             try:
+                if fn in OPERATION_ACTIONS and fn not in offered and "apply_operations" in offered:
+                    # 把 apply_operations 里的动作名（replace_source_text、set_text……）当成工具直接调了：替它包一层，
+                    # 以前回「现在不能用」，它换个说法再调，连拒三次整次失败
+                    args = {"operations": [{**args, "action": fn}]}
+                    fn = "apply_operations"
                 if fn not in offered:
                     # 这一步没给它这个工具（只讨论模式没有修改工具、收尾轮只能提问或汇报），它照抄了也不能执行
                     raise PatchError(f"现在不能用 {fn}；只能用这些：{'、'.join(sorted(offered))}")
@@ -994,6 +1010,9 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
             idle_rounds = 0
         elif any(c.get("function",{}).get("name") in READ_ONLY_TOOLS for c in calls):
             idle_rounds += 1
+        if wrapup_edit and changed:
+            # 「读太久」的收尾里它动手改成了：回到正常处理，让它接着改完、汇报
+            wrapup_round, wrapup_edit, idle_rounds = None, False, 0
         if wrapup_round is not None and round_no >= wrapup_round:
             # 收尾轮也没给出提问或结论（参数不对之类）：这时才算真的卡住
             incomplete = (("iterations", "轮次快用完了，没来得及整理汇报") if changed else
@@ -1003,8 +1022,9 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
             # 催过还在读，说明它自己出不来了：不再让它读，逼它把线索交出来——问用户或者说明情况，
             # 用户看到的是「我查到了这些，你指的是哪个？」，而不是一张「已停下」的报错卡
             wrapup_round = round_no + 1
+            wrapup_edit = not read_only
             emit({"type":"step_done","id":"wrapup-" + str(round_no),"label":"定位不太顺，先整理查到的线索","detail":"不再翻源码，把查到的位置交给你确认"})
-            messages.append({"role":"user","content":WRAPUP_PROMPT if not read_only else
+            messages.append({"role":"user","content":WRAPUP_EDIT_PROMPT if not read_only else
                 "别再读源码了。根据已经读到的内容直接用文字回答用户：说你看到了什么、结论是什么；"
                 "拿不准对方指的是哪一处，就用 ask_user 列出 2–3 个可能的位置让他选。"})
         elif idle_rounds >= IDLE_LIMIT and not nudged and not changed:
