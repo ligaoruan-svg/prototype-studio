@@ -830,10 +830,12 @@ async function changeStyle(value) {
   if (!project.value) return
   dialogBusy.value = true; dialogError.value = ''; specNotice.value = ''
   try {
-    await api(`/api/projects/${project.value.id}/style`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ style: value }) })
+    const result = await api(`/api/projects/${project.value.id}/style`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ style: value }) })
     project.value = { ...project.value, style: value }
     const item = [...styleList.value.builtin, ...styleList.value.mine].find(s => value.endsWith(':' + s.folder))
     specNotice.value = value === 'none' ? '已改成不选风格：之后只按设计规范来' : `已换成「${t(item?.name || value)}」：之后新做的页面和修改按这套来`
+    // 还没写内容的页面后台已经换成新风格的样子了，预览跟着刷新
+    if (result.swapped) { await refresh(false); specNotice.value += '；还是空的页面已经换成新风格的样子' }
   } catch (e) { dialogError.value = e.message } finally { dialogBusy.value = false }
 }
 

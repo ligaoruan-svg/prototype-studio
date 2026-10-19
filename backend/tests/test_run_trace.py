@@ -96,8 +96,26 @@ class 运行记录(unittest.TestCase):
         finally:
             skill_digest.find_shell = old
         t = self.traces()[-1]
-        self.assertFalse(t['rounds'][1]['calls'][0]['ok'], '刚放好外壳就去翻源码：拦下')
+        self.assertTrue(t['rounds'][1]['calls'][0]['ok'], '搜关键词照常给：以前拦下，并发三个查询就凑满三次拒绝，整次失败')
         self.assertTrue(t['rounds'][2]['calls'][0]['ok'])
+        self.assertTrue(out['changed'])
+
+    def test_外壳刚放好整份读给要点_连着读也不算拒绝(self):
+        from backend import skill_digest
+        shell = (ROOT / 'prompts/styles/数据大屏/assets/页面外壳.html').read_text(encoding='utf-8')
+        old = skill_digest.find_shell
+        skill_digest.find_shell = lambda *a: ('数据大屏', 'assets/页面外壳.html', shell)
+        try:
+            add = ('apply_operations', {'operations': [{'action': 'shell_add', 'nav': "{key:'q',label:'看板',items:[{key:'live',label:'实时'}]}",
+                                                         'pages': "live(){return pageShell('实时','','<p>x</p>')}"}]})
+            reads = [('inspect_page', {}), ('read_source_slice', {'start': 1, 'end': 50}), ('search_source', {'query': 'SVG.plus'}),
+                     ('search_source', {'query': 'ZeroUI.Bars'})]
+            self.script(msg(('start_from_shell', {})), msg(*reads), msg(add))
+            out = self.run_agent()
+        finally:
+            skill_digest.find_shell = old
+        calls = self.traces()[-1]['rounds'][1]['calls']
+        self.assertTrue(all(c['ok'] for c in calls), calls)
         self.assertTrue(out['changed'])
 
 

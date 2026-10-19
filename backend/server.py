@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import storage, config, transactions, components, memory, skills
-from .agent import run_agent
+from .agent import run_agent, is_fresh_shell
 from .atomicio import write_atomic
 from .bridge import build_bridge
 from .safety import host_name, zip_member_ok, to_utf8
@@ -491,11 +491,30 @@ def set_project_style(project_id: str, body: StyleIn):
         style = skills.check_style(body.style)
         with transactions.LOCK:
             storage.set_style(project_id, style)
+            swapped = _swap_blank_pages(project_id, style)
     except FileNotFoundError:
         raise HTTPException(404, "项目不存在")
     except ValueError as exc:
         raise HTTPException(400, str(exc))
-    return {"ok": True, "style": style}
+    return {"ok": True, "style": style, "swapped": swapped}
+
+
+def _swap_blank_pages(project_id: str, style: str) -> int:
+    """换风格时，还没写内容的页面（空外壳、空白骨架）顺手换成新风格的样子：里面没东西可丢，
+    不换的话页面还是旧风格的外壳，AI 却按新风格的规矩写，两头对不上。写过内容的页面一律不动"""
+    meta = storage.load_meta(project_id)
+    blank = _starter_html(meta["name"], "none")
+    fresh = _starter_html(meta["name"], style)
+    count = 0
+    for page in meta["pages"]:
+        if page.get("deleted_at"):
+            continue
+        source = storage.read_page(project_id, page["id"])
+        if source != fresh and (is_fresh_shell(source) or source == blank):
+            storage.write_page(project_id, page["id"], fresh, "换风格：页面还是空的，换成新风格的样子")
+            transactions.invalidate(project_id, page["id"])
+            count += 1
+    return count
 
 
 def _starter_html(name: str, style: str) -> str:

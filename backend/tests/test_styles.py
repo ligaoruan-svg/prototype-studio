@@ -152,6 +152,23 @@ class 每个项目一套风格(unittest.TestCase):
         with self.assertRaises(server.HTTPException):
             server.set_project_style(pid, server.StyleIn(style="mine:没有"))
 
+    def test_换风格时空页面跟着换_写过内容的不动(self):
+        meta = server.new_project(server.NewProjectIn(name="看板", style="builtin:数据大屏"))
+        pid, page = meta["id"], meta["pages"][0]["id"]
+        out = server.set_project_style(pid, server.StyleIn(style="builtin:移动端App"))
+        self.assertEqual(out["swapped"], 1)
+        html = storage.read_page(pid, page)
+        self.assertIn("class=\"tabbar\"", html.split("<script>")[1] + html)   # 手机外壳
+        self.assertIn("移动端App", html)
+        self.assertEqual(server.set_project_style(pid, server.StyleIn(style="none"))["swapped"], 1)
+        self.assertFalse(agent.is_fresh_shell(storage.read_page(pid, page)))   # 空白骨架
+        self.assertEqual(server.set_project_style(pid, server.StyleIn(style="builtin:简洁后台"))["swapped"], 1)
+        filled = patcher.shell_add(storage.read_page(pid, page), nav="{key:'a',label:'甲',items:[{key:'x',label:'页'}]}",
+                                   pages="x(){return pageShell('页','','<p>内容</p>')}")
+        storage.write_page(pid, page, filled, "AI 写了内容")
+        self.assertEqual(server.set_project_style(pid, server.StyleIn(style="builtin:数据大屏"))["swapped"], 0)
+        self.assertEqual(storage.read_page(pid, page), filled)
+
     def test_风格清单(self):
         out = server.list_styles()
         self.assertEqual([i["name"] for i in out["builtin"]], BUILTIN)

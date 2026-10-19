@@ -1051,5 +1051,7 @@ export default {
   "已导入「{0}」": "Imported \"{0}\"",
   "已导入「{0}」。它没有页面外壳，只当规矩用，不能一键起页面": "Imported \"{0}\". It has no page shell, so it's used as rules only.",
   "已换成「{0}」：之后新做的页面和修改按这套来": "Switched to \"{0}\": new pages and edits will follow it",
-  "已改成不选风格：之后只按设计规范来": "Switched to no style: only the design spec applies from now on"
+  "已改成不选风格：之后只按设计规范来": "Switched to no style: only the design spec applies from now on",
+  "已换成「{0}」：之后新做的页面和修改按这套来；还是空的页面已经换成新风格的样子": "Switched to \"{0}\": new pages and edits will follow it; blank pages now use the new style",
+  "已改成不选风格：之后只按设计规范来；还是空的页面已经换成新风格的样子": "Switched to no style: only the design spec applies; blank pages were reset"
 }

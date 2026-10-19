@@ -743,10 +743,14 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
                     raise PatchError(f"现在不能用 {fn}；只能用这些：{'、'.join(sorted(offered))}")
                 if read_only and fn in {'apply_operations', 'report_result', 'update_plan', 'start_from_shell'}:
                     output = {'ok':False,'code':'read_only','error':'当前只讨论设计，不允许修改或汇报已修改。请用 answer_user 回答并给出待确认建议。'}
-                elif fn in SOURCE_READS and shell_fresh is not None and working_source == shell_fresh:
-                    # 实测：外壳放好后模型要翻十来轮源码找位置、看函数怎么写，轮次就这么烧光了。外壳内容它不用读
-                    output = {'ok':False,'code':'shell_fresh','error':("外壳刚放好，里面是什么上一步已经告诉你了（组件函数、样式类、三处位置）。"
-                              "不用读源码：直接一次 apply_operations，用 {action:'shell_add', nav, pages, bind, script} 把这页写完。")}
+                elif fn in SOURCE_READS and fn != "search_source" and shell_fresh is not None and working_source == shell_fresh:
+                    # 实测：外壳放好后模型要翻十来轮源码找位置、看函数怎么写，轮次就这么烧光了。整份读外壳不给，
+                    # 直接把它要找的（组件、样式类、三处位置）给它。不当成「拒绝」：以前回 ok:false，
+                    # 模型一次并发三个查询就凑满三次拒绝，整次修改直接失败。搜关键词照常给（只回命中处，很便宜）
+                    output = {'ok':True,'code':'shell_fresh',
+                              'note':("这页还是空外壳，不用整份读。外壳里现成的东西都在下面；要确认某个名字就用 search_source 搜。"
+                                      "下一步直接一次 apply_operations，用 {action:'shell_add', nav, pages, bind, script} 把这页写完。"),
+                              'api': shell_api(working_source)}
                 elif fn == "inspect_page":
                     from bs4 import BeautifulSoup
                     soup = BeautifulSoup(working_source,"html.parser")
