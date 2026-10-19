@@ -506,7 +506,17 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
     for ann in anns:
         ann['source_lines'] = locate_lines(source, ann)
     if not runtime_feedback:
-        storage.append_chat(project_id, "user", user_message, {"page_id":page_id,"annotation_count":len(saved_annotations),"intent":intent})
+        extra = {"page_id":page_id,"annotation_count":len(saved_annotations),"intent":intent}
+        # 这条消息带的截图和点选的位置也存下来：对话记录里回头还看得到「当时指的是哪」
+        if reference and reference.get('data_url'):
+            image_id = storage.save_chat_image(project_id, reference['data_url'])
+            if image_id:
+                extra.update(image=image_id, image_name=str(reference.get('name') or '')[:60],
+                             image_regions=len(reference.get('regions') or []))
+        if selection:
+            picked = selection.get('targets') or []
+            extra["target"] = (f"{len(picked)} 个元素" if selection.get('kind') == 'region' and picked else element_name(selection))[:60]
+        storage.append_chat(project_id, "user", user_message, extra)
     history = history_context(meta.get('chat',[]), page_id)
     annotation_text = "\n".join(f"意见 {i+1} id={a['id']} name={element_name(a)} note={a.get('note','')!r}" + context_text(a)
                                for i,a in enumerate(saved_annotations)) or "（没有保存的修改意见）"

@@ -1024,5 +1024,8 @@ export default {
   "规范": "Guidelines",
   "这一页": "This page",
   "展开图": "expanded",
-  "导出失败，请重试": "Export failed, please retry"
+  "导出失败，请重试": "Export failed, please retry",
+  "指着：{0}": "Pointing at: {0}",
+  "{0} 个元素": "{0} elements",
+  "图片已经清掉了": "The image has been cleaned up"
 }

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import shutil
 import uuid
+import base64
 import re
 import time
 from datetime import datetime
@@ -136,6 +137,52 @@ def get_page(meta: dict[str, Any], page_id: str) -> dict[str, Any]:
         if page["id"] == page_id and not page.get("deleted_at"):
             return page
     raise KeyError(page_id)
+
+
+# 发消息时带的截图：以前只在发送那一刻显示，存进对话的只有文字，刷新或做完就没了。
+# 现在存成文件跟着这条消息走；对话只留最近 40 条，被挤掉的消息的截图一起清掉
+CHAT_IMAGE_TYPES = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}
+CHAT_IMAGE_MAX = 8 * 1024 * 1024
+
+
+def save_chat_image(project_id: str, data_url: str) -> str:
+    m = re.match(r"data:(image/(?:png|jpeg|webp));base64,(.+)$", str(data_url or ""), re.S)
+    if not m:
+        return ""
+    try:
+        data = base64.b64decode(m.group(2), validate=True)
+    except (ValueError, TypeError):
+        return ""
+    if not data or len(data) > CHAT_IMAGE_MAX:
+        return ""
+    image_id = safe_id("img")
+    folder = project_dir(project_id) / "chat_images"
+    folder.mkdir(parents=True, exist_ok=True)
+    write_atomic(folder / (image_id + CHAT_IMAGE_TYPES[m.group(1)]), data)
+    return image_id
+
+
+def chat_image_path(project_id: str, image_id: str) -> Path | None:
+    if not re.fullmatch(r"img_[a-f0-9]{10}", image_id or ""):
+        raise ValueError("无效的图片编号")
+    for suffix in CHAT_IMAGE_TYPES.values():
+        path = project_dir(project_id) / "chat_images" / (image_id + suffix)
+        if path.exists():
+            return path
+    return None
+
+
+def _prune_chat_images(project_id: str, chat: list[dict[str, Any]]) -> None:
+    folder = project_dir(project_id) / "chat_images"
+    if not folder.is_dir():
+        return
+    keep = {m.get("image") for m in chat if m.get("image")}
+    for path in folder.iterdir():
+        if path.stem not in keep:
+            try:
+                path.unlink()
+            except OSError:
+                pass
 
 
 def shot_path(project_id: str, ann_id: str) -> Path:
@@ -419,6 +466,8 @@ def append_chat(project_id: str, role: str, content: str, extra: dict[str, Any] 
         entry.update(extra)
     meta.setdefault("chat", []).append(entry)
     meta["chat"] = meta["chat"][-40:]
+    if entry.get("image"):
+        _prune_chat_images(project_id, meta["chat"])
     for item in meta["chat"]:   # 旧版本存进来的整份 diff 顺手瘦身
         if isinstance(item.get("diff"), dict) and sum(len(h.get("lines", [])) for h in item["diff"].get("hunks", [])) > CHAT_DIFF_LINES:
             item["diff"] = compact_diff(item["diff"])

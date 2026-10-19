@@ -654,6 +654,14 @@ def add_annotation(project_id: str, page_id: str, body: AnnotationIn):
         raise HTTPException(400, str(exc))
 
 
+@app.get("/api/projects/{project_id}/chat-images/{image_id}")
+def chat_image(project_id: str, image_id: str):
+    path = storage.chat_image_path(project_id, image_id)
+    if not path:
+        raise HTTPException(404, "图片已经清掉了")
+    return FileResponse(path, headers={"Cache-Control": "private, max-age=86400"})
+
+
 @app.get("/api/projects/{project_id}/shots/{ann_id}")
 def annotation_shot(project_id: str, ann_id: str):
     path = storage.shot_path(project_id, ann_id)
