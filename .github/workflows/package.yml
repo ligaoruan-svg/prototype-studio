@@ -63,6 +63,8 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+        with: { sparse-checkout: docs }
       - uses: actions/download-artifact@v4
         with: { path: dist, merge-multiple: true }
       - name: 发布
@@ -79,6 +81,8 @@ jobs:
             esac
           done
           NOTES="下载：macOS 用 PrototypeStudio-$V-macOS.dmg（Apple 芯片，macOS 11 以上）；Windows 用 PrototypeStudio-$V-Windows-Setup.exe 安装，或免安装的 PrototypeStudio-$V-Windows-Portable.zip。第一次打开的说明见 README。"
+          # 这一版改了什么：docs/版本说明/<版本>.md 有就附在后面
+          if [ -f "docs/版本说明/$V.md" ]; then NOTES="$NOTES"$'\n\n'"$(cat "docs/版本说明/$V.md")"; fi
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             # 同一个版本重新打包：换掉旧附件
             # 按附件 id 删：旧附件名是「-6.0.dmg」这种以 - 开头的，当参数传会被当成选项
