@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 from .atomicio import write_atomic
 
 # Single source of truth for the version shown in the API, README and release name.
-VERSION = "6.0"
+VERSION = "6.1"
 # 进程启动时刻。界面上显示出来，就不用再靠猜"到底重启了没有"。
 STARTED_AT = __import__("datetime").datetime.now().strftime("%H:%M:%S")
 # 启动脚本拿它和磁盘上代码的改动时间比，判断正在跑的服务是不是已经过时。
