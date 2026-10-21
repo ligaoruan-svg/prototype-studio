@@ -7,12 +7,22 @@ export function usePreviewBridge(s) {
     runtimeErrors, recentClicks, api, endpoint, error, toast } = s
   // 预览框载入以后没等到原型的 READY：多半被页面脚本带到了别处（表单提交、location.reload 在 srcdoc 里会变成浏览器错误页）。
   // 重新载入一次源码，别让人对着一张「网页无法连接」
-  // READY 在 DOMContentLoaded 就发了，比 iframe 的 load 早：看「上一次 load 以来」有没有收到过
-  let lastReadyAt = 0, lastLoadAt = 0, rescued = 0
+  // 只凭「没等到 READY」判断会误报：页面忙（展开副本、运行检查和预览挤在一起跑）时 READY 来得晚，
+  // 好好的页面也被重载一遍、弹一句「被带走了」。所以先问一声：原型里的桥还在，就说明页面没被带走
+  let lastReadyAt = 0, lastLoadAt = 0, rescued = 0, pingSeq = 0, pongAt = 0
+  const alive = () => new Promise(resolve => {
+    const nonce = ++pingSeq, asked = Date.now()
+    send({ type: 'PA_PING', nonce })
+    setTimeout(() => resolve(pongAt >= asked), 1500)
+  })
+  // 以前看的是「上一次 load 以来有没有 READY」：Chrome 里 READY 常比 load 晚到几毫秒，上一页的 READY 会被算到这一页头上，
+  // 真被带走了也发现不了；Safari / 桌面版里 READY 在 load 之前，一漏就误报。现在只认这次 load 之后的回音
   function previewLoaded() {
-    const since = lastLoadAt; lastLoadAt = Date.now()
-    setTimeout(() => {
-      if (lastReadyAt > since || !previewDoc.value) { rescued = 0; return }
+    const at = lastLoadAt = Date.now()
+    setTimeout(async () => {
+      if (at !== lastLoadAt || !previewDoc.value) return   // 后面又载入了一次，由那一次来判断
+      if (lastReadyAt >= at || await alive()) { rescued = 0; return }
+      if (at !== lastLoadAt) return
       if (rescued++ >= 2) return
       previewDoc.value = s.forceReload(previewDoc.value)
       toast('预览被页面脚本带走了，已重新载入')
@@ -36,9 +46,11 @@ export function usePreviewBridge(s) {
   async function onMessage(event) {
     if (event.source !== previewFrame.value?.contentWindow) return
     const data = event.data || {}
+    // 「页面还在不在」只看是不是预览框里的桥发来的：项目、页面编号对不上（刚切页、源码还没换完）也说明没被带走
+    if (data.source === 'prototype-agent' && data.type === 'READY') lastReadyAt = Date.now()
+    if (data.source === 'prototype-agent' && data.type === 'PONG') { pongAt = Date.now(); return }
     if (data.source !== 'prototype-agent' || data.projectId !== project.value?.id || data.pageId !== pageId.value) return
     if (data.type === 'READY') {
-      lastReadyAt = Date.now()
       send({ type: 'PA_SET_MODE', mode: mode.value })
       send({ type: 'PA_SET_DRAG', enabled: tool.value === 'comment' })
       send({ type: 'PA_RENDER_MARKERS', annotations: s.visiblePins() })

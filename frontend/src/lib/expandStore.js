@@ -300,7 +300,15 @@ async function run({ route, kind, token, priority }) {
         onUpdate: update => { if (!alive() || adopted.get(token) === null) return; progress(update); expand.entries[route] = { ...expand.entries[route], result: update, ...(token ? { hash, prev: entry } : {}) } } })
     } else {
       result = await probePage({ doc, pause, overrides: expand.overrides[route] || {}, width: c.width, routes: expand.routes.map(r => r.hash), height: 800, cancelled: () => !alive(),
-        onUpdate: update => { if (!alive()) return; progress(update); const now = expand.entries[route]; if (!now || now.partial) expand.entries[route] = { hash, result: update, partial: true } } })
+        onUpdate: update => {
+          if (!alive()) return
+          progress(update)
+          const now = expand.entries[route]
+          if (!now || now.partial) expand.entries[route] = { hash, result: update, partial: true }
+          // 改了一版、这页上次没找到弹窗（没有可同步的路径，只能整页重找）：页面卡先换成新样子，别等全部按钮试完。
+          // hash 先留旧的：中途停了或出错，下次还会再同步
+          else if (kind === 'sync' && update.page) expand.entries[route] = { ...now, result: update }
+        } })
     }
     if (!alive()) return
     if (mine() && !result.cancelled) { const j = expand.jobs[route]; learn(kind === 'sync' ? 'sync' : 'probe', Date.now() - j.started - j.paused) }
