@@ -8,7 +8,7 @@ import { discoverRoutes, probePage, syncNodes } from './probe.js'
 const CONCURRENCY = 2
 // 展开结果的格式版本：找法变了（比如开始找子页面）就升一下，旧结果作废重找，免得一直用缺了第二层的老快照
 // 业务页面清单的找法版本：v2 起首页（刚打开时那一页）也算一页；旧清单下次用到时重找一遍
-const ROUTES_V = 3   // 3：菜单改过（AI 加了页面）的旧清单要重新认
+const ROUTES_V = 4   // 3：菜单改过（AI 加了页面）的旧清单要重新认；4：顶部一级 + 左侧二级的外壳，以前只认出一级分组
 let routesV = 0
 const SCHEMA = 's7'  // s7：后台副本以前放在屏幕外，被浏览器限速（每个按钮 3 秒、动画冻住），漏了弹窗，旧结果要重拍
 export const expand = reactive({

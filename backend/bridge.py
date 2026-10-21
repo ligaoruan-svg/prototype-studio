@@ -694,6 +694,12 @@ _TEMPLATE = r'''
   // 原型里有哪些页面：导航里指向 #路由 的链接。折叠起来的分组里的链接也算（不要求看得见）
   function routesOf(){
     const seen=new Set(),out=[];
+    // 风格外壳：菜单配置（NAV）里就有全部页面。「顶部一级 + 左侧二级」的布局只画出当前分组的二级菜单，
+    // 光看页面上的链接，别的分组下面的页面全漏了（展开里只剩几个一级分组，自检也只点了这几页）
+    // （这里的 navItems 是桥自己的函数，取不到外壳的同名函数，所以直接读 NAV：分组里套页面，也认扁平写法）
+    try{if(typeof NAV!=='undefined'&&Array.isArray(NAV))for(const g of NAV.flat()){for(const i of (g&&Array.isArray(g.items)?g.items:[g])){
+      if(!i||typeof i.key!=='string'||!i.key)continue;const h='#'+i.key;if(seen.has(h))continue;
+      seen.add(h);out.push({hash:h,title:String(i.label||i.key).replace(/\s+/g,' ').trim().slice(0,30)});if(out.length>=60)return out;}}}catch{}
     for(const a of document.querySelectorAll('a[href^="#"]')){
       const h=a.getAttribute('href')||'';if(h.length<2||seen.has(h))continue;
       if(!inSkipZone(a)&&!inChrome(a))continue;
