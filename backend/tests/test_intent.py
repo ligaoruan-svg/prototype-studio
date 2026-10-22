@@ -71,6 +71,13 @@ class Routing(unittest.TestCase):
         self.assertEqual(resolve_intent('这个设计怎么样', 'edit'), 'edit')
         self.assertEqual(resolve_intent('把按钮改成蓝色', 'discuss'), 'discuss')
 
+    def test_接上_绑定_补上这类说法算修改(self):
+        # 实测：「给四个列表页的操作列都接上真实交互」被当成讨论，跑了一圈只给建议、没改文件
+        for text in ['给四个列表页的操作列都接上真实交互', '给按钮绑定事件', '补全分页', '加上导出功能', '实现一下删除']:
+            with self.subTest(text=text):
+                self.assertEqual(resolve_intent(text), 'edit')
+        self.assertEqual(resolve_intent('这个怎么实现？'), 'discuss')
+
     def test_空输入不炸(self):
         self.assertEqual(resolve_intent(''), 'discuss')
         self.assertEqual(resolve_intent('   '), 'discuss')
