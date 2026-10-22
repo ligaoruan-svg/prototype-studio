@@ -23,6 +23,7 @@ import { useAgentRun } from './composables/useAgentRun.js'
 import { useDialogs } from './composables/useDialogs.js'
 import { useImages } from './composables/useImages.js'
 import { useExport } from './composables/useExport.js'
+import { useSideResize } from './composables/useSideResize.js'
 
 // ---------- 共享状态 ----------
 const projects = ref([]), project = ref(null), pageId = ref('')
@@ -288,6 +289,7 @@ Object.assign(s, useAgentRun(s))
 Object.assign(s, useDialogs(s))
 Object.assign(s, useImages(s))
 Object.assign(s, useExport(s))
+const { sideWidth, dragging: resizingSide, startResize, resetWidth, nudge: nudgeSide } = useSideResize()
 // 模板里直接用到的
 const { presenting, exitShown, peekExit, hideExitSoon, stopPresent, drawing, drawNote, drawBusy, drawInput, drawClear, drawSend, drawSave,
   openFromBoard, pickFromBoard, previewLoaded, onMessage, requestExport, openDialog } = s
@@ -313,7 +315,7 @@ provide('studio', s)
     <button v-if="presenting" class="present-exit" :class="{ shown: exitShown }" @click="stopPresent" @mouseenter="peekExit" @mouseleave="hideExitSoon"><X :size="14" />{{ $t('退出演示') }} <kbd>Esc</kbd></button>
     <AppHeader />
 
-    <main class="workspace" :class="{ 'side-closed': !leftOpen && !rightOpen }">
+    <main class="workspace" :class="{ 'side-closed': !leftOpen && !rightOpen }" :style="sideWidth ? { '--left-width': sideWidth + 'px' } : null">
       <div v-if="(leftOpen || rightOpen)" class="mobile-scrim" @click="leftOpen = false; rightOpen = false"></div>
       <ConversationPanel />
 
@@ -330,6 +332,8 @@ provide('studio', s)
       </section>
 
       <InspectorPanel />
+      <div v-if="leftOpen || rightOpen" class="side-resizer" :class="{ dragging: resizingSide }" role="separator" aria-orientation="vertical" tabindex="0"
+        :aria-label="$t('拖动调整左栏宽度')" :title="$t('拖动调整宽度，双击恢复默认')" @pointerdown="startResize" @dblclick="resetWidth" @keydown="nudgeSide"></div>
     </main>
 
     <StudioDialog />

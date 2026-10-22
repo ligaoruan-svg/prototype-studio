@@ -52,6 +52,13 @@ textarea { resize: vertical; line-height: 1.65; }
 .workspace.side-closed { grid-template-columns: 0 minmax(0,1fr); }
 .workspace > .conversation-panel, .workspace > .inspector { grid-column: 1; grid-row: 1; }
 .workspace > .canvas-panel { grid-column: 2; grid-row: 1; }
+/* 左栏和画布之间的分隔线：拖动调宽度，双击回默认 */
+.side-resizer { grid-column: 1; grid-row: 1; justify-self: end; position: relative; z-index: 6; width: 10px; margin-right: -5px; cursor: col-resize; touch-action: none; }
+.side-resizer::after { content: ''; position: absolute; top: 0; bottom: 0; left: 4px; width: 2px; background: transparent; transition: background .15s; }
+.side-resizer:hover::after, .side-resizer.dragging::after, .side-resizer:focus-visible::after { background: var(--primary); }
+.side-resizer:focus-visible { outline: none; }
+body.resizing-side { cursor: col-resize; user-select: none; }
+body.resizing-side iframe { pointer-events: none; }
 .conversation-panel, .inspector { min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--shell); overflow: hidden; }
 .conversation-panel { border-right: 1px solid var(--line); }
 .inspector { border-right: 1px solid var(--line); }
@@ -254,6 +261,7 @@ input[type=color]::-webkit-color-swatch { border: none; border-radius: 2px; }
   .canvas { padding-left: 14px; padding-right: 14px; }
 }
 @media (max-width: 960px) {
+  .side-resizer { display: none; }
   .workspace, .workspace.left-closed, .workspace.right-closed, .workspace.left-closed.right-closed { display: block; position: relative; }
   .canvas-panel { height: 100%; }
   .conversation-panel, .inspector { position: absolute; top: 0; bottom: 0; width: min(330px, calc(100vw - 42px)); z-index: 20; box-shadow: 0 12px 35px #39231820; }
