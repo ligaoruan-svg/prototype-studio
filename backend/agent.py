@@ -30,6 +30,9 @@ SYSTEM_PROMPT_PATH = PROMPTS / "agent-system.md"
 SHELL_MAX_EXISTING = 8000   # 页面比这还大就算「已有内容」，不许整页换成外壳
 IDLE_LIMIT = 4       # 连续这么多轮只读不改，就催它下手或收工
 WRAPUP_AFTER = 6     # 催过还在读：只留「提问 / 汇报」两个工具，让它把找到的线索交出来，而不是报错收场
+# 「轮次上限」是兜底，不是硬杠：快到上限时最近几轮还在推进（改了页面、做完一步、检查的问题变少），就再多给几轮
+EXTEND_ROUNDS = 6
+MAX_EXTENSIONS = 2
 WRAPUP_TOOLS = {"ask_user", "report_result"}
 WRAPUP_PROMPT = ("别再读源码了，根据已经读到的内容收个尾，三选一：\n"
                  "1. 大致知道问题在哪、还差用户一句话 → ask_user：问题里先用一句话说你查到了什么，"
@@ -47,6 +50,7 @@ SOURCE_READS = {"inspect_page", "search_source", "read_source_slice", "read_regi
 # 页面不超过这么多字，就把整份源码放进第一条消息：之后每轮都命中缓存（约一折），省掉一轮轮读源码。
 # 实测：一页 23 轮里 16–18 轮在读，一轮只搜一个名字
 FULL_SOURCE_MAX = 60_000
+FULL_SOURCE_SHARE = 0.5   # 上下文预算的一半以内都整份给：预算按模型能力填，模型装得下多少就给多少（默认 20 万字 → 10 万字）
 # 语法错误被退回时，这次的改动先暂存：下一次只改出错的那一小段，不用把几千字重写一遍（实测一次退回后又读了九轮源码）
 DRAFT_NOTE = ("\n这次的改动整体已经暂存（还没写进页面），只差上面这一处语法错误。不用整段重写，也不用再读源码："
               "下一次 apply_operations 只放一条 replace_source_text，把出错处前后的一小段改对"
@@ -167,7 +171,7 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
         source_map = code_map(src)
         if source_map:
             out += "\n代码地图（行号: 定义，只有名字没有正文；括号里的字数说明这一行很长，多半一整行就是一个函数）：\n" + source_map
-        if len(src) <= FULL_SOURCE_MAX:
+        if len(src) <= max(FULL_SOURCE_MAX, int(context_budget * FULL_SOURCE_SHARE)):
             out += ("\n当前页面的完整源码（这是此刻的样子；之后你改过的地方以你写的为准，改完返回的 where 会告诉你落在哪几行）。"
                     "已经在这里了，不用再 search_source / read_source_slice 去读：\n<<<页面源码\n" + src + "\n页面源码>>>")
         elif prefetch_ok:
@@ -240,7 +244,16 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
     # 模型可以一直撞同一堵墙直到轮次烧光。
     rejects: dict[tuple[str, str], int] = {}
     stopped = should_stop or (lambda: False)
-    for round_no in range(max_rounds):
+    limit, extensions = max_rounds, 0
+    recent: list[bool] = []          # 每一轮有没有推进
+    last_problems = None             # 上一次真跑页面发现了几个问题：变少了也算推进
+    round_no = -1
+    while True:
+        round_no += 1
+        if round_no >= limit:
+            incomplete = ("iterations", "已达到本次处理轮次上限")
+            break
+        step_done_now = check_better_now = False
         # 用户点了停止：在两轮之间停下。已经改好的部分照常走检查和保存，可以一键撤销
         if stopped():
             incomplete = ("stopped", "你停止了这次处理")
@@ -413,6 +426,9 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
                         output = live("click" if args.get("click") else "load", {"routes": routes})
                         if output.get("ok"):
                             verified_version = source_version
+                            problems = len(output.get("new_errors") or []) + len(output.get("issues") or []) + len(output.get("blank_pages") or [])
+                            check_better_now = last_problems is None or problems < last_problems
+                            last_problems = problems
                     else:
                         selectors = [x.strip()[:200] for x in (args.get("selectors") or []) if isinstance(x, str) and x.strip()][:8]
                         if not selectors:
@@ -573,7 +589,7 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
                         rest[0]["status"] = "active"
                     summary = str(args.get("summary") or "").strip()[:500]
                     step_notes.append((plan[n - 1]["title"], summary))
-                    stepped = True
+                    stepped = step_done_now = True
                     emit({"type": "plan", "steps": plan})
                     size = sum(len(json.dumps(m, ensure_ascii=False)) for m in messages)
                     reset_pending = bool(rest) and draft is None and size > context_budget * STEP_RESET_SHARE
@@ -647,48 +663,53 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
             messages[:] = [messages[0], {"role": "user", "content": resume}]
             read_seen.clear()
             emit({"type": "step_done", "detail": nxt["title"] if nxt else "", "id": f"reset{round_no}", "label": "这一步做完了，收拾一下对话再做下一步"})
-        if not read_only and changed and wrapup_round is None and round_no >= max_rounds - 3:
+        # 这一轮有没有推进：改了页面、做完计划里的一步、真跑页面发现的问题变少了
+        progress = source_version != version_at_round or step_done_now or check_better_now
+        recent.append(progress)
+        if not read_only and round_no == limit - 4 and extensions < MAX_EXTENSIONS and any(recent[-3:]):
+            # 快到上限了，可最近几轮一直在推进：不打断它，再多给几轮（兜底总共多 12 轮）
+            extensions += 1
+            limit += EXTEND_ROUNDS
+            emit({"type": "step_done", "detail": f"轮次上限放宽到 {limit} 轮", "id": f"extend{extensions}", "label": "还在推进，多给几轮"})
+        if not read_only and changed and wrapup_round is None and round_no >= limit - 3:
             wrapup_round = round_no + 1   # 已经改好了，最后两轮只许汇报，别让它读到轮次耗尽、给用户一句「已达到上限」
             messages.append({"role":"user","content":"轮次快用完了：现在用 report_result 汇报这次改了什么、还有什么没来得及做。"})
-        if not read_only and round_no == max_rounds - 4:
+        if not read_only and round_no == limit - 4:
             messages.append({"role":"user","content":
                 "提醒：这次处理只剩 3 轮了。把还没写的部分合并成一次 apply_operations 写完，然后马上用 report_result 汇报；"
                 "来不及做的写进汇报里，不要再读源码或规范。"})
-        # 空转守卫：这一轮只读不改也不汇报，就累计一次。
-        # 读来读去不下手是最常见的烧额度方式——它自己感觉不到已经转了几圈，
-        # 到了阈值就明确要求它二选一：动手，或者说清没什么要改的。
-        if changed:
-            idle_rounds = 0
-        elif any(c.get("function",{}).get("name") in READ_ONLY_TOOLS for c in calls):
+        # 空转守卫：看这一轮有没有推进，不看「以前改没改过」——以前改过一处以后，读多少轮都不算空转，
+        # 改不动的补丁反复失败也不算。现在：只读、失败、原地打转都算一轮没推进
+        if progress:
+            idle_rounds, nudged = 0, 0
+        else:
             idle_rounds += 1
-        if wrapup_edit and changed:
+        if wrapup_edit and progress:
             # 「读太久」的收尾里它动手改成了：回到正常处理，让它接着改完、汇报
             wrapup_round, wrapup_edit, idle_rounds = None, False, 0
         if wrapup_round is not None and round_no >= wrapup_round:
             # 收尾轮也没给出提问或结论（参数不对之类）：这时才算真的卡住
             incomplete = (("iterations", "轮次快用完了，没来得及整理汇报") if changed else
-                          ("stalled", f"连续 {idle_rounds} 轮都在读源码、没有做出任何改动，已经停下"))
+                          ("stalled", f"连续 {idle_rounds} 轮没有进展、没有做出任何改动，已经停下"))
             break
-        if idle_rounds >= WRAPUP_AFTER and wrapup_round is None and not changed:
-            # 催过还在读，说明它自己出不来了：不再让它读，逼它把线索交出来——问用户或者说明情况，
+        if idle_rounds >= WRAPUP_AFTER and wrapup_round is None:
+            # 催过还在原地打转，说明它自己出不来了：不再让它读，逼它收尾——改完能改的、问用户、或者说明情况。
             # 用户看到的是「我查到了这些，你指的是哪个？」，而不是一张「已停下」的报错卡
             wrapup_round = round_no + 1
             wrapup_edit = not read_only
-            emit({"type":"step_done","id":"wrapup-" + str(round_no),"label":"定位不太顺，先整理查到的线索","detail":"不再翻源码，把查到的位置交给你确认"})
-            messages.append({"role":"user","content":WRAPUP_EDIT_PROMPT if not read_only else
+            emit({"type":"step_done","id":"wrapup-" + str(round_no),"label":"好几轮没有进展，先收个尾","detail":"不再翻源码，把能改的改完、查到的交给你确认"})
+            messages.append({"role":"user","content":(("你已经改好的部分会保留。" if changed else "") + WRAPUP_EDIT_PROMPT) if not read_only else
                 "别再读源码了。根据已经读到的内容直接用文字回答用户：说你看到了什么、结论是什么；"
                 "拿不准对方指的是哪一处，就用 ask_user 列出 2–3 个可能的位置让他选。"})
-        elif idle_rounds >= IDLE_LIMIT and not nudged and not changed:
+        elif idle_rounds >= IDLE_LIMIT and not nudged:
             nudged = 1
             messages.append({"role":"user","content":
-                f"提醒：已经连续 {IDLE_LIMIT} 轮只在读源码，一处都还没改。"
-                "现在只能三选一——要么基于已经读到的内容立刻改一处；"
-                "要么确认页面上本来就没有需要改的地方、用 report_result 把这个事实说清楚；"
+                f"提醒：已经连续 {IDLE_LIMIT} 轮没有进展（只在读、或者修改一直没成功）。"
+                "现在只能三选一——要么基于已经读到的内容立刻改一处（改不上就换个更短、更准的原文片段）；"
+                "要么确认已经没有需要改的地方、用 report_result 把这个事实说清楚；"
                 "要么定位不准时用 ask_user 列出你怀疑的 2–3 个位置让用户选。"
                 "不要再读同一片代码。若这类改动要落在很多处，用一条 CSS 规则或一段脚本统一处理，"
                 "不要一处一处改。"})
-    else:
-        incomplete = ("iterations","已达到本次处理轮次上限")
     if incomplete and not changed:
         raise WorkError(incomplete[0], incomplete[1] + "，当前文件未改动")
     if incomplete and not report:

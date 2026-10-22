@@ -151,7 +151,7 @@ class 循环里(unittest.TestCase):
         self.assertNotIn("预先在源码里找到的片段", kickoff, "整份都给了，不用再预取")
 
     def test_大页面带代码地图和预取片段(self):
-        big = PAGE.replace("<div id=\"app\"></div>", "<div id=\"app\"></div>" + "\n".join(f"<p>填充 {i} " + "y" * 200 + "</p>" for i in range(400)))
+        big = PAGE.replace("<div id=\"app\"></div>", "<div id=\"app\"></div>" + "\n".join(f"<p>填充 {i} " + "y" * 200 + "</p>" for i in range(900)))
         (storage.project_dir(self.pid) / 'source' / 'index.html').write_text(big, encoding='utf-8')
         self.script([call('report_result', {'summary': '看过了', 'annotations': []})])
         agent.run_agent(self.pid, self.page, '订单管理报错：paginate is not defined', 'k', 'm', intent='edit', stream=False)
