@@ -28,6 +28,8 @@ def step_detail(name: str, args: dict, output) -> str:
     if output.get("ok") is False:
         return str(output.get("error") or "这一步没通过")[:300]
 
+    if name == "finish_step":
+        return ("接着做「" + str(output.get("next")) + "」") if output.get("next") else "计划都做完了"
     if name == "check_page":
         if output.get("code") == "unavailable":
             return "这次没法真跑（界面没连上或超时）"
@@ -81,7 +83,7 @@ def tool_label(name, args):
         'apply_operations': f'应用 {len(args.get("operations", []))} 处修改', 'verify_page': '检查修改结果',
         'report_result': '整理修改结果', 'ask_user': '确认你的想法', 'answer_user': '整理分析和建议',
         'update_plan': '整理修改计划',
-        'check_page': '把每页按钮点一遍' if args.get('click') else '把页面真跑一遍', 'measure_page': '量一下元素的位置和大小', 'read_component': '取用现成组件', 'read_skill': '查阅 skill', 'read_skill_file': '查规范细则', 'search_skill_file': '找现成组件', 'start_from_shell': '从规范的页面外壳起步', 'remember': '记住这条约定', 'forget': '忘掉那条约定', 'search_chats': f'查以前的对话「{str(args.get("query", ""))[:16]}」',
+        'check_page': '把每页按钮点一遍' if args.get('click') else '把页面真跑一遍', 'finish_step': f'第 {args.get("step")} 步做完了', 'measure_page': '量一下元素的位置和大小', 'read_component': '取用现成组件', 'read_skill': '查阅 skill', 'read_skill_file': '查规范细则', 'search_skill_file': '找现成组件', 'start_from_shell': '从规范的页面外壳起步', 'remember': '记住这条约定', 'forget': '忘掉那条约定', 'search_chats': f'查以前的对话「{str(args.get("query", ""))[:16]}」',
     }.get(name, '处理修改')
 
 

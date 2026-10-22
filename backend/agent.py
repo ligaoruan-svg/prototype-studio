@@ -55,6 +55,10 @@ READ_ONLY_TOOLS = {"inspect_page", "search_source", "read_source_slice", "read_r
                    "read_component", "read_skill", "read_skill_file", "search_skill_file", "check_page", "measure_page"}
 # 在循环里真跑页面（check_page / measure_page）：模型自己最多跑这么多次；改过页面却没验证就汇报时，程序替它跑，最多这么多次
 PAGE_CHECK_LIMIT = 4
+# 输出被截断：先自动放宽「单次输出」再试（最多翻两倍两次、不超过这个数），不行再让它拆小
+OUTPUT_RAISE_CAP = 65_536
+# 计划里做完一步（finish_step）：对话已经超过上下文预算的这么多，就把过程收拾掉、带着现在的页面重开下一步
+STEP_RESET_SHARE = 0.4
 AUTO_CHECK_LIMIT = 2
 
 
@@ -107,7 +111,7 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
     shell_fresh = None   # 刚放进来、还没写内容的外壳：这时候不让翻源码
     intent = resolve_intent(user_message, intent)
     read_only = intent == 'discuss'
-    tools = [spec for spec in TOOL_SPECS if not (read_only and spec['function']['name'] in {'apply_operations', 'report_result', 'update_plan', 'start_from_shell'})]
+    tools = [spec for spec in TOOL_SPECS if not (read_only and spec['function']['name'] in {'apply_operations', 'report_result', 'update_plan', 'start_from_shell', 'finish_step'})]
     emit({'type':'intent','intent':intent,'label':'正在分析设计，不会修改文件' if read_only else '正在理解修改需求'})
     meta = storage.load_meta(project_id)
     if not skill_digest.find_shell(meta):   # 这个项目的风格没有外壳（或者选了「不选风格」），就别让它看见这个工具
@@ -158,17 +162,21 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
     # 代码地图和预取片段：实测一页 23 轮里 16 轮只在读——搜一个名字、看到行号、再搜下一个，每轮重发全部上下文。
     # 程序先把「什么在第几行」和用户点名的那几处原文给它，第一轮就能直接读那一小段或者动手
     fresh_shell = is_fresh_shell(working_source)
-    source_map = code_map(working_source)
-    if source_map:
-        background += "\n代码地图（行号: 定义，只有名字没有正文；括号里的字数说明这一行很长，多半一整行就是一个函数）：\n" + source_map
-    if len(working_source) <= FULL_SOURCE_MAX:
-        background += ("\n当前页面的完整源码（这次运行开始时的样子；之后你改过的地方以你写的为准，改完返回的 where 会告诉你落在哪几行）。"
-                       "已经在这里了，不用再 search_source / read_source_slice 去读：\n<<<页面源码\n" + working_source + "\n页面源码>>>")
-    elif not fresh_shell:
-        found = prefetch(working_source, [user_message, runtime_feedback, scene_text(scene)],
-                         [h["line"] for a in anns for h in (a.get("source_lines") or [])])
-        if found:
-            background += "\n" + found
+    def source_block(src: str, prefetch_ok: bool = True) -> str:
+        out = ""
+        source_map = code_map(src)
+        if source_map:
+            out += "\n代码地图（行号: 定义，只有名字没有正文；括号里的字数说明这一行很长，多半一整行就是一个函数）：\n" + source_map
+        if len(src) <= FULL_SOURCE_MAX:
+            out += ("\n当前页面的完整源码（这是此刻的样子；之后你改过的地方以你写的为准，改完返回的 where 会告诉你落在哪几行）。"
+                    "已经在这里了，不用再 search_source / read_source_slice 去读：\n<<<页面源码\n" + src + "\n页面源码>>>")
+        elif prefetch_ok:
+            found = prefetch(src, [user_message, runtime_feedback, scene_text(scene)],
+                             [h["line"] for a in anns for h in (a.get("source_lines") or [])])
+            if found:
+                out += "\n" + found
+        return out
+    background += source_block(working_source, prefetch_ok=not fresh_shell)
     if not read_only and fresh_shell:
         # 按风格新建的项目，第一页就是这套风格的空外壳：不用再 start_from_shell，也不用翻源码找位置
         shell_fresh = working_source
@@ -202,6 +210,9 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
     tool_log, all_operations = [], []
     usage = {"prompt_tokens":0,"completion_tokens":0,"total_tokens":0,"cached_tokens":0}
     failures = argument_failures = truncations = 0
+    round_max, raises = max_tokens, 0   # 这一轮的单次输出上限：截断时自动放宽
+    step_notes: list[tuple[str, str]] = []   # finish_step 记下的「这一步做了什么」，重开下一步时带上
+    stepped = reset_pending = False   # 模型用 finish_step 自己报进度后，就不再按「改了一次」自动推计划
     incomplete = None
     read_regions, report, question, discussion = set(), None, None, None
     changed, final_text = repairing, ""
@@ -248,7 +259,7 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
             wrapping = wrapup_round is not None and round_no >= wrapup_round
             allowed = WRAPUP_TOOLS | ({"apply_operations"} if wrapup_edit else set())
             round_tools = [t for t in tools if t["function"]["name"] in allowed] if wrapping else tools
-            resp = chat(api_key, model, messages, round_tools, base_url=base_url, max_tokens=max_tokens, on_delta=on_delta,
+            resp = chat(api_key, model, messages, round_tools, base_url=base_url, max_tokens=round_max, on_delta=on_delta,
                         on_retry=lambda n, wait, exc: emit({"type":"model_retry","round":round_no+1,"attempt":n,
                                                             "label":f"模型服务忙，{wait} 秒后自动重试（第 {n} 次）"}),
                         should_stop=stopped)
@@ -256,6 +267,11 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
             if exc.code == 'stopped':
                 incomplete = ("stopped", "你停止了这次处理")
                 break
+            if round_max > max_tokens and ("HTTP 400" in str(exc) or "max_tokens" in str(exc).lower()):
+                # 放宽的上限这个模型服务不认：退回原来的上限，改成让它拆小（下一次截断走拆小）
+                round_max, raises = max_tokens, 99
+                messages.append({"role": "user", "content": "上一次输出太长被截断了。请把改动拆小：这一轮只写计划里的下一步，或者一次 apply_operations 只改一个位置。"})
+                continue
             # 模型中途出错（重试也没救回来）：前面已经改好、通过校验的部分不能白丢，照常交给检查和保存
             if changed:
                 incomplete = (exc.code or 'network', f"模型服务中途出错（{str(exc)[:120]}）")
@@ -278,6 +294,12 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
         if choices[0].get("finish_reason") in {"length","max_tokens"}:
             # 截断的内容一律丢弃（绝不应用半截修改），但可以指导模型拆小后继续，
             # 而不是让一次超长直接毁掉整轮工作。
+            if raises < 2 and round_max < OUTPUT_RAISE_CAP:
+                # 截断多半是一次要写的太多（加上思考也算在输出里）：先自动放宽上限，同样的对话再来一次，不打扰它的思路
+                raises += 1
+                round_max = min(OUTPUT_RAISE_CAP, round_max * 2)
+                emit({"type": "step_done", "detail": "", "id": f"raise{raises}", "label": f"这一步写得长，单次输出自动放宽到 {round_max} 再来一次"})
+                continue
             truncations += 1
             if truncations > 2:
                 if changed:   # 前面已经改好、通过检查的部分留着，交给检查和保存
@@ -288,7 +310,8 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
                   "error":{"message":f"输出超长，已丢弃（第 {truncations} 次），换成分次修改"}})
             messages.append({"role":"user","content":
                 "上一次输出超过长度上限，已被丢弃，页面没有改动。请把这次改动拆小后重来："
-                "一次 apply_operations 只改一个位置；插入现成组件用 insert_component 只写组件名，不要抄写原文。"})
+                "有计划就这一轮只写计划里的下一步、做完调 finish_step；没有计划就一次 apply_operations 只改一个位置；"
+                "插入现成组件用 insert_component 只写组件名，不要抄写原文。"})
             continue
         msg = choices[0].get("message") or {}
         assistant = {"role":"assistant","content":msg.get("content") or ""}
@@ -371,7 +394,7 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
                 if fn not in offered:
                     # 这一步没给它这个工具（只讨论模式没有修改工具、收尾轮只能提问或汇报），它照抄了也不能执行
                     raise PatchError(f"现在不能用 {fn}；只能用这些：{'、'.join(sorted(offered))}")
-                if read_only and fn in {'apply_operations', 'report_result', 'update_plan', 'start_from_shell'}:
+                if read_only and fn in {'apply_operations', 'report_result', 'update_plan', 'start_from_shell', 'finish_step'}:
                     output = {'ok':False,'code':'read_only','error':'当前只讨论设计，不允许修改或汇报已修改。请用 answer_user 回答并给出待确认建议。'}
                 elif fn in SOURCE_READS and fn != "search_source" and shell_fresh is not None and working_source == shell_fresh:
                     # 实测：外壳放好后模型要翻十来轮源码找位置、看函数怎么写，轮次就这么烧光了。整份读外壳不给，
@@ -484,8 +507,8 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
                     todo = [p for p in plan if p["status"] != "done"]
                     output = {"ok":True,"logs":logs,"verified":True,
                               "note":("已通过结构和脚本检查，不用再调 verify_page，也不用再搜一遍核对——改到哪几行见 where。"
-                                      + (f"计划还剩 {len(todo) - 1} 步：已经想好怎么写的，合并进下一次 apply_operations 一起写，少一轮就少重发一遍上下文。"
-                                         if len(todo) > 1 else "全部改完就直接 report_result。")),
+                                      + ("这一步做完了就调 finish_step（写清做了什么、定义了哪些名字），再做下一步。" if todo
+                                         else "全部改完就直接 report_result。")),
                               "where": view}
                     if abs(view["shift"]) >= 20:
                         # 加了一大段（新页面、新函数），后面的行号全变了：给一份新的代码地图，接着改不用先搜位置
@@ -535,7 +558,28 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
                         raise PatchError("每个步骤都要有标题")
                     brief = str(args.get("brief") or "").strip()[:800]
                     emit({"type":"plan","steps":plan, **({"brief": brief} if brief else {})})
-                    output = {"ok":True,"steps":plan,"note":"计划记下了。之后不用再调 update_plan 更新状态，程序会按你的修改自动推进；直接动手写。"}
+                    output = {"ok":True,"steps":plan,"note":("计划记下了，不用再调 update_plan。一步一步做：每做完一步（改好了、需要的话真跑过）"
+                                                            "调 finish_step 说清这一步做了什么、定义了哪些名字；程序会帮你把对话收拾干净再做下一步。全部做完 report_result。")}
+                elif fn=="finish_step":
+                    if not plan:
+                        raise PatchError("还没有列计划：一两处的改动不用 finish_step，改完直接 report_result")
+                    n = _num(args.get("step"), 0)
+                    if not 1 <= n <= len(plan):
+                        raise PatchError(f"step 要写计划里的第几步（1 到 {len(plan)}）")
+                    for p in plan[:n]:
+                        p["status"] = "done"
+                    rest = [p for p in plan if p["status"] != "done"]
+                    if rest:
+                        rest[0]["status"] = "active"
+                    summary = str(args.get("summary") or "").strip()[:500]
+                    step_notes.append((plan[n - 1]["title"], summary))
+                    stepped = True
+                    emit({"type": "plan", "steps": plan})
+                    size = sum(len(json.dumps(m, ensure_ascii=False)) for m in messages)
+                    reset_pending = bool(rest) and draft is None and size > context_budget * STEP_RESET_SHARE
+                    output = {"ok": True, "next": rest[0]["title"] if rest else None,
+                              "note": (f"接着做「{rest[0]['title']}」" + ("（程序会先把前面的过程收起来，带着现在的页面重开）" if reset_pending else ""))
+                                      if rest else "计划都做完了：真跑过就 report_result"}
                 elif fn=="ask_user":
                     options = args.get("options",[])
                     if changed: raise PatchError("已修改后不能再提问，请先汇报修改结果")
@@ -582,12 +626,27 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
             if incomplete: break
             if report or question or discussion: break
         if report or question or discussion or incomplete: break
-        if plan and source_version != version_at_round:
+        if plan and not stepped and source_version != version_at_round:
             todo = [p for p in plan if p["status"] != "done"]
             if todo:
                 todo[0]["status"] = "done"
                 if len(todo) > 1: todo[1]["status"] = "active"
                 emit({"type":"plan","steps":plan})
+        if reset_pending and draft is None:
+            # 计划里的一步做完了，对话也长了：把读过的、试过的过程收掉，带着「现在的页面 + 计划 + 每一步做了什么」重开下一步。
+            # 像人干活一样：做完一块，桌面收拾干净再做下一块。页面就是事实，前面写的都已经在里面了
+            reset_pending = False
+            nxt = next((p for p in plan if p["status"] != "done"), None)
+            plan_text = "\n".join(f"{i + 1}. {'✓ ' if p['status'] == 'done' else '→ ' if p is nxt else ''}{p['title']}" for i, p in enumerate(plan))
+            done_text = "\n".join(f"- 「{t}」：{s or '（没写说明）'}" for t, s in step_notes)
+            resume = ("（接着做同一个任务。为了让对话干净，前面读源码、试错的过程已经收起；页面里已经包含你前面写的全部内容。）\n"
+                      f"计划：\n{plan_text}\n\n已经做完的步骤：\n{done_text}\n"
+                      f"保存的修改意见：\n{annotation_text}\n" + source_block(working_source, prefetch_ok=False)
+                      + f"\n\n———\n用户这轮说的是：\n{user_message}\n\n"
+                      + f"现在做「{nxt['title'] if nxt else '收尾'}」。做完调 finish_step；全部做完、真跑过就 report_result。")
+            messages[:] = [messages[0], {"role": "user", "content": resume}]
+            read_seen.clear()
+            emit({"type": "step_done", "detail": nxt["title"] if nxt else "", "id": f"reset{round_no}", "label": "这一步做完了，收拾一下对话再做下一步"})
         if not read_only and changed and wrapup_round is None and round_no >= max_rounds - 3:
             wrapup_round = round_no + 1   # 已经改好了，最后两轮只许汇报，别让它读到轮次耗尽、给用户一句「已达到上限」
             messages.append({"role":"user","content":"轮次快用完了：现在用 report_result 汇报这次改了什么、还有什么没来得及做。"})

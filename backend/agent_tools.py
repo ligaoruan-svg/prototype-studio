@@ -85,6 +85,23 @@ TOOL_SPECS = [
     {
         "type": "function",
         "function": {
+            "name": "finish_step",
+            "description": ("计划里的一步做完了（改好了，需要的话用 check_page 真跑过）就调它：写清这一步做了什么、"
+                            "新定义了哪些名字（函数、数据、页面 key、样式类），后面的步骤要照着用。"
+                            "程序会更新计划进度；对话太长时会把前面的过程收起来，带着现在的页面接着做下一步。"),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "step": {"type": "integer", "description": "做完的是计划里的第几步（从 1 开始）"},
+                    "summary": {"type": "string", "description": "一两句话：做了什么、定义了哪些名字"},
+                },
+                "required": ["step", "summary"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "check_page",
             "description": ("把你改到现在的页面（还没保存）在浏览器里真跑一遍，告诉你结果：打开有没有报错、哪页是空白的；"
                             "click=true 时再把每个菜单页的按钮点一遍，报出点了报错、没反应、弹窗关不掉的。"
