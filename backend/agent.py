@@ -12,7 +12,7 @@ from .patcher import apply_operations, verify_source, PatchError, regions, outli
 from . import storage
 from .transactions import stage
 from .errors import WorkError, error_payload
-from .experience import element_name, tool_label, compact_messages, changed_targets, result_report, scope_report, step_detail
+from .experience import element_name, tool_label, compact_once, changed_targets, result_report, scope_report, step_detail
 from .conversation import resolve_intent, discussion_result, history_context
 from . import components, memory, skills, skill_digest
 # 工具清单、读源码、拼背景拆在旁边三个文件里；下面这些名字在这里也能用（测试和别的模块按 agent.xxx 取）
@@ -28,7 +28,6 @@ from .paths import PROMPTS, SPEC_FILE
 SYSTEM_PROMPT_PATH = PROMPTS / "agent-system.md"
 
 SHELL_MAX_EXISTING = 8000   # 页面比这还大就算「已有内容」，不许整页换成外壳
-STALE_ROUNDS = 2            # 规范、组件库、读过的源码，用过这么多轮后收成一句话（不等攒满上下文预算）
 IDLE_LIMIT = 4       # 连续这么多轮只读不改，就催它下手或收工
 WRAPUP_AFTER = 6     # 催过还在读：只留「提问 / 汇报」两个工具，让它把找到的线索交出来，而不是报错收场
 WRAPUP_TOOLS = {"ask_user", "report_result"}
@@ -44,11 +43,10 @@ WRAPUP_EDIT_PROMPT = ("别再读源码了，根据已经读到的内容收尾：
                       "0. 已经知道怎么改 → 现在就用一次 apply_operations 把能改的几处合并改掉（replace_source_text 等是 operations 里的 action，不是单独的工具），改完 report_result；\n"
                       + WRAPUP_PROMPT.split("\n", 1)[1])
 REJECT_LIMIT = 3     # 同一个工具被同一个理由拒绝这么多次，就收手
-# 读的是页面源码：改之前都还要用（补丁要照着原文写），只有页面改过、读到的已经不是现在的样子了才收起。
-# 规范、组件库这些读完就是参考，过两轮就收——生成一页烧几十万 tokens 主要是它们
 SOURCE_READS = {"inspect_page", "search_source", "read_source_slice", "read_region"}
-SOURCE_VIEWS = SOURCE_READS | {"apply_operations"}   # 改完返回的落点和代码地图：页面再变就过时，和读到的源码一样收
-SOURCE_KEEP_ROUNDS = 8   # 源码读取最多留这么多轮，再久就算没改也收起（防止一直攒）
+# 页面不超过这么多字，就把整份源码放进第一条消息：之后每轮都命中缓存（约一折），省掉一轮轮读源码。
+# 实测：一页 23 轮里 16–18 轮在读，一轮只搜一个名字
+FULL_SOURCE_MAX = 60_000
 # 语法错误被退回时，这次的改动先暂存：下一次只改出错的那一小段，不用把几千字重写一遍（实测一次退回后又读了九轮源码）
 DRAFT_NOTE = ("\n这次的改动整体已经暂存（还没写进页面），只差上面这一处语法错误。不用整段重写，也不用再读源码："
               "下一次 apply_operations 只放一条 replace_source_text，把出错处前后的一小段改对"
@@ -160,7 +158,10 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
     source_map = code_map(working_source)
     if source_map:
         background += "\n代码地图（行号: 定义，只有名字没有正文；括号里的字数说明这一行很长，多半一整行就是一个函数）：\n" + source_map
-    if not fresh_shell:
+    if len(working_source) <= FULL_SOURCE_MAX:
+        background += ("\n当前页面的完整源码（这次运行开始时的样子；之后你改过的地方以你写的为准，改完返回的 where 会告诉你落在哪几行）。"
+                       "已经在这里了，不用再 search_source / read_source_slice 去读：\n<<<页面源码\n" + working_source + "\n页面源码>>>")
+    elif not fresh_shell:
         found = prefetch(working_source, [user_message, runtime_feedback, scene_text(scene)],
                          [h["line"] for a in anns for h in (a.get("source_lines") or [])])
         if found:
@@ -208,8 +209,6 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
     baseline = verify_source(source)
     wrapup_round = None   # 从第几轮起进入收尾（只能提问或汇报）
     wrapup_edit = False   # 是不是「读太久」的收尾：这种收尾还能直接改，改成了就回到正常处理
-    reads = []            # (消息下标, 工具名, 第几轮, 读取指纹)：读规范、组件库、源码的结果，用过两轮就收起来
-    writes = []           # (助手消息下标, 第几轮)：带大段修改参数的那条，用过两轮也收起来
     source_version = 0    # 页面源码改过几次：读到的源码是不是已经过时，看它
     remembered = []       # 这一轮新记住的约定：结果卡片上要让用户看见，记错了能当场撤销
     budget = read_budget(context_budget)
@@ -224,28 +223,10 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
         if stopped():
             incomplete = ("stopped", "你停止了这次处理")
             break
-        # 用过的大段读取结果（规范、组件库、源码片段）过两轮就收成一句话：不等攒满上下文预算才收，
-        # 否则它们会跟着后面每一步重发——一页生成 50 多万输入 tokens 大半是这么来的
-        for at, name, when, fingerprint, seen_version in reads:
-            content = messages[at].get("content")
-            age = round_no - when
-            stale = (age >= SOURCE_KEEP_ROUNDS or (age >= STALE_ROUNDS and seen_version != source_version)) if name in SOURCE_VIEWS else age >= STALE_ROUNDS
-            if stale and isinstance(content, str) and len(content) > 1500 and '"collapsed": true' not in content:
-                # 说清收起的是哪一段（读的参数），它真要再看才知道读哪；只放开这一段的「读过了」拦截，别的照拦
-                messages[at]["content"] = json.dumps({"collapsed": True, "tool": name, "args": json.loads(fingerprint[1]),
-                    "summary": "这次修改已经应用；当时给的行号和代码地图已经过时，已收起。" if name == "apply_operations"
-                               else "这段读取结果前面用过了，已收起；还需要原文就按行号再读那一小段。"}, ensure_ascii=False)
-                read_seen.discard(fingerprint)
-        # 已经应用的大段修改：参数原文（整页 HTML、几百行新代码）留在助手消息里会跟着每一步重发，改完过两轮收成一句话
-        for at, when in writes:
-            for c in messages[at].get("tool_calls") or []:
-                fnc = c.get("function") or {}
-                if round_no - when >= STALE_ROUNDS and len(fnc.get("arguments") or "") > 1500:
-                    fnc["arguments"] = json.dumps({"collapsed": True, "note": "这次修改已经应用到页面上，参数原文省略；要看现在的样子就读源码"}, ensure_ascii=False)
-        size_before = sum(len(str(m.get("content") or "")) for m in messages)
-        compact_messages(messages, context_budget)
-        if sum(len(str(m.get("content") or "")) for m in messages) < size_before:
-            read_seen.clear()   # 旧的读取结果被折叠掉了，摘要会让它重读，不能再拦
+        # 对话只往后加，不每轮收：读过的、自己写过的一直留着（以前两轮就收，写完前一半要读回十几轮，还每轮打断缓存）。
+        # 快到「上下文预算」时才一次性收掉较早的读取结果，收到六成，之后又能连着好几轮只往后加
+        if compact_once(messages, context_budget):
+            read_seen.clear()   # 旧的读取结果收起了，它可能要重读，不能再拦
         emit({"type":"model_wait","round":round_no+1,"label":"思考你的问题" if read_only else "理解需求中" if round_no==0 else "继续处理修改"})
         # 本轮的结论文字在工具参数里，边收边推给界面；只在有事件通道时才走流式。
         # note = 模型在动手之前说的话（它为什么要查这个）；result = 最终结论。
@@ -305,8 +286,6 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
         calls = msg.get("tool_calls") or []
         if calls: assistant["tool_calls"] = calls
         messages.append(assistant)
-        if any(len(((c.get("function") or {}).get("arguments") or "")) > 1500 for c in calls):
-            writes.append((len(messages) - 1, round_no))
         if not calls:
             final_text = str(msg.get("content") or "")
             if read_only:
@@ -544,8 +523,6 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
                 raise WorkError("internal","工具内部异常，详情已写入本地服务日志") from exc
             tool_log.append({"tool":fn,"args":args,"output":output})
             messages.append({"role":"tool","tool_call_id":call.get("id"),"content":json.dumps(output,ensure_ascii=False)})
-            if fn in READ_ONLY_TOOLS or (fn == "apply_operations" and output.get("ok")):
-                reads.append((len(messages) - 1, fn, round_no, fingerprint if fn in READ_ONLY_TOOLS else (fn, "{}"), source_version))
             failed = output.get("ok") is False
             if failed and fn == "apply_operations": apply_failed = True
             try:

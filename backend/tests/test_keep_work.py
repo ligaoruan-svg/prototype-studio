@@ -96,29 +96,43 @@ class 不丢修改(unittest.TestCase):
         self.assertEqual(self.staged, [])
 
 
-class 上下文不重复带大段(不丢修改):
-    def test_改完两轮后大段修改参数收起(self):
+class 自己写的代码一直记得(不丢修改):
+    def test_改完好几轮后修改参数还在(self):
+        # 以前两轮就收起：写完前一半，要一段段读回来才能接着写后一半
         big = ('apply_operations', {'operations': [{'action': 'set_html', 'selector': '#box', 'value': '<p>' + '新内容' * 1500 + '</p>'}]})
         reads = [msg(('read_source_slice', {'start': i, 'end': i + 2})) for i in (1, 3, 5)]
         self.script(msg(big), *reads)
         self.run_agent('把盒子内容换掉')
         last = self.sent[-1]
         args = [c['function']['arguments'] for m in last if m.get('role') == 'assistant' for c in m.get('tool_calls') or []]
-        self.assertLess(len(args[0]), 300, '已经应用的整段 HTML 不再跟着每步重发')
+        self.assertGreater(len(args[0]), 4000, '自己写的代码一直留在对话里')
 
 
-class 源码读取改之前不收(不丢修改):
+class 源码读取不每轮收(不丢修改):
     PAGE = '<html><head><title>t</title></head><body>' + ''.join(f'<p id="p{i}">第 {i} 行 ' + 'x' * 120 + '</p>\n' for i in range(60)) + '<h1 id="t">旧标题</h1></body></html>'
 
-    def test_还没动手时读到的源码一直留着_改过以后才收(self):
+    def test_读到的源码一直留着_快满了才收(self):
         reads = [msg(('read_source_slice', {'start': 1, 'end': 40}))] + [msg(('search_chats', {'query': f'词{i}'})) for i in range(4)]
         self.script(*reads, msg(EDIT), msg(('search_chats', {'query': 'a'})), msg(('search_chats', {'query': 'b'})), msg(('search_chats', {'query': 'c'})))
         self.run_agent()
         def slice_msg(sent):
             tools = [m for m in sent if m.get('role') == 'tool']
             return tools[0]['content'] if tools else ''
-        self.assertNotIn('"collapsed": true', slice_msg(self.sent[5]), '读了源码、还在琢磨怎么改：原文要留着')
-        self.assertIn('"collapsed": true', slice_msg(self.sent[-1]), '页面改过了，旧的源码读取过时，收起')
+        self.assertNotIn('context_compacted', slice_msg(self.sent[5]), '读了源码、还在琢磨怎么改：原文要留着')
+        self.assertNotIn('context_compacted', slice_msg(self.sent[-1]), '没到上下文预算就不收：对话只往后加，缓存才命中得了')
+
+    def test_超过预算一次收到六成(self):
+        from backend.experience import compact_once
+        msgs = [{'role': 'system', 'content': 's' * 100}]
+        for i in range(20):
+            msgs.append({'role': 'assistant', 'content': '', 'tool_calls': [{'function': {'name': 'read_source_slice', 'arguments': '{}'}}]})
+            msgs.append({'role': 'tool', 'content': json.dumps({'content': 'x' * 5000})})
+        size = lambda: sum(len(m.get('content') or '') + sum(len(c['function']['arguments']) for c in m.get('tool_calls') or []) for m in msgs)
+        self.assertFalse(compact_once(msgs, 200_000), '没到预算不动')
+        self.assertTrue(compact_once(msgs, 80_000))
+        self.assertLessEqual(size(), 80_000 * 0.6 + 6000)
+        self.assertIn('x' * 100, msgs[-1]['content'], '最近几条不动')
+        self.assertFalse(compact_once(msgs, 80_000), '收完以后好几轮都不用再收')
 
 
 class 页面原来就有的问题不拦(不丢修改):

@@ -78,13 +78,14 @@ class 生成省钱(unittest.TestCase):
         self.assertFalse(out['changed'])
         self.assertFalse(out['tool_log'][0]['output']['ok'])
 
-    def test_读过的大段过两轮就收起(self):
+    def test_对话只往后加_前缀不变(self):
+        # 不再每轮收起读过的规范：前面的内容不变，模型服务的缓存才命中得了（快满时才一次收）
         steps = [call('read_skill_file', {'name': SKILL, 'path': 'references/零碳园区_UI规范.md', 'start': 808, 'end': 1000}, 1)]
         steps += [call('search_source', {'query': f'第{i}个'}, i + 2) for i in range(3)]
         steps += [call('report_result', {'summary': '看完了', 'annotations': []}, 9)]
         self.script(steps)
         agent.run_agent(self.pid, self.page, '看看表格规范', 'k', 'm', intent='edit', stream=False)
-        self.assertLess(self.sizes[-1], self.sizes[1], "规范那一节读完两轮后收起，后面每步不再带着它")
+        self.assertGreaterEqual(self.sizes[-1], self.sizes[1])
 
 
 if __name__ == "__main__":

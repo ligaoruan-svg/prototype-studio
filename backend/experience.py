@@ -76,6 +76,45 @@ def tool_label(name, args):
     }.get(name, '处理修改')
 
 
+def _size(m):
+    content = m.get('content')
+    text = content if isinstance(content, str) else ''.join(x.get('text', '') for x in content or [] if isinstance(x, dict))
+    return len(text) + sum(len((c.get('function') or {}).get('arguments') or '') for c in m.get('tool_calls') or [])
+
+
+def compact_once(messages, budget, target=0.6, keep_last=6):
+    """快到预算才收，而且一次收够：先收较早的工具结果（读到的源码、规范、搜索结果），收到预算的六成就停；
+    还不够才收较早的大段修改参数（自己写过的代码，已经应用到页面上了）。最近几条一律不动。
+    以前每轮都收一点：模型刚写完的代码两轮后就看不见，只好一段段读回来；每轮改动前面的内容，缓存也命中不了"""
+    total = sum(_size(m) for m in messages)
+    if total <= budget:
+        return False
+    goal = int(budget * target)
+    old = messages[1:max(1, len(messages) - keep_last)]   # 第一条是系统提示，不动
+    for m in old:
+        if total <= goal: break
+        content = m.get('content')
+        if m.get('role') != 'tool' or not isinstance(content, str) or len(content) < 600 or 'context_compacted' in content: continue
+        try:
+            obj = json.loads(content)
+            brief = {'context_compacted': True, 'ok': obj.get('ok', True), 'summary': '较早的结果已收起（对话太长了）；还需要原文就按行号重读那一小段。'}
+            if isinstance(obj, dict) and obj.get('error'): brief['error'] = str(obj['error'])[:200]
+        except (ValueError, AttributeError):
+            brief = {'context_compacted': True, 'summary': '较早的结果已收起（对话太长了），需要时重读。'}
+        m['content'] = json.dumps(brief, ensure_ascii=False)
+        total -= len(content) - len(m['content'])
+    for m in old:
+        if total <= goal: break
+        for c in m.get('tool_calls') or []:
+            fn = c.get('function') or {}
+            args = fn.get('arguments') or ''
+            if len(args) > 1500 and 'context_compacted' not in args:
+                fn['arguments'] = json.dumps({'context_compacted': True, 'note': '这次修改已经应用到页面上（对话太长，参数原文收起了）；要看现在的样子就读源码'}, ensure_ascii=False)
+                total -= len(args) - len(fn['arguments'])
+    compact_messages(messages, budget)   # 单条就超预算的极端情况：照旧截成片段
+    return True
+
+
 def compact_messages(messages, budget=60000):
     def size(content):
         if isinstance(content, str): return len(content)
