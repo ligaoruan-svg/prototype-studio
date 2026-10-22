@@ -39,6 +39,7 @@ export function useAgentRun(s) {
       const response = await fetch('/api/projects/' + project.value.id + '/agent/stream', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ page_id: pageId.value, message, selection: target, runtime_feedback: runtimeFeedback, reference: sentRef, scene: previewScene(), intent, include_annotations: options.includeAnnotations !== false, repair_pending: options.repairPending || '', lang: locale.value }) })
       const result = await consumeAgentStream(response, event => {
         if (event.type === 'started' && event.run_id) current.runId = event.run_id
+        if (event.type === 'page_check') s.runPageCheck(event)   // AI 要真跑一下页面：不等它跑完，接着收别的事件
         // 模型服务忙：后台自动等几秒重试，这里只记一笔，让人知道不是卡住了
         if (event.type === 'model_retry') current.steps.push({ id: `retry-${event.round}-${event.attempt}`, label: event.label, state: 'done' })
         if (event.type === 'intent') { current.intent = event.intent; current.options.intent = event.intent; status.value = event.intent === 'discuss' ? '讨论中 · 不会修改文件' : '正在读页面' }

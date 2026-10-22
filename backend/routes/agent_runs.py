@@ -8,15 +8,16 @@ import re
 import threading
 import uuid
 
-from fastapi import APIRouter, Header, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Body, Header, HTTPException
+from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-from .. import config, transactions
+from .. import config, page_check, storage, transactions
 from ..agent import run_agent
 from ..errors import WorkError, error_payload
 from ..patcher import PatchError
 from .memory import synthesize_later
+from .pages import preview_html
 
 router = APIRouter()
 
@@ -98,7 +99,7 @@ def agent_stream(project_id: str, body: AgentIn):
                                settings.get('max_rounds', 24),
                                on_event=events.put, intent=body.intent, include_annotations=body.include_annotations, scene=body.scene,
                                stream=settings.get('stream', True), should_stop=stop.is_set,
-                               start_source=(draft or {}).get('after'), lang=body.lang)
+                               start_source=(draft or {}).get('after'), lang=body.lang, live_checks=True)
             events.put({'type':'complete','result':result})
             synthesize_later(project_id)
         except Exception as exc:
@@ -130,3 +131,18 @@ def agent_stream(project_id: str, body: AgentIn):
             if not finished:
                 stop.set()
     return StreamingResponse(generate(), media_type='text/event-stream', headers={'Cache-Control':'no-cache','X-Accel-Buffering':'no'})
+
+
+# AI 改到一半要真跑一下页面：界面来取这份还没保存的页面（和预览一样注入桥），跑完把结果交回来
+@router.get('/api/page-checks/{rid}/preview', response_class=HTMLResponse)
+def page_check_preview(rid: str):
+    item = page_check.get(rid)
+    if not item:
+        raise HTTPException(404, '这次检查已经结束了')
+    meta = storage.load_meta(item['project_id'])
+    return preview_html(item['project_id'], item['page_id'], storage.get_page(meta, item['page_id']), item['html'])
+
+
+@router.post('/api/page-checks/{rid}')
+def page_check_result(rid: str, body: dict = Body(...)):
+    return {'ok': page_check.deliver(rid, body)}

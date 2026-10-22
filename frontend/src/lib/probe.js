@@ -278,3 +278,41 @@ export function selfTestRequest(issues) {
   return '【自检】程序把每个菜单页的按钮都点了一遍，发现下面这些问题。逐条修掉，只改有问题的地方，别动其他内容：\n'
     + issues.map((it, i) => `${i + 1}. ${it.text}`).join('\n')
 }
+
+// AI 改到一半要真跑一下（后台托界面跑，见 backend/page_check.py）：
+// load = 打开首页和每个菜单页，收报错；click = 自检那样把每页按钮点一遍；measure = 量元素的位置和大小
+export async function pageCheck({ kind, args = {}, makeDoc, width = 1200, height = 800 }) {
+  try {
+    if (kind === 'measure') {
+      const frame = probeFrame(makeDoc(args.route || ''), width, height)
+      try {
+        await frame.load(); await wait(300)
+        const reply = await frame.rpc('PA_MEASURE', { selectors: args.selectors || [] }, 8_000)
+        if (reply.timeout) return { error: '页面没有响应' }
+        return { route: reply.route, viewport: reply.viewport, page_overflow_x: reply.page_overflow_x, items: reply.items || [] }
+      } finally { frame.dispose() }
+    }
+    if (kind === 'click') {
+      const report = await selfTest({ makeDoc, width, height })
+      return { issues: report.issues, clicked: report.clicked, routes: report.routes, skipped: report.skipped || '', pages: [] }
+    }
+    let routes = (args.routes || []).map(r => ({ hash: r, title: r }))
+    const pages = []
+    if (!routes.length) {
+      const main = probeFrame(makeDoc(''), width, height)
+      try {
+        await main.load(); await wait(300)
+        pages.push({ route: '', title: '首页', errors: [...main.errors] })
+        const reply = await main.rpc('PA_PROBE_ROUTES', {}, 6_000)
+        routes = (reply.routes || []).filter(r => r.hash).slice(0, 8)
+      } finally { main.dispose() }
+    }
+    for (const r of routes.slice(0, 8)) {
+      const frame = probeFrame(makeDoc(r.hash), width, height)
+      try { await frame.load(); await wait(300); pages.push({ route: r.hash, title: r.title || r.hash, errors: [...frame.errors] }) }
+      catch (e) { pages.push({ route: r.hash, title: r.title || r.hash, errors: ['这一页打不开：' + (e?.message || e)] }) }
+      finally { frame.dispose() }
+    }
+    return { pages }
+  } catch (e) { return { error: String(e?.message || e) } }
+}

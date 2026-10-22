@@ -85,6 +85,39 @@ TOOL_SPECS = [
     {
         "type": "function",
         "function": {
+            "name": "check_page",
+            "description": ("把你改到现在的页面（还没保存）在浏览器里真跑一遍，告诉你结果：打开有没有报错、哪页是空白的；"
+                            "click=true 时再把每个菜单页的按钮点一遍，报出点了报错、没反应、弹窗关不掉的。"
+                            "做完一页、改了交互或脚本后用它确认，别靠读代码猜。没给 routes 就把首页和菜单里的每一页都打开一次。"
+                            "每次运行最多用 4 次；汇报前程序也会自动替你跑一遍。"),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "routes": {"type": "array", "items": {"type": "string"}, "description": "只看这几页，写路由（如 #orders），最多 4 个"},
+                    "click": {"type": "boolean", "description": "要不要把按钮点一遍（慢一些，几十秒）"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "measure_page",
+            "description": ("量一下页面上元素的实际位置和大小（像素）：左右边、宽高、文字对齐方式、有没有被截断或超出。"
+                            "对齐、等宽、间距、溢出这类问题用它拿数字判断，不要靠读 CSS 猜。同一个选择器命中多个时会给前几个，并算出左边/右边/宽度是否一致。"),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "route": {"type": "string", "description": "在哪一页量，写路由（如 #bill）；不写就是首页"},
+                    "selectors": {"type": "array", "items": {"type": "string"}, "description": "CSS 选择器，最多 8 个"},
+                },
+                "required": ["selectors"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "verify_page",
             "description": "校验当前 HTML 结构和指定元素/文本是否存在。",
             "parameters": {

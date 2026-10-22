@@ -842,6 +842,23 @@ _TEMPLATE = r'''
   window.addEventListener('message',e=>{
     if(e.source!==parent)return;const m=e.data||{};
     if(m.type==='PA_PING'){send('PONG',{nonce:m.nonce});return;}
+    // AI 要「量一下」：每个选择器命中的元素在哪、多大、文字怎么对齐、有没有被截断；多个时算出左右边、中线、宽高差了多少像素
+    if(m.type==='PA_MEASURE'){
+      const items=[];
+      for(const sel of (m.selectors||[]).slice(0,8)){
+        let els=[];try{els=[...document.querySelectorAll(sel)].filter(el=>!el.closest('[data-pa-overlay]'));}catch{items.push({selector:sel,error:'选择器写错了'});continue;}
+        const shown=els.filter(el=>{const r=el.getBoundingClientRect();return r.width>0||r.height>0;});
+        const box=el=>{const r=el.getBoundingClientRect(),c=getComputedStyle(el);return {text:(el.innerText||el.value||'').trim().replace(/\s+/g,' ').slice(0,24),
+          left:Math.round(r.left),top:Math.round(r.top),width:Math.round(r.width),height:Math.round(r.height),right:Math.round(r.right),
+          textAlign:c.textAlign,display:c.display,cut:el.scrollWidth>el.clientWidth+1||el.scrollHeight>el.clientHeight+1};};
+        const spread=f=>{const v=shown.map(f);return Math.round(Math.max(...v)-Math.min(...v));};
+        items.push({selector:sel,count:els.length,visible:shown.length,first:shown.slice(0,6).map(box),
+          differ:shown.length>1?{left:spread(el=>el.getBoundingClientRect().left),right:spread(el=>el.getBoundingClientRect().right),
+            center:spread(el=>{const r=el.getBoundingClientRect();return r.left+r.width/2;}),width:spread(el=>el.getBoundingClientRect().width),
+            height:spread(el=>el.getBoundingClientRect().height)}:null});
+      }
+      send('PROBE_REPLY',{id:m.id,route:location.hash,viewport:{width:innerWidth,height:innerHeight},page_overflow_x:document.documentElement.scrollWidth>innerWidth+1,items});return;
+    }
     if(m.type==='PA_ROUTE'){if(typeof m.hash==='string'){if(m.hash.startsWith('nav:'))navTo(m.hash);else if(location.hash!==m.hash)location.hash=m.hash;}return;}
     if(m.type==='PA_PROBE_ROUTES'){send('PROBE_REPLY',{id:m.id,routes:routesOf(),current:location.hash,currentTitle:activeNav()||pageTitle()});return;}
     if(m.type==='PA_PROBE_NAV'){const home=location.hash,homeTitle=activeNav()||pageTitle();discoverNav().then(routes=>send('PROBE_REPLY',{id:m.id,routes,current:home,currentTitle:homeTitle}),()=>send('PROBE_REPLY',{id:m.id,routes:[]}));return;}

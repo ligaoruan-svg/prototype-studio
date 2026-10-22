@@ -28,6 +28,14 @@ def step_detail(name: str, args: dict, output) -> str:
     if output.get("ok") is False:
         return str(output.get("error") or "这一步没通过")[:300]
 
+    if name == "check_page":
+        if output.get("code") == "unavailable":
+            return "这次没法真跑（界面没连上或超时）"
+        bad = len(output.get("new_errors") or []) + len(output.get("issues") or []) + len(output.get("blank_pages") or [])
+        clicked = f"、点了 {output.get('clicked')} 个按钮" if "clicked" in output else ""
+        return f"打开了 {output.get('pages_opened', 0)} 页{clicked}：" + (f"发现 {bad} 个问题" if bad else "都正常")
+    if name == "measure_page":
+        return f"量了 {len(output.get('items') or [])} 组元素" + ("，页面横向超出了" if output.get("page_overflow_x") else "")
     if name == "search_source" or name == "search_skill_file":
         query = str(args.get("query", ""))
         hits = output.get("hits")
@@ -72,7 +80,8 @@ def tool_label(name, args):
         'read_source_slice': '读取相关代码', 'read_region': f'读取{REGION_NAMES.get(args.get("name"), "选定区域")}',
         'apply_operations': f'应用 {len(args.get("operations", []))} 处修改', 'verify_page': '检查修改结果',
         'report_result': '整理修改结果', 'ask_user': '确认你的想法', 'answer_user': '整理分析和建议',
-        'update_plan': '整理修改计划', 'read_component': '取用现成组件', 'read_skill': '查阅 skill', 'read_skill_file': '查规范细则', 'search_skill_file': '找现成组件', 'start_from_shell': '从规范的页面外壳起步', 'remember': '记住这条约定', 'forget': '忘掉那条约定', 'search_chats': f'查以前的对话「{str(args.get("query", ""))[:16]}」',
+        'update_plan': '整理修改计划',
+        'check_page': '把每页按钮点一遍' if args.get('click') else '把页面真跑一遍', 'measure_page': '量一下元素的位置和大小', 'read_component': '取用现成组件', 'read_skill': '查阅 skill', 'read_skill_file': '查规范细则', 'search_skill_file': '找现成组件', 'start_from_shell': '从规范的页面外壳起步', 'remember': '记住这条约定', 'forget': '忘掉那条约定', 'search_chats': f'查以前的对话「{str(args.get("query", ""))[:16]}」',
     }.get(name, '处理修改')
 
 

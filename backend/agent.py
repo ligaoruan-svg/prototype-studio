@@ -14,7 +14,7 @@ from .transactions import stage
 from .errors import WorkError, error_payload
 from .experience import element_name, tool_label, compact_once, changed_targets, result_report, scope_report, step_detail
 from .conversation import resolve_intent, discussion_result, history_context
-from . import components, memory, skills, skill_digest
+from . import components, memory, page_check, skills, skill_digest
 # 工具清单、读源码、拼背景拆在旁边三个文件里；下面这些名字在这里也能用（测试和别的模块按 agent.xxx 取）
 from .agent_tools import TOOL_SPECS, OPERATION_ACTIONS
 from .agent_source import READ_CAP, read_budget, inspect_output, expand_components, locate_lines, lines_text, _num, _slice_lines, _search_source  # noqa: F401
@@ -52,7 +52,10 @@ DRAFT_NOTE = ("\n这次的改动整体已经暂存（还没写进页面），只
               "下一次 apply_operations 只放一条 replace_source_text，把出错处前后的一小段改对"
               "（old 照抄上面「出错处前后的原文」里的一段，去掉 ⟪这里⟫ 标记），程序会在暂存版上改，改对了整体一起写进页面。")
 READ_ONLY_TOOLS = {"inspect_page", "search_source", "read_source_slice", "read_region", "search_chats",
-                   "read_component", "read_skill", "read_skill_file", "search_skill_file"}
+                   "read_component", "read_skill", "read_skill_file", "search_skill_file", "check_page", "measure_page"}
+# 在循环里真跑页面（check_page / measure_page）：模型自己最多跑这么多次；改过页面却没验证就汇报时，程序替它跑，最多这么多次
+PAGE_CHECK_LIMIT = 4
+AUTO_CHECK_LIMIT = 2
 
 
 def run_agent(project_id: str, page_id: str, user_message: str, *args, **kwargs) -> dict[str, Any]:
@@ -97,7 +100,7 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
               max_tokens: int = 32000, context_budget: int = 200_000, max_rounds: int = 24,
               on_event=None, intent: str = 'auto', include_annotations: bool = True,
               stream: bool = True, should_stop=None, scene: dict | None = None, trace: list | None = None,
-              start_source: str | None = None, lang: str = 'zh') -> dict[str, Any]:
+              start_source: str | None = None, lang: str = 'zh', live_checks: bool = False) -> dict[str, Any]:
     emit = on_event or (lambda event: None)
     trace = [] if trace is None else trace
     plan: list[dict] = []   # 当前计划：程序按每轮的修改自动往前推，不用模型一轮轮调 update_plan
@@ -212,6 +215,14 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
     source_version = 0    # 页面源码改过几次：读到的源码是不是已经过时，看它
     remembered = []       # 这一轮新记住的约定：结果卡片上要让用户看见，记错了能当场撤销
     budget = read_budget(context_budget)
+    # 真跑页面：后台托界面在看不见的副本里跑（page_check.py）。没有界面（一次性接口、测试）就如实说没法跑
+    page_checks = auto_checks = 0
+    verified_version = None   # 哪个版本的页面已经真跑过：改过以后要再跑
+    # live_checks：只有流式接口（界面开着、会来取页面跑）才打开；一次性接口和测试里没人回话，别干等
+    def live(kind: str, check_args: dict) -> dict:
+        if not (live_checks and on_event):
+            return page_check.summarize(kind, None)
+        return page_check.summarize(kind, page_check.request(on_event, project_id, page_id, working_source, kind, check_args, should_stop=stopped))
     draft = None          # (暂存的页面, 那次的操作)：改动只因语法错误被退回时先存着，下一次只修出错处
     # 同一个工具被同一个理由连续拒绝多少次。failures 只管补丁失败，
     # 别的拒绝（只讨论模式下调修改工具、区域太大、参数越界）原来一次都不计，
@@ -370,6 +381,20 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
                               'note':("这页还是空外壳，不用整份读。外壳里现成的东西都在下面；要确认某个名字就用 search_source 搜。"
                                       "下一步直接一次 apply_operations，用 {action:'shell_add', nav, pages, bind, script} 把这页写完。"),
                               'api': shell_api(working_source)}
+                elif fn in ("check_page", "measure_page"):
+                    if page_checks >= PAGE_CHECK_LIMIT:
+                        raise PatchError(f"这次已经真跑过 {PAGE_CHECK_LIMIT} 次页面了：按已有结果修完就汇报，还剩的问题在汇报里说清")
+                    page_checks += 1
+                    if fn == "check_page":
+                        routes = [r.strip()[:60] for r in (args.get("routes") or []) if isinstance(r, str) and r.strip()][:4]
+                        output = live("click" if args.get("click") else "load", {"routes": routes})
+                        if output.get("ok"):
+                            verified_version = source_version
+                    else:
+                        selectors = [x.strip()[:200] for x in (args.get("selectors") or []) if isinstance(x, str) and x.strip()][:8]
+                        if not selectors:
+                            raise PatchError("selectors 至少给一个 CSS 选择器")
+                        output = live("measure", {"route": str(args.get("route") or "")[:60], "selectors": selectors})
                 elif fn == "inspect_page":
                     output = inspect_output(working_source, page, anns)
                 elif fn in LOOKUP_TOOLS:
@@ -477,6 +502,18 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
                     if apply_failed:
                         raise PatchError("这条消息里前面的修改没有成功，不能按「已改好」汇报。先重试那处修改；"
                                          "确实改不了，就在下一步的 report_result 里如实说没改成、为什么")
+                    if changed and live_checks and on_event and not read_only and verified_version != source_version and auto_checks < AUTO_CHECK_LIMIT:
+                        # 改过页面、还没真跑过就汇报：程序先替它跑一遍（打开首页和每个菜单页），有新报错就退回去修，不交半成品
+                        auto_checks += 1
+                        emit({"type": "step_start", "id": f"autocheck{auto_checks}", "label": "汇报前先把页面真跑一遍", "tool": "check_page"})
+                        checked = live("load", {"routes": []})
+                        verified_version = source_version
+                        problems = {k: checked[k] for k in ("new_errors", "blank_pages") if checked.get(k)}
+                        detail = step_detail("check_page", {}, checked)
+                        emit({"type": "step_done", "detail": detail, "id": f"autocheck{auto_checks}", "label": "汇报前先把页面真跑一遍", "tool": "check_page"})
+                        if problems:
+                            raise PatchError("汇报前程序替你把页面真跑了一遍，发现下面的问题，先修好再汇报（修完可以用 check_page 确认）："
+                                             + json.dumps(problems, ensure_ascii=False)[:1500])
                     report = result_report(args,saved_annotations,changed)
                     output = {"ok":True,"report":report}
                 elif fn=='answer_user':
