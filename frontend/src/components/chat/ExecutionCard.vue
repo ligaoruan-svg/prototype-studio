@@ -46,7 +46,7 @@ const heading = computed(() => {
 .step-head svg{color:#bcaea8;flex-shrink:0;transition:transform .15s}
 .step-head svg.open{transform:rotate(180deg)}
 .execution-card li.foldable:hover .step-head{color:var(--ink)}.execution-card li.error{color:#a24b37}.execution-card li.running{color:var(--primary)}
-.execution-card li.note{color:var(--ink);padding-left:1px;line-height:1.75;margin:3px 0}.plan-list{list-style:none;margin:10px 0 0;padding:9px 10px;border:1px solid var(--line);border-radius:9px;display:flex;flex-direction:column;gap:6px}
+.execution-card li>div{min-width:0;flex:1}.execution-card li.note{color:var(--ink);padding-left:1px;line-height:1.75;margin:3px 0}.plan-list{list-style:none;margin:10px 0 0;padding:9px 10px;border:1px solid var(--line);border-radius:9px;display:flex;flex-direction:column;gap:6px}
 .plan-brief{margin-top:10px;padding:8px 10px;border-radius:9px;background:var(--quiet);font-size:11.5px;line-height:1.7;color:#5f5a52}.plan-brief b{display:block;font-size:11px;color:var(--ink);margin-bottom:2px}.plan-brief p{margin:0;white-space:pre-wrap}
 .plan-list li{display:flex;align-items:center;gap:7px;color:var(--muted)}
 .plan-list li>i{width:12px;height:12px;border:1.5px solid var(--line);border-radius:50%;flex-shrink:0}

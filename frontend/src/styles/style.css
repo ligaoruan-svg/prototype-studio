@@ -68,6 +68,10 @@ textarea { resize: vertical; line-height: 1.65; }
 .panel-header>.icon-button { margin-left: auto; }
 .count { display: inline-flex; justify-content: center; font-size: 10px; min-width: 17px; padding: 1px 4px; background: var(--quiet); color: var(--muted); border-radius: 13px; }
 .messages { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 18px 22px; scrollbar-width: thin; }
+/* AI 的话里常有一长串不带空格的代码（`${a}${b}.replace(...)`）：以前把整张卡片撑到七八百像素宽，
+   对话栏出现横向滚动、看不全也拉不回来。长串在哪都能折行，对话栏不横向滚动 */
+.messages { overflow-x: hidden; overflow-wrap: anywhere; }
+.messages pre, .messages code { white-space: pre-wrap; overflow-wrap: anywhere; }
 .conversation-empty { padding-top: 30px; }
 .conversation-empty h2 { font-family: var(--font-display); font-size: 25px; line-height: 1.5; font-weight: 400; letter-spacing: 0; }
 .conversation-empty>p { font-size: 13px; line-height: 1.9; color: var(--muted); margin: 14px 0 26px; }
