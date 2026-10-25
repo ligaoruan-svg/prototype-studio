@@ -7,7 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-from backend import architecture as A, storage, agent   # noqa: E402
+from backend import architecture as A, arch_text as T, arch_draft as D, storage, agent   # noqa: E402
 
 try:
     from fastapi.testclient import TestClient
@@ -63,17 +63,19 @@ class 收拾数据(unittest.TestCase):
 
 
 class 顺序和检查(unittest.TestCase):
-    def test_有页签的菜单页按页签算(self):
-        names = [s["node"]["name"] for s in A.screens(A.normalize(device_arch()))]
-        self.assertNotIn("设备巡检计划", names)
-        self.assertIn("路线配置", names)
+    def test_一个菜单页一步_页签算在页面里(self):
+        screens = A.screens(A.normalize(device_arch()))
+        names = [s["node"]["name"] for s in screens]
+        self.assertIn("设备巡检计划", names)
+        self.assertNotIn("路线配置", names)
+        plan = next(s for s in screens if s["node"]["name"] == "设备巡检计划")
+        self.assertEqual(plan["tabs"], ["巡检计划", "路线配置", "巡检点"])
+        self.assertEqual(set(plan["data"]), {"巡检计划", "路线", "巡检点"})
 
     def test_按数据依赖排(self):
         order = [s["name"] for s in A.order(A.normalize(device_arch()))]
         self.assertLess(order.index("设备定义"), order.index("设备录入"))
-        self.assertLess(order.index("设备录入"), order.index("巡检点"))
-        self.assertLess(order.index("巡检点"), order.index("路线配置"))
-        self.assertLess(order.index("路线配置"), order.index("巡检计划"))
+        self.assertLess(order.index("设备录入"), order.index("设备巡检计划"))
         self.assertEqual(order[-1], "运维统计分析")   # 没标数据的（统计、工作台）放最后：它们要用前面的数据
 
     def test_干净的架构没有错误(self):
@@ -98,53 +100,75 @@ class 交给AI的文字(unittest.TestCase):
     def test_有树_数据_流程_规则_顺序(self):
         text = A.brief(A.normalize(device_arch()))
         for part in ("[页签] 路线配置", "关联设备（引用 设备档案）", "点数（自动算）", "外部系统", "本次不做",
-                     "电脑端统一规则", "查看用右侧抽屉", "生成顺序：设备定义"):
+                     "电脑端统一规则", "查看用右侧抽屉", "页签：巡检计划、路线配置、巡检点", "1. 设备管理 › 设备定义"):
             self.assertIn(part, text)
 
     def test_读得出模型的回复(self):
-        self.assertEqual(A.parse_reply('```json\n{"name": "x"}\n```')["name"], "x")
+        self.assertEqual(D.parse('```json\n{"name": "x", "nodes": []}\n```')["name"], "x")   # 万一回了 JSON 也认
+        self.assertEqual(D.parse("设备管理 [模块]\n  设备定义 [菜单页]")["nodes"][0]["children"][0]["name"], "设备定义")
         with self.assertRaises(ValueError):
-            A.parse_reply("我不知道")
+            D.parse("")
 
     def test_补全时沿用原来的编号(self):
         current = A.normalize(device_arch())
         old = current["nodes"][0]["id"]
-        fresh = A.merge_ids({"nodes": [{"type": "module", "name": "设备管理"}]}, current)
+        fresh = T.keep_ids({"nodes": [{"type": "module", "name": "设备管理"}]}, current)
         self.assertEqual(fresh["nodes"][0]["id"], old)
 
 
-class 按架构生成(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.old_root, self.old_chat, self.old_stage = storage.DATA_ROOT, agent.chat, agent.stage
-        storage.DATA_ROOT = Path(self.tmp.name)
-        self.pid = storage.create_project('t')['id']
-        (storage.project_dir(self.pid) / 'source' / 'index.html').write_text('<html><body><h1>x</h1></body></html>', encoding='utf-8')
-        self.page = storage.add_page(self.pid, 'index.html')['id']
-        agent.stage = lambda *a, **k: {'pending_id': 'x'}
-        self.sent = []
+class 大纲(unittest.TestCase):
+    def test_写出去读回来一模一样(self):
+        arch = A.normalize(device_arch())
+        arch["nodes"][0]["children"][1]["tags"] = ["联动：改了 A，B 跟着变、C 也变"]
+        arch["lanes"][0]["note"] = "电脑、看结果"
+        text = T.to_outline(arch)
+        back = A.normalize(T.keep_ids(T.from_outline(text), arch))
+        self.assertEqual(T.to_outline(back), text)
+        self.assertEqual([s["next"] for s in back["steps"]], [s["next"] for s in arch["steps"]])
+        self.assertEqual(back["nodes"][0]["id"], arch["nodes"][0]["id"])   # 路径没变的沿用编号
 
-        def chat(api_key, model, messages, tools, **k):
-            self.sent.append(json.dumps(messages, ensure_ascii=False))
-            return {'choices': [{'finish_reason': 'tool_calls', 'message': {'content': '', 'tool_calls': [
-                {'id': 'c', 'type': 'function', 'function': {'name': 'report_result', 'arguments': json.dumps({'summary': '好', 'annotations': []})}}]}}]}
-        agent.chat = chat
+    def test_手写_缩进几格都行_类型按层级猜(self):
+        arch = A.normalize(T.from_outline("设备管理\n    设备定义：模板\n        新增定义 [弹窗]\n    设备录入 | 数据：设备档案、设备定义\n巡检"))
+        top = arch["nodes"]
+        self.assertEqual([n["name"] for n in top], ["设备管理", "巡检"])
+        self.assertEqual(top[0]["type"], "module")
+        self.assertEqual(top[0]["children"][0]["type"], "page")
+        self.assertEqual(top[0]["children"][0]["desc"], "模板")
+        self.assertEqual(top[0]["children"][0]["children"][0]["type"], "modal")
+        self.assertEqual(top[0]["children"][1]["data"], ["设备档案", "设备定义"])
 
-    def tearDown(self):
-        storage.DATA_ROOT, agent.chat, agent.stage = self.old_root, self.old_chat, self.old_stage
-        self.tmp.cleanup()
+    def test_数据字段的写法(self):
+        arch = A.normalize(T.from_outline("【数据】\n因子 FAC-D-xxx / FAC-I-xx [配置]：排放因子\n  因子编号 🔑\n  因子库 → 因子库：1 个\n  合计 = 各行相加\n  单位 🔒 来自模板\n  备注\n  状态：草稿 → 启用"))
+        e = arch["entities"][0]
+        self.assertEqual((e["name"], e["code"], e["role"]), ("因子", "FAC-D-xxx / FAC-I-xx", "配置"))
+        self.assertEqual([f["kind"] for f in e["fields"]], ["key", "ref", "derived", "locked", "plain"])
+        self.assertEqual(e["fields"][1]["ref"], "因子库")
+        self.assertEqual(e["states"], ["草稿", "启用"])
 
-    def test_带上架构才放进背景(self):
-        A.save(self.pid, device_arch())
-        agent.run_agent(self.pid, self.page, '做页面', 'k', 'm', intent='edit', stream=False)
-        self.assertNotIn('已确认的架构：设备管理', self.sent[-1])
-        agent.run_agent(self.pid, self.page, '按架构生成', 'k', 'm', intent='edit', stream=False, architecture=True)
-        self.assertIn('已确认的架构：设备管理', self.sent[-1])
-        self.assertIn('生成顺序：设备定义', self.sent[-1])
 
-    def test_系统提示里有电脑端统一规则(self):
-        agent.run_agent(self.pid, self.page, '做页面', 'k', 'm', intent='edit', stream=False)
-        self.assertIn('电脑端统一规则', self.sent[-1])
+class 功能清单(unittest.TestCase):
+    def test_有表头_合并单元格沿用上一行(self):
+        text = "编号\t模块\t菜单\t功能\t功能描述\n85\t设备管理\t设备定义\t新增定义\t定义参数模板\n86\t\t设备录入\t新增录入\t4 步向导\n87\t\t\t批量导入\t下载模板\n88\t巡检\t巡检计划\t新增计划\t"
+        self.assertTrue(T.looks_like_table(text))
+        arch = A.normalize(T.from_table(text))
+        top = arch["nodes"]
+        self.assertEqual([n["name"] for n in top], ["设备管理", "巡检"])
+        entry = top[0]["children"][1]
+        self.assertEqual(entry["name"], "设备录入")
+        self.assertEqual([c["name"] for c in entry["children"]], ["新增录入", "批量导入"])
+        self.assertEqual(entry["children"][1]["req"], ["87"])
+        self.assertEqual(entry["children"][0]["desc"], "4 步向导")
+
+    def test_没表头也能认(self):
+        arch = A.normalize(T.from_table("设备管理\t设备定义\t新增定义\n\t\t编辑定义"))
+        self.assertEqual(len(arch["nodes"][0]["children"][0]["children"]), 2)
+
+    def test_追加时同名的并到一起(self):
+        target = [{"name": "设备管理", "children": [{"name": "设备定义", "children": []}]}]
+        T.merge_nodes(target, [{"name": "设备管理", "children": [{"name": "设备定义", "desc": "模板", "children": [{"name": "新增"}]}, {"name": "设备录入"}]}])
+        self.assertEqual(len(target), 1)
+        self.assertEqual([c["name"] for c in target[0]["children"]], ["设备定义", "设备录入"])
+        self.assertEqual(target[0]["children"][0]["desc"], "模板")
 
 
 @unittest.skipIf(TestClient is None, "没装 fastapi")
@@ -172,26 +196,63 @@ class 接口(unittest.TestCase):
         self.assertEqual(body['order'][0]['name'], '设备定义')
         self.assertEqual(body['counts']['tabs'], 3)
 
-    def test_AI起草(self):
-        routes.config.load = lambda: {'api_key': 'k', 'model': 'm', 'base_url': 'u', 'max_tokens': 8000}
-        seen = []
-        def chat(key, model, messages, tools, **k):
-            seen.append(messages[-1]['content'])
-            return {'choices': [{'finish_reason': 'stop', 'message': {'content': json.dumps(device_arch(), ensure_ascii=False)}}]}
-        routes.chat = chat
-        r = self.c.post(f'/api/projects/{self.pid}/architecture/draft', json={'mode': 'request', 'text': '做个设备巡检系统'})
+    def stream(self, body):
+        r = self.c.post(f'/api/projects/{self.pid}/architecture/draft', json=body)
         self.assertEqual(r.status_code, 200, r.text)
-        self.assertEqual(r.json()['architecture']['status'], 'draft')
-        self.assertIn('设备巡检系统', seen[0])
-        r = self.c.post(f'/api/projects/{self.pid}/architecture/draft', json={'mode': 'page'})
-        self.assertIn('原型源码', seen[1])
+        events = [json.loads(line[5:]) for line in r.text.splitlines() if line.startswith('data:')]
+        return events
+
+    def test_AI起草_用大纲写法_边写边报进度(self):
+        routes.config.load = lambda: {'api_key': 'k', 'model': 'm', 'base_url': 'u', 'max_tokens': 65536, 'stream': True}
+        seen = []
+        outline = T.to_outline(A.normalize(device_arch()))
+        def chat(key, model, messages, tools, **k):
+            seen.append((messages, k.get('max_tokens')))
+            for i in range(0, len(outline), 50):
+                k['on_delta'](outline[i:i + 50], 'note')
+            return {'choices': [{'finish_reason': 'stop', 'message': {'content': outline}}]}
+        routes.chat = chat
+        events = self.stream({'mode': 'request', 'text': '做个设备巡检系统'})
+        self.assertEqual(events[-1]['type'], 'complete', events[-1])
+        self.assertEqual(events[-1]['result']['architecture']['status'], 'draft')
+        self.assertTrue(any(e['type'] == 'progress' and e['chars'] > 0 for e in events))
+        self.assertIn('设备巡检系统', seen[0][0][-1]['content'])
+        self.assertIn('【页面】', seen[0][0][0]['content'])       # 让模型用大纲写
+        self.assertLessEqual(seen[0][1], routes.DRAFT_MAX_TOKENS)  # 不再放开到 6 万多
+        self.assertIn('【页面】', events[-1]['result']['outline'])
+
+    def test_从原型整理不塞整份源码(self):
+        routes.config.load = lambda: {'api_key': 'k', 'model': 'm', 'base_url': 'u', 'max_tokens': 8000}
+        big = '<html><body><aside>菜单</aside>' + '<p>很长的页面内容</p>' * 50000 + '</body></html>'
+        page = storage.load_meta(self.pid)['pages'][0]['id']
+        storage.page_file(self.pid, page).write_text(big, encoding='utf-8')
+        seen = []
+        routes.chat = lambda key, model, messages, tools, **k: seen.append(messages[-1]['content']) or {'choices': [{'finish_reason': 'stop', 'message': {'content': '原型 [模块]'}}]}
+        events = self.stream({'mode': 'page'})
+        self.assertEqual(events[-1]['type'], 'complete', events[-1])
+        self.assertLess(len(seen[0]), 40_000)
 
     def test_回复读不出来给人话(self):
         routes.config.load = lambda: {'api_key': 'k', 'model': 'm', 'base_url': 'u', 'max_tokens': 8000}
-        routes.chat = lambda *a, **k: {'choices': [{'finish_reason': 'length', 'message': {'content': '{"name": "半截'}}]}
-        r = self.c.post(f'/api/projects/{self.pid}/architecture/draft', json={'mode': 'request', 'text': 'x'})
+        routes.chat = lambda *a, **k: {'choices': [{'finish_reason': 'length', 'message': {'content': ''}}]}
+        events = self.stream({'mode': 'request', 'text': 'x'})
+        self.assertEqual(events[-1]['type'], 'error')
+        self.assertIn('截断', events[-1]['error']['message'])
+
+    def test_大纲和粘贴(self):
+        r = self.c.post(f'/api/projects/{self.pid}/architecture/outline', json={'text': '设备管理\n  设备定义'})
+        self.assertEqual(r.json()['counts']['pages'], 1)
+        r = self.c.post(f'/api/projects/{self.pid}/architecture/import', json={'text': '模块\t菜单\t功能\n设备管理\t设备录入\t批量导入', 'mode': 'append'})
+        self.assertEqual(r.json()['counts']['pages'], 2)          # 设备管理并到一起，多了设备录入
+        self.assertEqual(r.json()['counts']['modules'], 1)
+        r = self.c.post(f'/api/projects/{self.pid}/architecture/import', json={'text': '巡检\n  计划', 'mode': 'replace'})
+        self.assertEqual(r.json()['counts']['pages'], 1)
+        self.assertEqual(self.c.post(f'/api/projects/{self.pid}/architecture/import', json={'text': ''}).status_code, 400)
+
+    def test_没展开过不能直接整理(self):
+        r = self.c.post(f'/api/projects/{self.pid}/architecture/from-expand', json={})
         self.assertEqual(r.status_code, 400)
-        self.assertIn('截断', r.text)
+        self.assertIn('展开', r.text)
 
 
 if __name__ == '__main__':

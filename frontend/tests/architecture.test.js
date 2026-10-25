@@ -41,9 +41,12 @@ test('删除：带着下面的一起走，流程里指向它的链接断开', ()
   assert.equal(a.steps[0].node, undefined)
 })
 
-test('有页签的菜单页按页签算页面', () => {
+test('一个菜单页一步：页签算在页面里', () => {
   const { a } = sample()
-  assert.deepEqual(screens(a).map(s => s.path), ['设备巡检计划 / 路线配置', '设备巡检计划 / 巡检点'])
+  const list = screens(a)
+  assert.deepEqual(list.map(s => s.name), ['设备巡检计划'])
+  assert.deepEqual(list[0].tabs, ['路线配置', '巡检点'])
+  assert.equal(list[0].module, '新模块')
 })
 
 test('数据：被依赖的在左边一列，没写关系的引用也画线', () => {
@@ -66,8 +69,8 @@ test('流程：按箭头从左往右排，同一格不重叠', () => {
 
 test('发给 AI 的话：按顺序列页面，重做只动一页', () => {
   const { a, tab1 } = sample()
-  const msg = generateMessage(a, [{ path: '设备巡检计划 / 巡检点' }, { path: '设备巡检计划 / 路线配置' }])
-  assert.match(msg, /1\. 设备巡检计划 \/ 巡检点\n2\. 设备巡检计划 \/ 路线配置/)
+  const msg = generateMessage(a, [{ name: '设备定义', module: '设备管理' }, { name: '设备巡检计划', module: '设备管理', tabs: ['巡检点', '路线配置'] }])
+  assert.match(msg, /1\. 设备管理 › 设备定义\n2\. 设备管理 › 设备巡检计划（页签：巡检点、路线配置）/)
   assert.match(msg, /finish_step/)
   assert.match(rebuildMessage(a, tab1), /只重做「设备巡检计划 \/ 路线配置」这一页签/)
 })
@@ -77,4 +80,19 @@ test('界面接上了：顶栏有「架构」、按架构生成时带上 archite
   assert.match(header, /@click="showArch"/)
   assert.match(appSource(), /architecture: !!options\.architecture/)
   assert.match(appSource(), /architecture: true/)
+})
+
+test('手动编：大纲视图、粘贴功能清单、键盘加删改名；AI 起草能看进度、能停；生成顺序默认收成一行', () => {
+  const board = readFileSync(new URL('../src/components/architecture/ArchitectureBoard.vue', import.meta.url), 'utf8')
+  const outline = readFileSync(new URL('../src/components/architecture/ArchOutline.vue', import.meta.url), 'utf8')
+  const logic = readFileSync(new URL('../src/composables/useArchitecture.js', import.meta.url), 'utf8')
+  assert.match(board, /id: 'outline', label: '大纲'/)
+  assert.match(board, /s\.stopDraft\(\)/)
+  assert.match(board, /arch-order-toggle/)
+  assert.match(board, /s\.fromExpand\(\)/)
+  assert.match(outline, /s\.applyOutline\(archOutline\)/)
+  assert.match(outline, /s\.importText\(paste\.value, pasteMode\.value\)/)
+  assert.match(logic, /key === 'Enter'[\s\S]*archSibling/)
+  assert.match(logic, /key === 'Tab'[\s\S]*archAdd/)
+  assert.match(logic, /consumeAgentStream/)
 })

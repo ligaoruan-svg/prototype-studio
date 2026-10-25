@@ -125,12 +125,15 @@ export function impactOf(arch, id) {
 }
 
 // ---------- 页面、顺序（后台算的顺序优先，这里是没连上后台时的兜底） ----------
+// 一个菜单页一步：它下面的页签、下钻页、弹窗抽屉都在这一页里做
 export function screens(arch) {
   const out = []
   for (const { node, parents } of walk(arch?.nodes)) {
-    if (node.type === 'page' && (node.children || []).some(c => c.type === 'tab')) continue
-    if (SCREEN_TYPES.includes(node.type))
-      out.push({ id: node.id, name: node.name, type: node.type, path: [...parents.filter(p => p.type !== 'module').map(p => p.name), node.name].join(' / ') })
+    if (!SCREEN_TYPES.includes(node.type) || parents.some(p => SCREEN_TYPES.includes(p.type))) continue
+    const inside = [...walk(node.children)].map(x => x.node)
+    out.push({ id: node.id, name: node.name, type: node.type, path: [...parents.filter(p => p.type !== 'module').map(p => p.name), node.name].join(' / '),
+      module: [...parents].reverse().find(p => p.type === 'module')?.name || '',
+      tabs: (node.children || []).filter(c => c.type === 'tab').map(c => c.name), drills: inside.filter(c => c.type === 'drill').map(c => c.name) })
   }
   return out
 }
@@ -150,9 +153,12 @@ export function entityRanks(arch) {
 
 // ---------- 发给 AI 的话 ----------
 export function generateMessage(arch, order, { fresh = true } = {}) {
-  const list = (order?.length ? order : screens(arch)).map((s, i) => `${i + 1}. ${s.path || s.name}`).join('\n')
+  const list = (order?.length ? order : screens(arch)).map((s, i) => {
+    const extra = [s.tabs?.length ? '页签：' + s.tabs.join('、') : '', s.drills?.length ? '下钻页：' + s.drills.join('、') : ''].filter(Boolean).join('；')
+    return `${i + 1}. ${s.module ? s.module + ' › ' : ''}${s.name}${extra ? `（${extra}）` : ''}`
+  }).join('\n')
   return `按已确认的架构生成原型（只做电脑端）。${fresh ? '' : '页面里已经有的内容保留，按架构补齐、调整。'}\n`
-    + `先在脚本里按架构的「数据」定义一份共用的演示数据，再按下面的顺序一页一步做，每做完一页调 finish_step：\n${list}\n`
+    + `先在脚本里按架构的「数据」定义一份共用的演示数据，再按下面的顺序一个菜单页一步做（这一页的页签、下钻页、弹窗一起做完），每做完一页调 finish_step：\n${list}\n`
     + '每一页都按架构里的统一规则来；本次不做的环节和外部系统不做页面，只生成它们产生的数据。'
 }
 export function rebuildMessage(arch, node) {

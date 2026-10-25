@@ -1,13 +1,28 @@
 <script setup>
 // 页面树里的一个节点和它下面的全部：卡片 + 往右长出去的子节点。选中时卡片上方出现工具条（加子项、加同级、上移下移、删除）
-import { computed, inject } from 'vue'
+import { computed, inject, nextTick, ref, watch } from 'vue'
 import { ChevronDown, ChevronRight, ChevronUp, Plus, Trash2 } from 'lucide-vue-next'
 import ArchNode from './ArchNode.vue'
 import { CHILD_TYPES, NODE_TYPES, countBelow } from '../../lib/architecture.js'
+import { t } from '../../lib/i18n.js'
 
-const props = defineProps({ node: Object })
+const props = defineProps({ node: Object, depth: { type: Number, default: 0 }, siblings: { type: Array, default: () => [] } })
 const s = inject('studio')
-const { archSelected, archShowDesc, archQuery, archIssues } = s
+const { archSelected, archShowDesc, archQuery, archIssues, archRenaming, archExpand, archLevel } = s
+// 搜索时，命中的节点上面几层自动展开
+const hasHit = node => !!archQuery.value.trim() && [...(node.children || [])].some(c => c.name.includes(archQuery.value.trim()) || hasHit(c))
+const open = computed(() => { void archExpand.value; void archLevel.value; return hasHit(props.node) || s.nodeOpen(props.node, props.depth) })
+// 点卡片：选中它，还没展开的顺便往下展开一层
+function pick() {
+  s.archSelect('node', props.node.id)
+  if (kids.value.length && !open.value) s.openNode(props.node, props.depth, props.siblings, true)
+}
+// 原地改名：双击卡片、按 F2，或者回车 / Tab 刚加出来的那一个
+const renaming = computed(() => archRenaming.value === props.node.id)
+const nameInput = ref(null)
+watch(renaming, on => { if (on) nextTick(() => { nameInput.value?.focus(); nameInput.value?.select() }) }, { immediate: true })
+function commitName(event) { if (renaming.value) s.renameNode(props.node.id, event.target.value) }
+function cancelName() { archRenaming.value = '' }
 const selected = computed(() => archSelected.value?.kind === 'node' && archSelected.value.id === props.node.id)
 const kids = computed(() => props.node.children || [])
 const childTypes = computed(() => CHILD_TYPES[props.node.type] || [])
@@ -17,11 +32,9 @@ const hit = computed(() => {
   return !!q && (props.node.name.includes(q) || (props.node.desc || '').includes(q))
 })
 const warn = computed(() => archIssues.value.filter(i => i.node === props.node.id))
-const chips = computed(() => [
-  ...(props.node.data || []).map(d => ({ kind: 'data', text: '↗ ' + d })),
-  ...(props.node.tags || []).map(d => ({ kind: 'tag', text: d })),
-  ...(props.node.req || []).map(d => ({ kind: 'req', text: d })),
-])
+// 卡片上只留一行小字：地址 · 谁用 · 用到几类数据；标签、需求编号这些在右边详情里看
+const meta = computed(() => [props.node.route ? '#' + props.node.route : '', (props.node.who || []).join('·'),
+  (props.node.data || []).length ? t('{0} 类数据', [props.node.data.length]) : '', (props.node.req || []).join(' ')].filter(Boolean).join(' · '))
 function addChild(event) {
   const type = event.target.value
   event.target.value = ''
@@ -31,14 +44,12 @@ function addChild(event) {
 
 <template>
   <div class="an-row">
-    <div class="an-card" :class="[node.type, { selected, hit, leaf: !kids.length, warn: warn.some(w => w.level === 'error') }]" @click.stop="s.archSelect('node', node.id)">
-      <div class="an-head"><span class="an-type">{{ $t(NODE_TYPES[node.type].short) }}</span><b>{{ node.name }}</b>
-        <span v-if="node.route" class="an-route">#{{ node.route }}</span>
-        <span v-if="node.who?.length" class="an-who">{{ node.who.join('·') }}</span>
-        <button v-if="kids.length" class="an-fold" :title="node.collapsed ? $t('展开') : $t('收起')" :aria-label="node.collapsed ? $t('展开') : $t('收起')" @click.stop="s.archToggle(node.id)"><ChevronRight v-if="node.collapsed" :size="13" /><ChevronDown v-else :size="13" /></button></div>
+    <div class="an-card" :class="[node.type, { selected, hit, leaf: !kids.length, warn: warn.some(w => w.level === 'error') }]" @click.stop="pick" @dblclick.stop="archRenaming = node.id">
+      <div class="an-head"><span class="an-type">{{ $t(NODE_TYPES[node.type].short) }}</span><input v-if="renaming" ref="nameInput" class="an-rename" :value="node.name" :aria-label="$t('名称')" @click.stop @keydown.enter.prevent="commitName" @keydown.esc.stop.prevent="cancelName" @blur="commitName"><b v-else>{{ node.name }}</b>
+        <button v-if="kids.length" class="an-fold" :title="open ? $t('收起') : $t('展开')" :aria-label="open ? $t('收起') : $t('展开')" @click.stop="s.openNode(node, depth, siblings)"><ChevronDown v-if="open" :size="13" /><ChevronRight v-else :size="13" /></button></div>
       <p v-if="archShowDesc && node.desc" class="an-desc">{{ node.desc }}</p>
       <p v-if="node.type === 'drill' && archShowDesc && node.entry" class="an-entry">{{ $t('从哪进：{0}', [node.entry]) }}</p>
-      <div v-if="chips.length" class="an-chips"><span v-for="c in chips" :key="c.kind + c.text" class="an-chip" :class="c.kind">{{ c.text }}</span></div>
+      <p v-if="meta" class="an-meta">{{ meta }}</p>
       <span v-if="warn.length" class="an-warn" :title="warn.map(w => w.text).join('\n')">⚠ {{ warn.length }}</span>
       <div v-if="selected" class="an-tools" @click.stop>
         <label v-if="childTypes.length" class="an-add"><Plus :size="12" />{{ $t('子项') }}<select :aria-label="$t('加子项')" @change="addChild"><option value="">{{ $t('加什么') }}</option><option v-for="t in childTypes" :key="t" :value="t">{{ $t(NODE_TYPES[t].label) }}</option></select></label>
@@ -48,7 +59,7 @@ function addChild(event) {
         <button class="danger" @click="s.archRemove(node.id)"><Trash2 :size="12" />{{ $t('删除') }}</button>
       </div>
     </div>
-    <div v-if="kids.length && !node.collapsed" class="an-kids"><div v-for="child in kids" :key="child.id" class="an-kid"><ArchNode :node="child" /></div></div>
-    <button v-else-if="kids.length" class="an-folded" @click.stop="s.archToggle(node.id)">{{ $t('▸ {0} 项', [hidden]) }}</button>
+    <div v-if="kids.length && open" class="an-kids"><div v-for="child in kids" :key="child.id" class="an-kid"><ArchNode :node="child" :depth="depth + 1" :siblings="kids" /></div></div>
+    <button v-else-if="kids.length" class="an-folded" @click.stop="s.openNode(node, depth, siblings, true)">{{ $t('▸ {0} 项', [hidden]) }}</button>
   </div>
 </template>

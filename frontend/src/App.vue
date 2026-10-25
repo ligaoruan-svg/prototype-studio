@@ -262,6 +262,7 @@ function keydown(event) {
   const editing = event.target?.closest?.('input,textarea,select,[contenteditable=true]')
   if (command && key === 'enter') { event.preventDefault?.(); s.runAgent(); return }
   if (editing || event.altKey) return
+  if (archOpen.value && s.archKey(event)) return
   if (command && key === 'z' && !event.shiftKey) { event.preventDefault?.(); s.undo(); return }
   if (command) return
   if (key === 'escape') { if (s.presenting.value) { s.stopPresent(); return } if (archOpen.value) { if (s.archSelected.value) s.archSelect(null); else s.showPreview(); return } if (boardFocus.value != null) { boardFocus.value = null; return } if (boardOpen.value) { s.showPreview(); return } closeSelection(); setTool('browse') }

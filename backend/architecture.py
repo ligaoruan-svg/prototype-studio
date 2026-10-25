@@ -201,15 +201,18 @@ def walk(nodes: list[dict], depth: int = 0, parents: tuple = ()) -> Iterator[tup
 
 
 def screens(arch: dict) -> list[dict]:
-    """要做出来的页面：有页签的菜单页按页签算，没页签的菜单页自己算；下钻页单独算"""
+    """要做出来的页面：一个菜单页一个，它下面的页签、下钻页、弹窗抽屉都算在这一页里（一页一步做完）。
+    不在任何菜单页下面的下钻页 / 页签（少见）单独算一页"""
     out = []
     for item, depth, parents in walk(arch.get("nodes") or []):
-        kind = item["type"]
-        if kind == "page" and any(c["type"] == "tab" for c in item.get("children") or []):
+        if item["type"] not in SCREEN_TYPES or any(p["type"] in SCREEN_TYPES for p in parents):
             continue
-        if kind in SCREEN_TYPES:
-            out.append({"node": item, "path": [p["name"] for p in parents if p["type"] != "module"] + [item["name"]],
-                        "module": next((p["name"] for p in parents if p["type"] == "module"), "")})
+        inside = [n for n, _, _ in walk(item.get("children") or [])]
+        data = list(dict.fromkeys(d for n in [item, *inside] for d in n.get("data") or []))
+        out.append({"node": item, "path": [p["name"] for p in parents if p["type"] != "module"] + [item["name"]],
+                    "module": next((p["name"] for p in reversed(parents) if p["type"] == "module"), ""),
+                    "tabs": [n["name"] for n in item.get("children") or [] if n["type"] == "tab"],
+                    "drills": [n["name"] for n in inside if n["type"] == "drill"], "data": data})
     return out
 
 
@@ -239,10 +242,11 @@ def order(arch: dict) -> list[dict]:
     last = max(ranks.values(), default=0) + 1
     items = []
     for index, screen in enumerate(screens(arch)):
-        data = [ranks[d] for d in screen["node"].get("data") or [] if d in ranks]
+        data = [ranks[d] for d in screen["data"] if d in ranks]
         items.append((max(data) if data else last, index, screen))
     return [{"id": s["node"]["id"], "name": s["node"]["name"], "type": s["node"]["type"], "path": " / ".join(s["path"]),
-             "module": s["module"]} for _, _, s in sorted(items, key=lambda x: (x[0], x[1]))]
+             "module": s["module"], "tabs": s["tabs"], "drills": s["drills"]}
+            for _, _, s in sorted(items, key=lambda x: (x[0], x[1]))]
 
 
 def check(arch: dict) -> list[dict]:
@@ -363,72 +367,10 @@ def brief(arch: dict, limit: int = 16000) -> str:
     lines += [f"- {r}" for r in arch.get("rules") or PC_RULES]
     steps = order(arch)
     if steps:
-        lines.append("\n生成顺序：" + " → ".join(s["path"] for s in steps))
+        lines.append("\n生成顺序（一个菜单页一步，它的页签、下钻页、弹窗在这一步里一起做）：")
+        for i, st in enumerate(steps):
+            extra = "；".join(x for x in (("页签：" + "、".join(st["tabs"])) if st["tabs"] else "",
+                                          ("下钻页：" + "、".join(st["drills"])) if st["drills"] else "") if x)
+            lines.append(f"{i + 1}. {st['module'] + ' › ' if st['module'] else ''}{st['name']}" + (f"（{extra}）" if extra else ""))
     text = "\n".join(lines)
     return text if len(text) <= limit else text[:limit] + "\n（架构太长，后面截掉了）"
-
-
-SCHEMA_NOTE = """只输出一个 JSON 对象，不要任何解释，不要 Markdown 代码块。结构：
-{
- "name": "系统名", "summary": "一两句：给谁用、管什么", "roles": ["角色"],
- "nodes": [ {"type":"module","name":"模块名","desc":"一句话","children":[
-    {"type":"page","name":"菜单页名","desc":"这页干什么","who":["谁用"],"route":"路由key","data":["用到的数据名"],"children":[
-       {"type":"tab","name":"页签名","desc":"…","data":["…"],"children":[
-          {"type":"drawer","name":"查看xx","desc":"只读"},
-          {"type":"modal","name":"新增 / 编辑xx","desc":"…","tags":["联动：打卡方式决定校验"]},
-          {"type":"drill","name":"xx详情","desc":"…","entry":"点列表里的编号","params":"编号","back":"返回列表"},
-          {"type":"feature","name":"按状态出现的操作","desc":"…"} ]} ]} ]} ],
- "entities": [ {"name":"数据名","code":"编号前缀如 PT-xxx","role":"模板 / 实例 / 配置 / 执行结果 / 外部系统","external":false,
-    "fields":[{"name":"点位编号","kind":"key"},{"name":"关联设备","kind":"ref","ref":"设备档案","note":"1 台"},
-              {"name":"巡检点数","kind":"derived","note":"= 点的个数"},{"name":"类型","kind":"locked","note":"来自定义"},{"name":"备注","kind":"plain"}],
-    "states":["待执行","执行中","已完成"]} ],
- "relations": [ {"from":"被依赖的数据","to":"依赖它的数据","label":"1 → N"} ],
- "lanes": [ {"name":"管理员","kind":"user","note":"电脑"}, {"name":"系统自动","kind":"system"},
-            {"name":"巡检执行","kind":"skip","note":"手机端 · 本次不做"}, {"name":"维修系统","kind":"external"} ],
- "steps": [ {"id":"s1","lane":"管理员","name":"配路线","desc":"给点排顺序","next":["s2"]} ]
-}
-type 只能用：module page tab drill modal drawer wizard jump block feature；kind 只能用：key ref derived locked plain；
-lane.kind 只能用：user system skip external。
-要点：
-- 本次只做电脑端。手机上执行的环节放进 kind=skip 的泳道，不做页面，只当数据来源。
-- 一个菜单下有几块并列内容时用页签（tab）；点编号进去才看到的用下钻页（drill），写清 entry / params / back。
-- 查看用抽屉（drawer），新增 / 编辑用弹窗（modal），多步用向导（wizard）。
-- 数据要成链：谁引用谁写成 ref，个数、进度、摘要这类写 derived，从模板带来不能改的写 locked。外部系统的数据 external=true。
-- 每个页面写一句介绍；页面用到哪些数据写进 data，名字和 entities 里的一致。
-- 用用户需求里的业务叫法，别写成通用的「数据管理」。"""
-
-
-def draft_messages(mode: str, text: str, current: dict | None, page_source: str = "") -> list[dict]:
-    system = ("你是产品架构师，帮产品经理把需求梳理成可以直接生成原型的架构：页面树、共用的数据、业务流程。"
-              "想清楚业务再写：谁用、管什么、有哪些状态、数据之间谁依赖谁。\n\n" + SCHEMA_NOTE)
-    if mode == "page":
-        user = ("下面是一份已有的原型（HTML 源码）。把它整理成架构：菜单、页签、下钻页、弹窗抽屉、功能、页面里用到的数据和它们的关系、业务流程。"
-                "照原型里的叫法写，原型里数据对不上的地方（引用不存在、数字写死）在相关字段的 note 里标一句。"
-                + (f"\n补充说明：{text}" if text else "") + "\n<<<原型源码\n" + page_source + "\n原型源码>>>")
-    elif mode == "refine" and current:
-        user = ("下面是用户已经改过的架构。在它的基础上补全：缺介绍的页面补一句介绍，数据缺字段的补上，"
-                "缺流程的补业务流程，明显漏掉的弹窗、抽屉、下钻页补上。用户已有的节点、名字和 id 都保留，别删别改名。"
-                + (f"\n这次的要求：{text}" if text else "") + "\n<<<现在的架构\n" + json.dumps(current, ensure_ascii=False) + "\n现在的架构>>>")
-    else:
-        user = "需求：" + (text or "（用户没写，按常见的后台管理系统起一个）")
-    return [{"role": "system", "content": system}, {"role": "user", "content": user}]
-
-
-def parse_reply(text: str) -> dict:
-    text = (text or "").strip()
-    text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text)
-    start, end = text.find("{"), text.rfind("}")
-    if start < 0 or end <= start:
-        raise ValueError("模型没有给出架构")
-    return json.loads(text[start:end + 1])
-
-
-def merge_ids(fresh: dict, current: dict | None) -> dict:
-    """AI 补全后，名字没变的节点沿用原来的 id：流程步骤指向它们的链接不会断"""
-    if not current:
-        return fresh
-    old = {(n["type"], n["name"]): n["id"] for n, _, _ in walk(current.get("nodes") or [])}
-    for item, _, _ in walk(fresh.get("nodes") or []):
-        if not item.get("id") and (item.get("type"), item.get("name")) in old:
-            item["id"] = old[(item.get("type"), item.get("name"))]
-    return fresh
