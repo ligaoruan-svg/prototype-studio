@@ -34,9 +34,9 @@ export function useAgentRun(s) {
     pendingRef.value = sentRef
     if (!text || input.value.trim() === message) input.value = ''
     reference.value = null
-    lastResult.value = null; status.value = intent === 'edit' ? '正在读页面' : '思考中'; leftOpen.value = true
+    lastResult.value = null; status.value = intent === 'edit' ? '正在读页面' : intent === 'architecture' ? '正在改页面树' : '思考中'; leftOpen.value = true
     try {
-      const response = await fetch('/api/projects/' + project.value.id + '/agent/stream', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ page_id: pageId.value, message, selection: target, runtime_feedback: runtimeFeedback, reference: sentRef, scene: previewScene(), intent, include_annotations: options.includeAnnotations !== false, repair_pending: options.repairPending || '', lang: locale.value, architecture: !!options.architecture }) })
+      const response = await fetch('/api/projects/' + project.value.id + '/agent/stream', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ page_id: pageId.value, message, selection: target, runtime_feedback: runtimeFeedback, reference: sentRef, scene: previewScene(), intent, include_annotations: options.includeAnnotations !== false, repair_pending: options.repairPending || '', lang: locale.value, architecture: !!options.architecture || (s.archOpen.value && intent !== 'architecture' && !!s.arch.value?.nodes?.length) }) })
       const result = await consumeAgentStream(response, event => {
         if (event.type === 'started' && event.run_id) current.runId = event.run_id
         if (event.type === 'page_check') s.runPageCheck(event)   // AI 要真跑一下页面：不等它跑完，接着收别的事件
@@ -84,6 +84,8 @@ export function useAgentRun(s) {
         if (again) { followUp = selfTestRequest(report.issues); followRound = selfRound + 1 }
         status.value = again ? '自检发现问题 · 马上自动修一轮' : report.issues.length ? `已保存 · 自检还剩 ${report.issues.length} 个问题` : '已保存 · 自检通过'
       }
+      // 「架构」模式：只改了画布上的页面树，原型没动
+      else if (result.intent === 'architecture') { status.value = '页面树已更新'; await s.afterArchChat() }
       // 改好了、没跑自检：状态栏留着检查保存时写的「已保存 · 刚刚」。以前这里不看改没改，小改动保存了也显示「没有改动页面」
       else if (!result.changed) status.value = result.clarification ? '等待你确认' : result.discussion ? '讨论完成 · 未修改文件' : '没有改动页面'
       lastResult.value = result

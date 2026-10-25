@@ -126,6 +126,10 @@ def normalize(raw: Any) -> dict[str, Any]:
                 out[key] = values
         if item.get("collapsed") is True:
             out["collapsed"] = True
+        # 和原型对不对得上（从原型读的时候标）：proto 这次读到了；seen 以前读到过。都没有 = 你规划了、原型里还没有
+        for flag in ("proto", "seen"):
+            if item.get(flag) is True:
+                out[flag] = True
         kids = item.get("children") if depth + 1 < MAX_DEPTH else []
         out["children"] = [c for c in (node(child, depth + 1) for child in (kids if isinstance(kids, list) else [])) if c]
         return out
@@ -207,35 +211,6 @@ def load(project_id: str) -> dict[str, Any] | None:
         return normalize(json.loads(path.read_text("utf-8")))
     except (ValueError, OSError):
         return None
-
-
-def _synced_path(project_id: str):
-    return storage.project_dir(project_id) / "architecture.synced.json"
-
-
-def load_synced(project_id: str) -> list[dict] | None:
-    """上一次和原型对齐时的页面树：现在的树和它比，多出来、少了、改了的就是「还没同步到原型」的改动。没有就是 None"""
-    path = _synced_path(project_id)
-    try:
-        return normalize({"nodes": json.loads(path.read_text("utf-8"))})["nodes"] if path.exists() else None
-    except (ValueError, OSError):
-        return None
-
-
-def save_synced(project_id: str, nodes: list[dict]) -> None:
-    write_atomic(_synced_path(project_id), json.dumps(nodes, ensure_ascii=False))
-
-
-def _shape(nodes: list[dict]) -> str:
-    """比较用：去掉只影响显示的（展开收起）"""
-    def strip(items):
-        return [{k: (strip(v) if k == "children" else v) for k, v in n.items() if k != "collapsed"} for n in items]
-    return json.dumps(strip(nodes), ensure_ascii=False, sort_keys=True)
-
-
-def pending(project_id: str, arch: dict | None) -> bool:
-    synced = load_synced(project_id)
-    return bool(arch) and synced is not None and _shape(arch.get("nodes") or []) != _shape(synced)
 
 
 def save(project_id: str, raw: Any) -> dict[str, Any]:
@@ -375,7 +350,7 @@ def bundle(arch: dict | None) -> dict:
 def _node_line(item: dict) -> str:
     # 没挂子项的模块就是一个一级菜单页：左侧菜单点它直接进页面
     kind = "一级菜单页（没有子菜单）" if item["type"] == "module" and not item.get("children") else NODE_TYPES[item["type"]]
-    parts = [f"[{kind}] {item['name']}"]
+    parts = [f"[{kind}] {item['name']}" + ("（规划中，原型里还没有）" if not item.get("seen") and not item.get("proto") else "")]
     if item.get("desc"):
         parts.append(item["desc"].replace("\n", " "))
     if item.get("action"):
@@ -390,7 +365,7 @@ def _node_line(item: dict) -> str:
 
 def brief(arch: dict, limit: int = 16000) -> str:
     # 架构是原型的镜子：这里给 AI 看整棵树当背景，这一轮具体改哪几处以用户的话为准，别的页面不要动
-    lines = [f"页面树（原型现在应该是这个样子，供参考；这一轮只改用户说的那几处）：{arch.get('name') or '（未命名）'}（只做电脑端）"]
+    lines = [f"页面树（用户在架构画布上规划的结构，做页面时照它来；这一轮只做用户说的那几处）：{arch.get('name') or '（未命名）'}（只做电脑端）"]
     if arch.get("summary"):
         lines.append(arch["summary"])
     if arch.get("roles"):

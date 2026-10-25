@@ -1,14 +1,17 @@
 <script setup>
 // 页面树里的一个节点和它下面的全部：卡片 + 往右长出去的子节点。选中时卡片上方出现工具条（加子项、加同级、上移下移、删除）
 import { computed, inject, nextTick, ref, watch } from 'vue'
-import { ChevronDown, ChevronRight, ChevronUp, Plus, Trash2 } from 'lucide-vue-next'
+import { ChevronDown, ChevronRight, ChevronUp, Plus, Sparkles, Trash2 } from 'lucide-vue-next'
 import ArchNode from './ArchNode.vue'
-import { ACTIONS, CHILD_TYPES, LAYER_TYPES, NODE_TYPES, countBelow } from '../../lib/architecture.js'
+import { ACTIONS, CHILD_TYPES, LAYER_TYPES, NODE_TYPES, countBelow, protoState } from '../../lib/architecture.js'
 import ArchFields from './ArchFields.vue'
 
-const props = defineProps({ node: Object, depth: { type: Number, default: 0 }, siblings: { type: Array, default: () => [] } })
+const props = defineProps({ node: Object, depth: { type: Number, default: 0 }, siblings: { type: Array, default: () => [] }, parentState: { type: String, default: 'in' } })
 const s = inject('studio')
-const { archSelected, archShowDesc, archShowFields, archQuery, archIssues, archRenaming, archExpand, archLevel } = s
+const { archSelected, archShowDesc, archShowFields, archQuery, archIssues, archRenaming, archExpand, archLevel, archFlash } = s
+// 和原型对不对得上：虚线 = 你规划了、原型里还没有；淡掉 = 原型里已经没有。只在最上面那一层标字（下面的跟着虚线就够了）
+const state = computed(() => protoState(props.node))
+const tagged = computed(() => state.value !== 'in' && state.value !== props.parentState)
 // 弹窗、抽屉、向导、区块、表格：卡片里带上字段 / 列
 const hasForm = computed(() => [...LAYER_TYPES, 'block', 'table'].includes(props.node.type))
 // 搜索时，命中的节点上面几层自动展开
@@ -45,9 +48,11 @@ function addChild(event) {
 
 <template>
   <div class="an-row">
-    <div class="an-card" :class="[node.type, { selected, hit, leaf: !kids.length, form: hasForm, warn: warn.some(w => w.level === 'error') }]" @click.stop="pick" @dblclick.stop="archRenaming = node.id">
+    <div class="an-card" :class="[node.type, state, { selected, hit, leaf: !kids.length, form: hasForm, flash: archFlash.has(node.id), warn: warn.some(w => w.level === 'error') }]" @click.stop="pick" @dblclick.stop="archRenaming = node.id">
       <div class="an-head"><span class="an-type">{{ $t(NODE_TYPES[node.type].short) }}</span><input v-if="renaming" ref="nameInput" class="an-rename" :value="node.name" :aria-label="$t('名称')" @click.stop @keydown.enter.prevent="commitName" @keydown.esc.stop.prevent="cancelName" @blur="commitName"><b v-else>{{ node.name }}</b>
         <button v-if="kids.length" class="an-fold" :title="open ? $t('收起') : $t('展开')" :aria-label="open ? $t('收起') : $t('展开')" @click.stop="s.openNode(node, depth, siblings)"><ChevronDown v-if="open" :size="13" /><ChevronRight v-else :size="13" /></button></div>
+      <p v-if="tagged" class="an-proto" @click.stop><span>{{ state === 'planned' ? $t('原型里还没有') : $t('原型里已经没有') }}</span>
+        <button v-if="state === 'planned'" class="quiet" :title="$t('把话填进输入框、切到「自动」，你看一眼再发')" @click="s.makeInPrototype(node)"><Sparkles :size="11" />{{ $t('让 AI 做出来') }}</button></p>
       <p v-if="archShowDesc && node.desc" class="an-desc">{{ node.desc }}</p>
       <p v-if="node.type === 'drill' && archShowDesc && node.entry" class="an-entry">{{ $t('从哪进：{0}', [node.entry]) }}</p>
       <p v-if="node.action" class="an-act" :class="node.action">↳ {{ $t(ACTIONS[node.action]) }}<template v-if="node.target">「{{ node.target }}」</template></p>
@@ -64,7 +69,7 @@ function addChild(event) {
         <button class="danger" @click="s.archRemove(node.id)"><Trash2 :size="12" />{{ $t('删除') }}</button>
       </div>
     </div>
-    <div v-if="kids.length && open" class="an-kids"><div v-for="child in kids" :key="child.id" class="an-kid"><ArchNode :node="child" :depth="depth + 1" :siblings="kids" /></div></div>
+    <div v-if="kids.length && open" class="an-kids"><div v-for="child in kids" :key="child.id" class="an-kid"><ArchNode :node="child" :depth="depth + 1" :siblings="kids" :parent-state="state" /></div></div>
     <button v-else-if="kids.length" class="an-folded" @click.stop="s.openNode(node, depth, siblings, true)">{{ $t('▸ {0} 项', [hidden]) }}</button>
   </div>
 </template>

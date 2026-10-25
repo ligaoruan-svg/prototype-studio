@@ -12,7 +12,7 @@ from fastapi import APIRouter, Body, Header, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-from .. import config, page_check, storage, transactions
+from .. import arch_chat, config, page_check, storage, transactions
 from ..agent import run_agent
 from ..errors import WorkError, error_payload
 from ..patcher import PatchError
@@ -30,11 +30,11 @@ class AgentIn(BaseModel):
     runtime_feedback: str = ""
     reference: dict | None = None
     scene: dict | None = None   # 预览现场：停在哪页、最近点过什么、报过什么错
-    intent: str = Field(default='auto', pattern='^(auto|discuss|edit)$')
+    intent: str = Field(default='auto', pattern='^(auto|discuss|edit|architecture)$')   # architecture：架构画布开着时，只改页面树
     include_annotations: bool = True
     repair_pending: str = ''   # 运行检查没过的那一版：在它的基础上修报错，不从头再做
     lang: str = Field(default='zh', pattern='^[a-z]{2}(-[A-Za-z]{2,4})?$')   # 界面语言：用户这句话看不出语言时，AI 按它回复
-    architecture: bool = False   # 按已确认的架构做：把架构（页面树、数据、流程、统一规则）放进背景
+    architecture: bool = False   # 架构画布开着：把画布上的页面树放进背景，做页面时照它来
 
 
 @router.post("/api/projects/{project_id}/agent/chat")
@@ -95,6 +95,11 @@ def agent_stream(project_id: str, body: AgentIn):
     draft = transactions.failed_draft(body.repair_pending, project_id, body.page_id) if body.repair_pending else None
     def work():
         try:
+            if body.intent == 'architecture':   # 架构模式：只改画布上的页面树，不走改代码那一套
+                result = arch_chat.run(project_id, body.page_id, body.message, key, body.model or settings['model'], settings['base_url'],
+                                       settings['max_tokens'], events.put, stop.is_set, settings.get('stream', True))
+                events.put({'type': 'complete', 'result': result})
+                return
             result = run_agent(project_id, body.page_id, body.message, key, body.model or settings['model'],
                                settings['base_url'], body.selection, body.runtime_feedback, body.reference,
                                settings['max_tokens'], settings.get('context_budget', 200_000),

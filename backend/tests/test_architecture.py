@@ -214,32 +214,6 @@ class 分到弹什么(unittest.TestCase):
         self.assertEqual(page["children"][-1]["fields"], ["工单号🔒", "指派给*"])
 
 
-class 功能清单(unittest.TestCase):
-    def test_有表头_合并单元格沿用上一行(self):
-        text = "编号\t模块\t菜单\t功能\t功能描述\n85\t设备管理\t设备定义\t新增定义\t定义参数模板\n86\t\t设备录入\t新增录入\t4 步向导\n87\t\t\t批量导入\t下载模板\n88\t巡检\t巡检计划\t新增计划\t"
-        self.assertTrue(T.looks_like_table(text))
-        arch = A.normalize(T.from_table(text))
-        top = arch["nodes"]
-        self.assertEqual([n["name"] for n in top], ["设备管理", "巡检"])
-        entry = top[0]["children"][1]
-        self.assertEqual(entry["name"], "设备录入")
-        self.assertEqual([c["name"] for c in entry["children"]], ["新增录入", "批量导入"])
-        self.assertEqual(entry["children"][1]["req"], ["87"])
-        self.assertEqual(entry["children"][0]["desc"], "4 步向导")
-
-    def test_没表头也能认(self):
-        arch = A.normalize(T.from_table("设备管理\t设备定义\t新增定义\n\t\t编辑定义"))
-        self.assertEqual(len(arch["nodes"][0]["children"][0]["children"]), 2)
-
-    def test_追加时同名的并到一起(self):
-        target = [{"name": "设备管理", "children": [{"name": "设备定义", "children": []}]}]
-        T.merge_nodes(target, [{"name": "设备管理", "children": [{"name": "设备定义", "desc": "模板", "children": [{"name": "新增"}]}, {"name": "设备录入"}]}])
-        self.assertEqual(len(target), 1)
-        self.assertEqual([c["name"] for c in target[0]["children"]], ["设备定义", "设备录入"])
-        self.assertEqual(target[0]["children"][0]["desc"], "模板")
-
-
-@unittest.skipIf(TestClient is None, "没装 fastapi")
 class 接口(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -264,43 +238,31 @@ class 接口(unittest.TestCase):
         self.assertEqual(body['order'][0]['name'], '设备定义')
         self.assertEqual(body['counts']['tabs'], 3)
 
-    def test_大纲和粘贴(self):
-        r = self.c.post(f'/api/projects/{self.pid}/architecture/outline', json={'text': '设备管理\n  设备定义'})
-        self.assertEqual(r.json()['counts']['pages'], 1)
-        r = self.c.post(f'/api/projects/{self.pid}/architecture/import', json={'text': '模块\t菜单\t功能\n设备管理\t设备录入\t批量导入', 'mode': 'append'})
-        self.assertEqual(r.json()['counts']['pages'], 2)          # 设备管理并到一起，多了设备录入
-        self.assertEqual(r.json()['counts']['modules'], 1)
-        r = self.c.post(f'/api/projects/{self.pid}/architecture/import', json={'text': '巡检\n  计划', 'mode': 'replace'})
-        self.assertEqual(r.json()['counts']['pages'], 1)
-        self.assertEqual(self.c.post(f'/api/projects/{self.pid}/architecture/import', json={'text': ''}).status_code, 400)
-
-    def test_从原型读_有没同步的改动就先不读(self):
+    def test_从原型读_只合并不冲掉(self):
         page = storage.load_meta(self.pid)['pages'][0]['id']
         url = f'/api/projects/{self.pid}/architecture'
-        r = self.c.post(url + '/refresh', json={})
-        self.assertEqual(r.json()['reason'], 'no_expand')               # 没展开过：什么都不动
+        self.assertEqual(self.c.post(url + '/refresh', json={}).json()['reason'], 'no_expand')   # 没展开过：什么都不动
         storage.save_expand_routes(self.pid, page, [{'hash': '#order', 'title': '报修工单'}, {'hash': '#test', 'title': '测试'}])
         storage.save_expand_entry(self.pid, page, '#order', 'h', {'page': '<table><tr><th>工单号</th></tr></table>', 'nodes': []})
         r = self.c.post(url + '/refresh', json={}).json()
         self.assertTrue(r['refreshed'])
-        self.assertEqual([n['name'] for n in r['architecture']['nodes']], ['报修工单', '测试'])   # 没分组的菜单项放最外层
-        self.assertEqual(r['synced'], r['architecture']['nodes'])
-        # 在树里写了介绍、加了一页：还没同步，重读不会冲掉
-        arch = r['architecture']
-        arch['nodes'][0]['desc'] = '接单派单'
-        arch['nodes'].append({'type': 'page', 'name': '维修工'})
-        self.c.put(url, json={'architecture': arch})
-        self.assertEqual(self.c.post(url + '/refresh', json={}).json()['reason'], 'pending')
-        # 同步完了：再读，原型里没有的那一页去掉，介绍留着
-        self.c.post(url + '/synced')
+        nodes = r['architecture']['nodes']
+        self.assertEqual([n['name'] for n in nodes], ['报修工单', '测试'])   # 没分组的菜单项放最外层
+        self.assertTrue(all(n.get('proto') and n.get('seen') for n in nodes))
+        # 画布上写了介绍、规划了一页「维修工」：再读，规划的留着（原型里还没有），介绍留着
+        nodes[0]['desc'] = '接单派单'
+        nodes.append({'type': 'page', 'name': '维修工'})
+        self.c.put(url, json={'architecture': r['architecture']})
+        # 原型里删掉了「测试」
+        storage.save_expand_routes(self.pid, page, [{'hash': '#order', 'title': '报修工单'}])
         r = self.c.post(url + '/refresh', json={}).json()
-        self.assertEqual([n['name'] for n in r['architecture']['nodes']], ['报修工单', '测试'])
-        self.assertEqual(r['architecture']['nodes'][0]['desc'], '接单派单')
-        self.assertEqual(r['architecture']['nodes'][0]['id'], arch['nodes'][0]['id'])
-
-if __name__ == '__main__':
-    unittest.main()
-
+        by = {n['name']: n for n in r['architecture']['nodes']}
+        self.assertEqual(list(by), ['报修工单', '测试', '维修工'])
+        self.assertEqual(by['报修工单']['desc'], '接单派单')
+        self.assertTrue(by['报修工单'].get('proto'))
+        self.assertTrue(by['测试'].get('seen') and not by['测试'].get('proto'))     # 原型里已经没有
+        self.assertFalse(by['维修工'].get('seen') or by['维修工'].get('proto'))     # 原型里还没有
+        self.assertIn('（规划中，原型里还没有）', A.brief(r['architecture']))
 
 class 字段控件(unittest.TestCase):
     def test_照原型认控件(self):
@@ -328,3 +290,42 @@ class 字段控件(unittest.TestCase):
         self.assertEqual([o["name"] for o in A.order(arch)], ["工单", "测试"])
         self.assertFalse(any("下面还没有页面" in i["text"] for i in A.check(arch)))
         self.assertFalse(any(i["level"] == "error" for i in A.check(arch)))
+
+
+class 架构模式对话(unittest.TestCase):
+    def setUp(self):
+        from backend import arch_chat
+        self.mod = arch_chat
+        self.tmp = tempfile.TemporaryDirectory()
+        self.old_root, self.old_chat = storage.DATA_ROOT, arch_chat.chat
+        storage.DATA_ROOT = Path(self.tmp.name)
+        self.pid = storage.create_project('物业')['id']
+
+    def tearDown(self):
+        storage.DATA_ROOT, self.mod.chat = self.old_root, self.old_chat
+        self.tmp.cleanup()
+
+    def test_只改页面树_编号和原型标记跟着走(self):
+        saved = A.save(self.pid, {"nodes": [{"type": "page", "name": "报修工单", "proto": True, "seen": True,
+                                              "children": [{"type": "modal", "name": "派单", "fields": ["指派给*"], "proto": True, "seen": True}]}]})
+        seen = []
+        def chat(key, model, messages, tools, **k):
+            seen.append(messages[-1]['content'])
+            k['on_delta']('x' * 300)
+            return {'choices': [{'finish_reason': 'stop', 'message': {'content':
+                    '说明：加了「维修工」菜单页，派单弹窗加了预计上门时间。\n\n【页面】\n报修工单 [菜单页]\n  派单 [弹窗] | 字段：指派给*（选人）、预计上门时间*\n维修工 [菜单页]：管理维修工'}}]}
+        self.mod.chat = chat
+        events = []
+        out = self.mod.run(self.pid, 'p', '加一个维修工页', 'k', 'm', 'u', 8000, events.append, lambda: False)
+        self.assertEqual(out['content'], '加了「维修工」菜单页，派单弹窗加了预计上门时间。')
+        self.assertIn('报修工单 [菜单页]', seen[0])                        # 现在的树交给模型
+        self.assertTrue(any('已写' in e.get('label', '') for e in events))
+        arch = A.load(self.pid)
+        page, new = arch['nodes']
+        self.assertEqual(page['id'], saved['nodes'][0]['id'])
+        self.assertTrue(page.get('proto'))
+        self.assertEqual(page['children'][0]['fields'], ['指派给*（选人）', '预计上门时间*'])
+        self.assertFalse(new.get('seen'))                                   # 新规划的：原型里还没有
+        with self.assertRaises(Exception):
+            self.mod.chat = lambda *a, **k: {'choices': [{'finish_reason': 'length', 'message': {'content': ''}}]}
+            self.mod.run(self.pid, 'p', 'x', 'k', 'm', 'u', 8000, events.append, lambda: False)

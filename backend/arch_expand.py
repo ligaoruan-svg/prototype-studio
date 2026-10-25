@@ -1,8 +1,7 @@
-"""架构是原型的镜子：从展开图（业务页面、弹窗、子页面、表头、表单项）读出页面树，不用 AI，几秒就好。
+"""从展开图（业务页面、弹窗、子页面、表头、表单项）读出页面树，不用 AI，几秒就好。
 
-左边对话里 AI 改完原型，展开图在后台跟着同步，页面树再从展开图读一遍（refresh）；
-你在树里写的介绍、字段控件这些原型里看不出来的，读的时候带过去（carry）。
-你在树里改了还没同步的，不读——先「同步到原型」，让 AI 把那几处改进原型。
+架构画布是你的规划：从原型读的时候只合并、不冲掉（merge）——
+原型里新做出来的补进画布；你规划了、原型里还没有的留着（标「原型里还没有」）；原型里删掉的也留着（标「原型里已经没有」）。
 """
 from __future__ import annotations
 
@@ -10,6 +9,7 @@ import re
 
 from . import storage
 from .arch_fields import form_fields, parse_field
+from .architecture import loose_name
 
 
 def _texts(html: str, pattern: str, limit: int = 30) -> list[str]:
@@ -194,35 +194,48 @@ def expand_tree(project_id: str, page_id: str) -> list[dict]:
     return out
 
 
-# 原型里看不出来、只在树里写的：读新树时从旧树带过去
-KEEP_KEYS = ("desc", "who", "req", "tags", "entry", "back", "params", "when", "after", "data", "route")
+# ---------- 合并：原型里有的补进画布，画布上规划的不动 ----------
+FILL_KEYS = ("desc", "route", "entry", "back", "params", "when", "after", "action", "target")
 
 
-def _match(old: list[dict], node: dict) -> dict | None:
-    same = [o for o in old if o["name"] == node["name"]]
+def _match(items: list[dict], node: dict) -> dict | None:
+    same = [o for o in items if o["name"] == node["name"]] or [o for o in items if loose_name(o["name"]) == loose_name(node["name"])]
     return next((o for o in same if o["type"] == node["type"]), same[0] if same else None)
 
 
-def carry(old: list[dict], fresh: list[dict]) -> list[dict]:
-    """新读出来的树为准（原型里有什么就是什么），同名的节点沿用旧的编号，介绍、谁用这些旧的有、新的没有就带上；
-    字段：原型里认出来的为准，认不出控件的那个字段用旧树里写的"""
+def _mark(nodes: list[dict], **flags) -> None:
+    for n in nodes:
+        n.update(flags)
+        _mark(n.get("children") or [], **flags)
+
+
+def _union(mine: list[str], theirs: list[str]) -> list[str]:
+    """字段、列：画布上写的为准；原型里多出来的接在后面。画布上没写控件、原型里认出来了的，换成原型的"""
+    by_name = {parse_field(f)["name"]: f for f in theirs}
+    out = [by_name[parse_field(f)["name"]] if parse_field(f)["guessed"] and parse_field(f)["name"] in by_name and not parse_field(by_name[parse_field(f)["name"]])["guessed"] else f for f in mine]
+    names = {parse_field(f)["name"] for f in mine}
+    return out + [f for f in theirs if parse_field(f)["name"] not in names]
+
+
+def _merge(mine: list[dict], fresh: list[dict]) -> None:
     for node in fresh:
-        prev = _match(old, node)
-        if not prev:
-            carry([], node.get("children") or [])
+        same = _match(mine, node)
+        if not same:
+            _mark([node], proto=True, seen=True)
+            mine.append(node)
             continue
-        if prev.get("id"):
-            node["id"] = prev["id"]
-        for key in KEEP_KEYS:
-            if prev.get(key) and not node.get(key):
-                node[key] = prev[key]
-        if prev.get("fields"):
-            if not node.get("fields"):
-                node["fields"] = prev["fields"]
-            else:
-                written = {parse_field(f)["name"]: f for f in prev["fields"]}
-                node["fields"] = [written.get(parse_field(f)["name"], f) if parse_field(f)["guessed"] else f for f in node["fields"]]
-        if prev.get("cols") and not node.get("cols"):
-            node["cols"] = prev["cols"]
-        node["children"] = carry(prev.get("children") or [], node.get("children") or [])
-    return fresh
+        same["proto"] = same["seen"] = True
+        for key in FILL_KEYS:
+            if node.get(key) and not same.get(key):
+                same[key] = node[key]
+        for key in ("fields", "cols"):
+            if node.get(key):
+                same[key] = _union(same.get(key) or [], node[key])
+        _merge(same.setdefault("children", []), node.get("children") or [])
+
+
+def merge(current: list[dict], fresh: list[dict]) -> list[dict]:
+    """把从原型读出来的树并进画布：先当作都没读到，读到的再标上。画布上的节点一个都不删"""
+    _mark(current, proto=False)
+    _merge(current, fresh)
+    return current

@@ -1,5 +1,4 @@
-// 架构模式里不依赖界面的那部分：节点类型、树的增删改移、和上次同步时比改了什么、同步到原型时发给 AI 的话。
-// 架构是原型的镜子：后台从展开图读出页面树；你在树里改了，再让 AI 只把改的那几处改进原型。
+// 架构画布里不依赖界面的那部分：节点类型、树的增删改移、两棵树比改了什么（AI 改完画布后高亮用）、和原型对不对得上。
 // 数据结构和 backend/architecture.py 一致；后台存的时候会再收拾一遍（类型、编号、长度）
 
 export const NODE_TYPES = {
@@ -162,10 +161,9 @@ export function screens(arch) {
   return out
 }
 
-// ---------- 和上次同步时比：改了什么 ----------
-// 比较的是这些：名字、类型、位置（挂在谁下面、排第几不算）、介绍和各项写法
+// ---------- 两棵树比：改了什么 ----------
+// 比较的是这些：名字、类型、位置（挂在谁下面，排第几不算）、介绍和各项写法
 const COMPARE = ['type', 'desc', 'fields', 'cols', 'action', 'target', 'when', 'after', 'route', 'entry', 'params', 'back', 'who']
-const PROP_LABEL = { desc: '介绍', fields: '字段', cols: '列', action: '点了以后', target: '点了以后', when: '什么时候出现', after: '确认后', route: '地址', entry: '怎么进来', params: '带过去', back: '怎么回去', who: '谁用', type: '类型' }
 const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
 function index(nodes) {
   const out = new Map()
@@ -187,60 +185,8 @@ export function diffNodes(before = [], after = []) {
   for (const [id, prev] of old) if (!now.has(id) && (!prev.parentId || now.has(prev.parentId))) out.push({ kind: 'remove', id, node: prev.node, path: [...(prev.parentId ? now.get(prev.parentId).path : []), prev.node.name] })
   return out
 }
-// 给人看的一行：「新增菜单页「测试」」「改了「派单」的字段」
-export function changeLabel(c) {
-  const type = NODE_TYPES[c.node?.type]?.label || ''
-  if (c.kind === 'add') return `新增${type}「${c.node.name}」`
-  if (c.kind === 'remove') return `删掉${type}「${c.node.name}」`
-  if (c.kind === 'rename') return `「${c.from}」改名为「${c.to}」`
-  if (c.kind === 'move') return `「${c.node.name}」挪到「${c.to.join(' / ') || '最外层'}」下面`
-  return `改了「${c.node.name}」的${[...new Set(c.props.map(k => PROP_LABEL[k]))].join('、')}`
-}
-
-// ---------- 同步到原型：发给 AI 的话 ----------
-const where = path => path.length ? `「${path.join(' / ')}」` : '最外层'
-// 一个节点写成一句：类型、名字、点了怎样、字段、列……
-function describe(node) {
-  const type = node.type === 'module' && !(node.children || []).length ? '一级菜单页（左侧菜单加一项，点了直接进这一页）' : NODE_TYPES[node.type]?.label || ''
-  const parts = [`${type}「${node.name}」`]
-  if (node.desc) parts.push(node.desc)
-  if (node.action) parts.push(`点了${ACTIONS[node.action]}${node.target ? `「${node.target}」` : ''}`)
-  if (node.when) parts.push(`出现：${node.when}`)
-  if (node.fields?.length) parts.push(`字段：${node.fields.join('、')}`)
-  if (node.cols?.length) parts.push(`列：${node.cols.join('、')}`)
-  if (node.after) parts.push(`确认后：${node.after}`)
-  return parts.join('；')
-}
-function describeTree(node, depth = 1) {
-  const lines = [describe(node)]
-  for (const child of node.children || []) lines.push('  '.repeat(depth) + '- ' + describeTree(child, depth + 1))
-  return lines.join('\n')
-}
-function fieldDelta(before = [], after = []) {
-  const name = f => String(f).replace(/[*🔒]|[（(].*$/g, '').trim()
-  const was = new Map(before.map(f => [name(f), f])), now = new Map(after.map(f => [name(f), f]))
-  const parts = []
-  const added = after.filter(f => !was.has(name(f))), gone = before.filter(f => !now.has(name(f))), changed = after.filter(f => was.has(name(f)) && was.get(name(f)) !== f)
-  if (added.length) parts.push('加上 ' + added.join('、'))
-  if (gone.length) parts.push('去掉 ' + gone.map(name).join('、'))
-  if (changed.length) parts.push('改成 ' + changed.join('、'))
-  return parts.join('；') || '按这个来：' + after.join('、')
-}
-export function syncMessage(changes) {
-  const lines = changes.map((c, i) => {
-    const n = `${i + 1}. `
-    if (c.kind === 'add') return n + (c.parent.length ? `在${where(c.parent)}下面新增 ` : '在最外层新增 ') + describeTree(c.node)
-    if (c.kind === 'remove') return n + `删掉${where(c.path.slice(0, -1))}里的${NODE_TYPES[c.node.type]?.label || ''}「${c.node.name}」（连同它下面的）`
-    if (c.kind === 'rename') return n + `${where(c.path.slice(0, -1))}里的「${c.from}」改名为「${c.to}」（菜单、标题、按钮上的字都跟着改）`
-    if (c.kind === 'move') return n + `把「${c.node.name}」从${where(c.from)}挪到${where(c.to)}下面`
-    const bits = c.props.filter(k => k !== 'target' || !c.props.includes('action')).map(k => {
-      if (k === 'fields' || k === 'cols') return `${PROP_LABEL[k]}${fieldDelta(c.before[k], c.node[k])}`
-      if (k === 'action' || k === 'target') return `点了改成${c.node.action ? ACTIONS[c.node.action] : '（没定）'}${c.node.target ? `「${c.node.target}」` : ''}`
-      if (k === 'type') return `改成${NODE_TYPES[c.node.type]?.label}`
-      return `${PROP_LABEL[k]}改成：${Array.isArray(c.node[k]) ? c.node[k].join('、') : c.node[k] || '（去掉）'}`
-    })
-    return n + `${where(c.path)}：` + bits.join('；')
-  })
-  return '按页面树的改动改原型，只改下面这几处，别的页面和内容都不要动：\n' + lines.join('\n')
-    + '\n字段写法：* 是必填，🔒 是自动带出不用填，括号里是控件和选项（比如「报修分类*（下拉：给排水/电气照明）」）。'
+// 和原型对不对得上（从原型读的时候后台标的）：in 原型里有；planned 你规划了、原型里还没有；gone 原型里已经没有
+export function protoState(node) {
+  if (node?.proto) return 'in'
+  return node?.seen ? 'gone' : 'planned'
 }

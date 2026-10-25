@@ -1,8 +1,8 @@
-// 架构：原型的页面树。树的增删改移、和上次同步时比改了什么、同步时发给 AI 的话、界面接上了
+// 架构画布：树的增删改移、两棵树比改了什么、和原型对不对得上、界面接上了
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { addChild, addSibling, changeLabel, clone, diffNodes, emptyArchitecture, findNode, impactOf, moveNode, removeNode, screens, syncMessage } from '../src/lib/architecture.js'
+import { addChild, addSibling, clone, diffNodes, emptyArchitecture, findNode, impactOf, moveNode, protoState, removeNode, screens } from '../src/lib/architecture.js'
 import { appSource } from './appSource.js'
 
 function sample() {
@@ -40,49 +40,45 @@ test('一个菜单页一页：页签算在页面里', () => {
   assert.deepEqual(list[0].tabs, ['路线配置', '巡检点'])
 })
 
-test('和上次同步时比：加了、删了、改名、改字段，只记最上面那一个', () => {
+test('两棵树比：加了、删了、改名、改字段，整棵加进来的只记最上面那一个', () => {
   const { a, mod, tab1, tab2 } = sample()
-  const synced = clone(a.nodes)
+  const before = clone(a.nodes)
   const test1 = addChild(a, '', 'module', '测试')
   const modal = addChild(a, tab2.id, 'modal', '新增巡检点')
-  modal.fields = ['点位名称*', '类型*（下拉：温度/压力）']
-  addChild(a, modal.id, 'button', '保存')                       // 挂在新弹窗下面的，不单独算一条
+  addChild(a, modal.id, 'button', '保存')
   removeNode(a, tab1.id)
   mod.name = '设备'
-  const changes = diffNodes(synced, a.nodes)
+  const changes = diffNodes(before, a.nodes)
   assert.deepEqual(changes.map(c => c.kind).sort(), ['add', 'add', 'remove', 'rename'])
   assert.ok(changes.some(c => c.kind === 'add' && c.id === test1.id))
-  assert.deepEqual(changes.map(changeLabel).filter(l => l.startsWith('新增')).sort(), ['新增弹窗「新增巡检点」', '新增模块「测试」'])
-  const msg = syncMessage(changes)
-  assert.match(msg, /只改下面这几处/)
-  assert.match(msg, /新增 一级菜单页（左侧菜单加一项，点了直接进这一页）「测试」/)   // 空模块就是一个一级菜单页
-  assert.match(msg, /弹窗「新增巡检点」；字段：点位名称\*、类型\*（下拉：温度\/压力）\n {2}- 按钮「保存」/)
-  assert.match(msg, /删掉「设备 \/ 设备巡检计划」里的页签「路线配置」/)
-  assert.match(msg, /「新模块」改名为「设备」/)
-  // 改字段：只说加了哪个、去掉哪个
+  assert.equal(changes.find(c => c.kind === 'remove').path.join(' / '), '设备 / 设备巡检计划 / 路线配置')
   const again = clone(a.nodes)
-  modal.fields = ['点位名称*', '备注']
-  const edit = diffNodes(again, a.nodes)
-  assert.equal(changeLabel(edit[0]), '改了「新增巡检点」的字段')
-  assert.match(syncMessage(edit), /字段加上 备注；去掉 类型/)
+  modal.fields = ['点位名称*']
+  assert.deepEqual(diffNodes(again, a.nodes).map(c => [c.kind, c.props]), [['edit', ['fields']]])
   assert.deepEqual(diffNodes(clone(a.nodes), a.nodes), [])
 })
 
-test('界面接上了：顶栏有「架构」、同步时带上 architecture、只剩页面树', () => {
+test('和原型对不对得上：读到了 / 规划中 / 原型里已经没有', () => {
+  assert.equal(protoState({ proto: true, seen: true }), 'in')
+  assert.equal(protoState({}), 'planned')
+  assert.equal(protoState({ seen: true }), 'gone')
+})
+
+test('界面接上了：顶栏有「架构」、打开画布才有「架构」模式、只剩画布', () => {
   const header = readFileSync(new URL('../src/components/layout/AppHeader.vue', import.meta.url), 'utf8')
   const board = readFileSync(new URL('../src/components/architecture/ArchitectureBoard.vue', import.meta.url), 'utf8')
+  const node = readFileSync(new URL('../src/components/architecture/ArchNode.vue', import.meta.url), 'utf8')
   const logic = readFileSync(new URL('../src/composables/useArchitecture.js', import.meta.url), 'utf8')
+  const panel = readFileSync(new URL('../src/components/layout/ConversationPanel.vue', import.meta.url), 'utf8')
   assert.match(header, /@click="showArch"/)
-  assert.match(appSource(), /architecture: !!options\.architecture/)
-  assert.match(logic, /architecture: true/)
-  assert.match(board, /s\.syncToPrototype\(\)/)
-  assert.match(board, /s\.discardChanges/)
-  assert.doesNotMatch(board, /业务流程|数据关系|统一规则|一致性检查/)
+  assert.match(panel, /\.\.\.\(archOpen \? \[\{ value: 'architecture', label: '架构'/)
+  assert.match(logic, /composerIntent\.value = 'architecture'/)
+  assert.match(appSource(), /intent !== 'architecture'/)                 // 画布开着时，别的模式把画布当背景
+  assert.match(appSource(), /result\.intent === 'architecture'[\s\S]*afterArchChat/)
+  assert.match(node, /s\.makeInPrototype\(node\)/)
+  assert.doesNotMatch(board, /业务流程|数据关系|统一规则|同步到原型|arch-sub|展开到/)
   assert.match(logic, /key === 'Enter'[\s\S]*archSibling/)
   assert.match(logic, /key === 'Tab'[\s\S]*archAdd/)
-  const outline = readFileSync(new URL('../src/components/architecture/ArchOutline.vue', import.meta.url), 'utf8')
-  assert.match(outline, /s\.applyOutline\(archOutline\)/)
-  assert.match(outline, /s\.importText\(paste\.value, pasteMode\.value\)/)
 })
 
 test('分到弹什么：按钮点了打开谁', async () => {

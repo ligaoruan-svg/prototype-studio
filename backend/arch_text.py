@@ -1,4 +1,4 @@
-"""架构的文字写法：手动编的「大纲」、AI 起草时的回复、从 Excel 粘贴的功能清单，都落到这里。
+"""架构的文字写法「大纲」：架构模式下和 AI 来回传页面树用这个（比 JSON 字数少一大半），读回来时路径没变的节点沿用原来的编号。
 
 大纲长这样（缩进就是层级，方括号是类型，冒号后面是介绍，竖线隔开其它属性）：
 
@@ -347,93 +347,6 @@ def from_outline(text: str) -> dict:
     if any(l.strip() for l in sections["flow"]):
         arch["lanes"], arch["steps"] = _flow(sections["flow"])
     return arch
-
-
-# ---------- 从 Excel 粘过来的功能清单 ----------
-LEVEL_HEADS = re.compile(r"模块|子系统|系统|一级|二级|三级|四级|菜单|页面|页签|功能(?!描述|说明)|功能点|子功能")
-DESC_HEADS = re.compile(r"说明|描述|备注|功能描述|详细|内容")
-ID_HEADS = re.compile(r"编号|序号|ID|id|需求号")
-
-
-def looks_like_table(text: str) -> bool:
-    rows = [r for r in (text or "").splitlines() if r.strip()]
-    return len(rows) >= 2 and sum("\t" in r for r in rows) >= max(2, len(rows) // 2)
-
-
-def from_table(text: str) -> dict:
-    """功能清单（Excel 复制出来是用 Tab 分开的几列）→ 架构。
-    合并单元格复制出来只有第一行有值，下面几行是空的：空格子沿用上一行的。"""
-    rows = [r.split("\t") for r in (text or "").replace("\r\n", "\n").split("\n") if r.strip()]
-    if not rows:
-        return {"nodes": []}
-    width = max(len(r) for r in rows)
-    rows = [r + [""] * (width - len(r)) for r in rows]
-    header = [c.strip() for c in rows[0]]
-    has_header = sum(bool(LEVEL_HEADS.search(c) or DESC_HEADS.search(c) or ID_HEADS.fullmatch(c) or ID_HEADS.search(c)) for c in header) >= 2
-    if has_header:
-        body = rows[1:]
-        ids = [i for i, c in enumerate(header) if ID_HEADS.search(c) and not LEVEL_HEADS.search(c)]
-        descs = [i for i, c in enumerate(header) if DESC_HEADS.search(c) and i not in ids]
-        levels = [i for i, c in enumerate(header) if i not in ids and i not in descs and LEVEL_HEADS.search(c)]
-        if not levels:
-            levels = [i for i in range(width) if i not in ids and i not in descs]
-    else:
-        body = rows
-        # 没有表头：最后一列字多就当说明，第一列像编号就当编号，其余按顺序是层级
-        last_long = sum(len(r[-1].strip()) > 12 for r in body) >= len(body) / 2
-        first_id = all(re.fullmatch(r"[#\w.-]{1,12}", r[0].strip() or "x") and not re.search(r"[一-鿿]", r[0]) for r in body)
-        ids = [0] if first_id and width > 2 else []
-        descs = [width - 1] if last_long and width > 1 else []
-        levels = [i for i in range(width) if i not in ids and i not in descs]
-    kinds = ["module", "page", "tab", "feature"] if len(levels) >= 4 else ["module", "page", "feature"] if len(levels) == 3 else ["page", "feature"] if len(levels) == 2 else ["feature"]
-    while len(kinds) < len(levels):
-        kinds.append("feature")
-    roots: list[dict] = []
-    carry = [""] * width
-    for row in body:
-        cells = [c.strip() for c in row]
-        # 合并单元格：这一行哪一层空着，就沿用上一行；某一层换了值，它下面的层不能再沿用
-        changed = False
-        for i in levels:
-            if cells[i]:
-                if cells[i] != carry[i]:
-                    changed = True
-                carry[i] = cells[i]
-            elif changed:
-                carry[i] = ""
-        path = [(carry[i], kinds[n]) for n, i in enumerate(levels) if carry[i]]
-        if not path:
-            continue
-        siblings, node = roots, None
-        for name, kind in path:
-            node = next((n for n in siblings if n["name"] == name), None)
-            if not node:
-                node = {"name": name, "type": kind, "children": []}
-                siblings.append(node)
-            siblings = node["children"]
-        desc = "；".join(cells[i] for i in descs if cells[i])
-        if desc and not node.get("desc"):
-            node["desc"] = desc
-        req = [cells[i] for i in ids if cells[i]]
-        if req:
-            node["req"] = sorted(set(node.get("req", []) + req))
-    return {"nodes": roots}
-
-
-# ---------- 合并：追加时同名的并到一起 ----------
-def merge_nodes(target: list[dict], incoming: list[dict]) -> None:
-    for node in incoming:
-        same = next((n for n in target if n["name"] == node["name"]), None)
-        if not same:
-            target.append(node)
-            continue
-        for key in ("desc", "route", "entry", "params", "back"):
-            if node.get(key) and not same.get(key):
-                same[key] = node[key]
-        for key in ("data", "who", "tags", "req"):
-            if node.get(key):
-                same[key] = list(dict.fromkeys((same.get(key) or []) + node[key]))
-        merge_nodes(same.setdefault("children", []), node.get("children") or [])
 
 
 def keep_ids(fresh: dict, current: dict | None) -> dict:
