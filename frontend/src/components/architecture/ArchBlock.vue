@@ -4,6 +4,7 @@
 import { computed, inject, nextTick, ref, watch } from 'vue'
 import { ChevronDown, ChevronUp, CornerDownRight, Plus, Trash2 } from 'lucide-vue-next'
 import ArchBlock from './ArchBlock.vue'
+import ArchFields from './ArchFields.vue'
 import { ACTIONS, CHILD_TYPES, NODE_TYPES } from '../../lib/architecture.js'
 
 const props = defineProps({ node: Object })
@@ -42,10 +43,8 @@ function addChild(event) { const type = event.target.value; event.target.value =
       </div>
     </div>
     <!-- 弹窗、区块的字段，表格的列：一个个小标签排开 -->
-    <div v-if="node.fields?.length || node.cols?.length || node.after" class="ab-detail" @click.stop="s.archSelect('node', node.id)">
-      <p v-if="node.fields?.length"><em>{{ $t('字段') }}</em><span v-for="f in node.fields" :key="f" class="ab-chip" :class="{ must: f.endsWith('*') }">{{ f.replace(/\*$/, '') }}</span></p>
-      <p v-if="node.cols?.length"><em>{{ $t('列') }}</em><span v-for="c in node.cols" :key="c" class="ab-chip">{{ c }}</span></p>
-      <p v-if="node.after"><em>{{ $t('确认后') }}</em>{{ node.after }}</p>
+    <div v-if="['modal', 'drawer', 'wizard', 'block', 'table'].includes(node.type)" class="ab-detail" @click.stop>
+      <ArchFields :node="node" :open="true" @edit="s.archSelect('node', node.id)" />
     </div>
     <div v-if="kids.length" class="ab-kids"><ArchBlock v-for="child in kids" :key="child.id" :node="child" @goto="emit('goto', $event)" /></div>
   </div>

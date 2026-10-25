@@ -9,6 +9,7 @@ export function useArchitecture(s) {
   const arch = ref(null), archIssues = ref([]), archOrder = ref([]), archCounts = ref({})
   const archMounted = ref(false), archLoaded = ref(''), archBusy = ref(''), archError = ref('')
   const archView = ref('tree'), archSelected = ref(null), archShowDesc = ref(true), archQuery = ref('')
+  const archShowFields = ref(false)   // 页面树里弹窗、表格默认只露一行字段摘要；勾上就全部画成小表单
   const archRemoved = ref(null)   // 刚删掉的：底部「撤销」条
   const archOutline = ref(''), archOutlineDirty = ref(false)   // 大纲视图：手动编的文字；没改过就跟着架构变
   const archDraft = ref(null)     // AI 起草的进度：{ id, label, chars, started }
@@ -265,7 +266,7 @@ export function useArchitecture(s) {
     await s.runAgent(rebuildMessage(arch.value, node), '', { intent: 'edit', includeAnnotations: false, selection: null, architecture: true })
   }
 
-  return { arch, archIssues, archOrder, archCounts, archMounted, archBusy, archError, archView, archSelected, archShowDesc, archQuery,
+  return { arch, archIssues, archOrder, archCounts, archMounted, archBusy, archError, archView, archSelected, archShowDesc, archShowFields, archQuery,
     archRemoved, archHistory: history, loadArch, showArch, hideArch, saveArch: saveNow, archSnapshot: snapshot, archDirty: dirty, archChange: change,
     archLevel, archExpand, nodeOpen, openNode, setLevel,
     undoArch, archSelect: select, archSelectedItem: selectedItem, archAdd, archSibling, archMove, archToggle, archRemove,

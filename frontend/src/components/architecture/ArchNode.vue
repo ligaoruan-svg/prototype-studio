@@ -3,12 +3,15 @@
 import { computed, inject, nextTick, ref, watch } from 'vue'
 import { ChevronDown, ChevronRight, ChevronUp, Plus, Trash2 } from 'lucide-vue-next'
 import ArchNode from './ArchNode.vue'
-import { CHILD_TYPES, NODE_TYPES, countBelow } from '../../lib/architecture.js'
+import { ACTIONS, CHILD_TYPES, LAYER_TYPES, NODE_TYPES, countBelow } from '../../lib/architecture.js'
+import ArchFields from './ArchFields.vue'
 import { t } from '../../lib/i18n.js'
 
 const props = defineProps({ node: Object, depth: { type: Number, default: 0 }, siblings: { type: Array, default: () => [] } })
 const s = inject('studio')
-const { archSelected, archShowDesc, archQuery, archIssues, archRenaming, archExpand, archLevel } = s
+const { archSelected, archShowDesc, archShowFields, archQuery, archIssues, archRenaming, archExpand, archLevel } = s
+// 弹窗、抽屉、向导、区块、表格：卡片里带上字段 / 列
+const hasForm = computed(() => [...LAYER_TYPES, 'block', 'table'].includes(props.node.type))
 // 搜索时，命中的节点上面几层自动展开
 const hasHit = node => !!archQuery.value.trim() && [...(node.children || [])].some(c => c.name.includes(archQuery.value.trim()) || hasHit(c))
 const open = computed(() => { void archExpand.value; void archLevel.value; return hasHit(props.node) || s.nodeOpen(props.node, props.depth) })
@@ -44,11 +47,14 @@ function addChild(event) {
 
 <template>
   <div class="an-row">
-    <div class="an-card" :class="[node.type, { selected, hit, leaf: !kids.length, warn: warn.some(w => w.level === 'error') }]" @click.stop="pick" @dblclick.stop="archRenaming = node.id">
+    <div class="an-card" :class="[node.type, { selected, hit, leaf: !kids.length, form: hasForm, warn: warn.some(w => w.level === 'error') }]" @click.stop="pick" @dblclick.stop="archRenaming = node.id">
       <div class="an-head"><span class="an-type">{{ $t(NODE_TYPES[node.type].short) }}</span><input v-if="renaming" ref="nameInput" class="an-rename" :value="node.name" :aria-label="$t('名称')" @click.stop @keydown.enter.prevent="commitName" @keydown.esc.stop.prevent="cancelName" @blur="commitName"><b v-else>{{ node.name }}</b>
         <button v-if="kids.length" class="an-fold" :title="open ? $t('收起') : $t('展开')" :aria-label="open ? $t('收起') : $t('展开')" @click.stop="s.openNode(node, depth, siblings)"><ChevronDown v-if="open" :size="13" /><ChevronRight v-else :size="13" /></button></div>
       <p v-if="archShowDesc && node.desc" class="an-desc">{{ node.desc }}</p>
       <p v-if="node.type === 'drill' && archShowDesc && node.entry" class="an-entry">{{ $t('从哪进：{0}', [node.entry]) }}</p>
+      <p v-if="node.action" class="an-act" :class="node.action">↳ {{ $t(ACTIONS[node.action]) }}<template v-if="node.target">「{{ node.target }}」</template></p>
+      <p v-if="node.when" class="an-when">{{ $t('出现：{0}', [node.when]) }}</p>
+      <ArchFields v-if="hasForm" :node="node" :open="archShowFields" @click.stop @edit="s.archSelect('node', node.id)" />
       <p v-if="meta" class="an-meta">{{ meta }}</p>
       <span v-if="warn.length" class="an-warn" :title="warn.map(w => w.text).join('\n')">⚠ {{ warn.length }}</span>
       <div v-if="selected" class="an-tools" @click.stop>

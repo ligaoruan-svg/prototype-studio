@@ -74,6 +74,7 @@ function pop(name) { issuesOpen.value = name === 'issues' && !issuesOpen.value; 
         <input v-model="archQuery" class="arch-search" :placeholder="$t('搜索节点')" :aria-label="$t('搜索节点')">
         <div class="arch-level" role="group" :aria-label="$t('展开到')"><span>{{ $t('展开到') }}</span><button v-for="l in levels" :key="l.v" :class="{ active: s.archLevel.value === l.v }" @click="s.setLevel(l.v)">{{ $t(l.label) }}</button></div>
         <label class="arch-check"><input v-model="archShowDesc" type="checkbox">{{ $t('显示介绍') }}</label>
+        <label class="arch-check"><input v-model="s.archShowFields.value" type="checkbox">{{ $t('展开字段') }}</label>
       </template>
       <span class="arch-counts" :title="counts.join(' · ')">{{ counts.join(' · ') }}</span>
     </div>

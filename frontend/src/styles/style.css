@@ -891,3 +891,45 @@ input[type=color]::-webkit-color-swatch { border: none; border-radius: 2px; }
 .ab-chip.must::after { content: '*'; color: var(--danger); margin-left: 1px; }
 .ab-kids { display: flex; flex-direction: column; gap: 6px; margin-left: 22px; padding-left: 12px; border-left: 1.5px solid var(--arch-line); }
 @container (max-width: 760px) { .ap-wrap { grid-template-columns: 1fr; } .ap-list { position: static; max-height: 180px; } }
+
+/* 卡片里的字段：收起一行摘要，展开画成小表单 / 只读抽屉 / 表格表头 / 一排输入框 */
+.an-card.modal, .an-card.wizard { background: #fffaf6; border-color: #ecc9b4; }
+.an-card.drawer { background: #f7f9fe; border-color: #c9d6f2; }
+.an-card.table { background: #f8faff; border-color: #cfdcf5; }
+.an-card.button .an-type { background: #2b2420; color: #fff; }
+.an-card.table .an-type { background: #dbe6fb; color: #2f5bb5; }
+.an-card.form:has(.af.shown) { width: 340px; }
+.an-act { margin-top: 3px; font-size: 11.5px; color: #9c4325; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.an-act.jump { color: #2f5bb5; } .an-act.run { color: #246e48; } .an-act.confirm { color: var(--danger); }
+.an-when { margin-top: 2px; font-size: 11px; color: #9a6a12; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.af { margin-top: 4px; display: flex; flex-direction: column; gap: 6px; cursor: default; }
+.af-sum { justify-content: flex-start; gap: 3px; min-width: 0; padding: 0; font-size: 11.5px; color: #6b625c; text-align: left; }
+.af-sum span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.af-sum:hover { color: var(--ink); }
+.af.shown .af-sum span { white-space: normal; }
+.af-empty { align-self: flex-start; padding: 0; font-size: 11px; color: #b0a69e; font-style: italic; }
+.af-empty:hover { color: var(--primary); }
+.af-form { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 8px; padding: 8px; border-radius: 8px; background: #fff; border: 1px solid #f1dccd; }
+.af-f { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.af-f.wide { grid-column: 1 / -1; }
+.af-f label, .af-block label { font-size: 10.5px; color: #6b625c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.af-f i, .af-block i { font-style: normal; color: var(--danger); margin-left: 1px; }
+.af-f span { height: 20px; border: 1px solid #e6ddd4; border-radius: 5px; background: #faf8f5; font-size: 10px; color: #b0a69e; padding: 0 6px; display: flex; align-items: center; }
+.af-f span.area { height: 30px; }
+.af-f span.locked { background: #f3efe9; border-style: dashed; }
+.af-kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; padding: 8px; border-radius: 8px; background: #fff; border: 1px solid #dbe6fb; font-size: 10.5px; color: #6b625c; }
+.af-kv em { border-bottom: 1px dashed #dcd3ca; }
+.af-table { overflow: hidden; border: 1px solid #dbe6fb; border-radius: 7px; background: #fff; }
+.af-tr { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(44px, 1fr); }
+.af-tr span { height: 16px; padding: 0 4px; border-right: 1px solid #eef2fa; border-top: 1px solid #eef2fa; font-size: 9.5px; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.af-tr.head span { height: 20px; line-height: 20px; border-top: 0; background: #eef3fc; color: #2f5bb5; font-weight: 600; }
+.af-block { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px; border-radius: 8px; background: #fff; border: 1px dashed #e2d6cc; }
+.af-block > span { display: flex; flex-direction: column; gap: 2px; width: calc(50% - 3px); min-width: 0; }
+.af-block em { height: 18px; border: 1px solid #e6ddd4; border-radius: 5px; background: #faf8f5; }
+.af-block em.locked { border-style: dashed; background: #f3efe9; }
+.af-after { padding: 4px 7px; border-radius: 6px; background: #eaf6ef; color: #246e48; font-size: 11px; line-height: 1.5; }
+.af-foot { display: flex; justify-content: flex-end; gap: 5px; }
+.af-foot span { padding: 1px 9px; border: 1px solid #e2d6cc; border-radius: 5px; font-size: 10.5px; background: #fff; }
+.af-foot span.p { background: #b8532f; border-color: #b8532f; color: #fff; }
+.ab-detail .af { margin-top: 0; max-width: 560px; }
+.ab-detail .af-form { grid-template-columns: repeat(3, 1fr); }
