@@ -820,6 +820,14 @@ input[type=color]::-webkit-color-swatch { border: none; border-radius: 2px; }
 .ad-head { display: flex; align-items: center; gap: 8px; }
 .ad-head select { width: auto; flex: 0 0 auto; }
 .ad-head .icon-button { margin-left: auto; }
+.afe { gap: 6px; }
+.afe-head { display: flex; align-items: center; justify-content: space-between; }
+.afe-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 20px; gap: 4px 6px; align-items: center; padding-bottom: 6px; border-bottom: 1px dashed var(--line); }
+.afe-row select, .afe-row input.afe-name, .afe-opts { min-width: 0; height: 28px; font-size: 12px; }
+.afe-sub { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; }
+.afe-opts { flex: 1; }
+.arch-detail label.afe-flag { flex-direction: row; align-items: center; gap: 3px; font-size: 11.5px; color: var(--ink); white-space: nowrap; }
+.afe-add { align-self: flex-start; gap: 3px; }
 .ad-two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .ad-row { display: flex; align-items: center; gap: 4px; }
 .ad-row > input:first-child { flex: 1.2; } .ad-row > select { flex: 0 0 74px; } .ad-row > input + select + input, .ad-row > select + select, .ad-row > select + input { flex: 1; }
@@ -912,11 +920,7 @@ input[type=color]::-webkit-color-swatch { border: none; border-radius: 2px; }
 .af-form { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 8px; padding: 8px; border-radius: 8px; background: #fff; border: 1px solid #f1dccd; }
 .af-f { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .af-f.wide { grid-column: 1 / -1; }
-.af-f label, .af-block label { font-size: 10.5px; color: #6b625c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .af-f i, .af-block i { font-style: normal; color: var(--danger); margin-left: 1px; }
-.af-f span { height: 20px; border: 1px solid #e6ddd4; border-radius: 5px; background: #faf8f5; font-size: 10px; color: #b0a69e; padding: 0 6px; display: flex; align-items: center; }
-.af-f span.area { height: 30px; }
-.af-f span.locked { background: #f3efe9; border-style: dashed; }
 .af-kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; padding: 8px; border-radius: 8px; background: #fff; border: 1px solid #dbe6fb; font-size: 10.5px; color: #6b625c; }
 .af-kv em { border-bottom: 1px dashed #dcd3ca; }
 .af-table { overflow: hidden; border: 1px solid #dbe6fb; border-radius: 7px; background: #fff; }
@@ -925,8 +929,30 @@ input[type=color]::-webkit-color-swatch { border: none; border-radius: 2px; }
 .af-tr.head span { height: 20px; line-height: 20px; border-top: 0; background: #eef3fc; color: #2f5bb5; font-weight: 600; }
 .af-block { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px; border-radius: 8px; background: #fff; border: 1px dashed #e2d6cc; }
 .af-block > span { display: flex; flex-direction: column; gap: 2px; width: calc(50% - 3px); min-width: 0; }
-.af-block em { height: 18px; border: 1px solid #e6ddd4; border-radius: 5px; background: #faf8f5; }
-.af-block em.locked { border-style: dashed; background: #f3efe9; }
+.af-f label, .af-block label { display: flex; align-items: center; gap: 4px; min-width: 0; font-size: 10.5px; color: #6b625c; }
+.af-n { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 字段旁边的小标：下拉、日期、上传……虚线框的是按名字猜的 */
+.af-kind { flex: none; padding: 0 4px; border: 1px solid #e3d3c6; border-radius: 4px; font-size: 9.5px; font-style: normal; line-height: 14px; color: #8a5a3c; background: #fbf3ec; }
+.af-kind.guess { border-style: dashed; background: transparent; color: #a8998d; }
+/* 字段画成控件 */
+.ac { display: flex; align-items: center; gap: 4px; height: 20px; min-width: 0; padding: 0 6px; border: 1px solid #e6ddd4; border-radius: 5px; background: #fff; font-size: 10px; color: #b0a69e; overflow: hidden; white-space: nowrap; }
+.ac b { flex: 1; min-width: 0; display: flex; align-items: center; gap: 3px; overflow: hidden; text-overflow: ellipsis; font-weight: 400; }
+.ac.pick { color: #8d8178; }
+.ac.pick svg:last-child { flex: none; color: #8d8178; }
+.ac.area { height: 32px; align-items: flex-start; padding-top: 3px; }
+.ac.locked { background: #f3efe9; border-style: dashed; color: #9a8d82; }
+.ac.num { justify-content: flex-end; }
+.ac.drop { justify-content: center; border-style: dashed; color: #8d8178; background: #fcfaf7; }
+.ac.drop.img { width: 34px; height: 30px; padding: 0; }
+.ac.note { border: 0; background: transparent; padding: 0; font-style: italic; }
+.ac.bare { border: 0; background: transparent; padding: 0; gap: 8px; color: #6b625c; }
+.ac .chip { font-style: normal; padding: 0 4px; border-radius: 3px; background: #f1ebe5; color: #6b625c; }
+.ac .radio, .ac .box { font-style: normal; display: inline-flex; align-items: center; gap: 3px; }
+.ac .radio::before { content: ''; width: 8px; height: 8px; border: 1px solid #b9ada3; border-radius: 50%; }
+.ac .radio.on::before { border: 3px solid #b8532f; width: 4px; height: 4px; }
+.ac .box { width: 9px; height: 9px; border: 1px solid #b9ada3; border-radius: 2px; }
+.ac .switch { width: 22px; height: 12px; border-radius: 6px; background: #d9d0c8; position: relative; }
+.ac .switch::after { content: ''; position: absolute; left: 2px; top: 2px; width: 8px; height: 8px; border-radius: 50%; background: #fff; }
 .af-after { padding: 4px 7px; border-radius: 6px; background: #eaf6ef; color: #246e48; font-size: 11px; line-height: 1.5; }
 .af-foot { display: flex; justify-content: flex-end; gap: 5px; }
 .af-foot span { padding: 1px 9px; border: 1px solid #e2d6cc; border-radius: 5px; font-size: 10.5px; background: #fff; }

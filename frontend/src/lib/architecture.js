@@ -139,6 +139,9 @@ export function screenOf(arch, id) {
   return chain.find(n => SCREEN_TYPES.includes(n.type)) || null
 }
 // 同一页里能被按钮打开 / 跳到的东西（给详情里的下拉用）
+// 按钮写的「新增报修工单（业主来电代录）」和弹窗名「新增报修工单」算同一个：括号里的补充、末尾的「弹窗 / 抽屉」不算
+export const looseName = name => String(name || '').replace(/[（(][^（()）]*[）)]/g, '').replace(/\s+|(弹窗|弹框|抽屉|对话框|页面)$/g, '')
+export const sameName = (a, b) => a === b || (!!looseName(a) && looseName(a) === looseName(b))
 export function targetsIn(arch, id, action) {
   const screen = screenOf(arch, id)
   if (action === 'jump') return [...walk(arch?.nodes)].map(x => x.node).filter(n => SCREEN_TYPES.includes(n.type)).map(n => n.name)

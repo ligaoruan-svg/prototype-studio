@@ -251,7 +251,8 @@ export function useArchitecture(s) {
   // 确认架构：改成「已确认」，回到预览，交给 AI 按架构一页一步做
   async function generateFromArch() {
     if (!arch.value || s.locked.value || needKey()) return
-    if (blocking().length) { archError.value = `还有 ${blocking().length} 处对不上，先改好再生成（点上面的「一致性检查」看是哪几处）`; return }
+    // 直接说是哪几处，不用再去点检查
+    if (blocking().length) { const list = blocking(); archError.value = `还有 ${list.length} 处对不上，先改好再生成：` + list.slice(0, 3).map(i => i.text).join('；') + (list.length > 3 ? ' …' : ''); return }
     arch.value.status = 'confirmed'
     await saveNow()
     if (archError.value) return

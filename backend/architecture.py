@@ -56,6 +56,12 @@ def _text(value: Any, limit: int = 600) -> str:
     return re.sub(r"[ \t]+", " ", str(value or "")).strip()[:limit]
 
 
+def loose_name(name: str) -> str:
+    """按钮写的打开「新增报修工单（业主来电代录）」，弹窗叫「新增报修工单」：括号里的补充、末尾的「弹窗 / 抽屉」不算"""
+    text = re.sub(r"[（(][^（()）]*[）)]", "", str(name or ""))
+    return re.sub(r"\s+|(弹窗|弹框|抽屉|对话框|页面)$", "", text)
+
+
 def _strings(value: Any, count: int = 20, limit: int = 60) -> list[str]:
     if isinstance(value, str):
         value = re.split(r"[,，、;；\n]", value)
@@ -110,7 +116,7 @@ def normalize(raw: Any) -> dict[str, Any]:
                 out[key] = _s(item.get(key), limit)
         if item.get("action") in ACTIONS:
             out["action"] = item["action"]
-        for key, n, size in (("who", 8, 40), ("data", 12, 40), ("tags", 8, 80), ("req", 8, 40), ("fields", 40, 40), ("cols", 30, 30)):
+        for key, n, size in (("who", 8, 40), ("data", 12, 40), ("tags", 8, 80), ("req", 8, 40), ("fields", 40, 120), ("cols", 30, 30)):
             raw_value = item.get(key)
             if key == "tags" and isinstance(raw_value, list):   # 标签里常有逗号，是列表就不再拆
                 values = list(dict.fromkeys(_s(t, size) for t in raw_value[:n] if _s(t, size)))
@@ -146,9 +152,18 @@ def normalize(raw: Any) -> dict[str, Any]:
                                  "role": _s(item.get("role"), 16), "desc": _text(item.get("desc"), 300),
                                  "external": item.get("external") is True, "fields": fields,
                                  "states": _strings(item.get("states"), 10, 16)})
+    # 关系两头写成「业主报修提交 [外部]」「设备档案（台账）」：去掉方括号、括号里的补充，对得上数据名就用数据名
+    known = {e["name"] for e in arch["entities"]}
+
+    def end(value):
+        text = _s(value, 40)
+        if text in known:
+            return text
+        bare = re.sub(r"\s*[\[［【][^\]］】]*[\]］】]\s*|\s*[（(][^（()）]*[）)]\s*", "", text).strip()
+        return bare if bare in known else text[:30]
     for item in (raw.get("relations") if isinstance(raw.get("relations"), list) else [])[:200]:
-        if isinstance(item, dict) and _s(item.get("from"), 30) and _s(item.get("to"), 30):
-            arch["relations"].append({"from": _s(item.get("from"), 30), "to": _s(item.get("to"), 30), "label": _s(item.get("label"), 40)})
+        if isinstance(item, dict) and end(item.get("from")) and end(item.get("to")):
+            arch["relations"].append({"from": end(item.get("from")), "to": end(item.get("to")), "label": _s(item.get("label"), 40)})
 
     lanes = []
     for item in (raw.get("lanes") if isinstance(raw.get("lanes"), list) else [])[:8]:
@@ -271,6 +286,7 @@ def check(arch: dict) -> list[dict]:
         add("warn", "还没有页面：先加一个模块和菜单页")
     used = set()
     names_all = {n["name"] for n, _, _ in walk(arch.get("nodes") or [])}
+    loose_all = {loose_name(n) for n in names_all}
     for item, depth, parents in walk(arch.get("nodes") or []):
         for name in item.get("data") or []:
             used.add(name)
@@ -280,7 +296,7 @@ def check(arch: dict) -> list[dict]:
             add("warn", f"模块「{item['name']}」下面还没有页面", node=item["id"])
         if item["type"] in SCREEN_TYPES and not item.get("desc"):
             add("warn", f"「{item['name']}」还没写介绍：AI 会按名字猜", node=item["id"])
-        if item["type"] == "button" and item.get("action") in ("open", "jump") and item.get("target") and item["target"] not in names_all:
+        if item["type"] == "button" and item.get("action") in ("open", "jump") and item.get("target") and item["target"] not in names_all and loose_name(item["target"]) not in loose_all:
             add("warn", f"按钮「{item['name']}」要{ACTIONS[item['action']]}的「{item['target']}」在架构里没有", node=item["id"])
         if item["type"] == "drill" and not item.get("entry"):
             add("warn", f"下钻页「{item['name']}」没写从哪进", node=item["id"])

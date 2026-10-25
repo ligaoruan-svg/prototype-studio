@@ -330,3 +330,25 @@ class 接口(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class 字段控件(unittest.TestCase):
+    def test_照原型认控件(self):
+        from backend.arch_fields import form_fields, parse_field
+        html = ('<div class="field"><label for="a">报修人<span class="req">*</span></label><select id="a"><option>请选择报修人</option><option>张三（YZ-001）</option><option>李四</option></select></div>'
+                '<div class="field"><label>联系电话</label><input type="text" readonly placeholder="选择报修人后自动带出"></div>'
+                '<div class="field"><label>预计上门时间<span class="req">*</span></label><input placeholder="YYYY-MM-DD HH:mm"></div>'
+                '<label>是否加急</label><label><input type="radio">是</label><label><input type="radio">否</label>'
+                '<label>报修事项</label><input type="text"><label>问题描述</label><textarea></textarea>')
+        self.assertEqual(form_fields(html), ["报修人*（下拉：张三/李四）", "联系电话🔒", "预计上门时间*", "是否加急（单选：是/否）", "报修事项", "问题描述"])
+        self.assertEqual(parse_field("报修人*（下拉：张三（YZ-001）/李四）")["options"], ["张三（YZ-001）", "李四"])
+        self.assertEqual(parse_field("预计上门时间*")["type"], "datetime")
+
+    def test_大纲里括号里的顿号不切开_按钮目标带补充也认(self):
+        arch = A.normalize(T.from_outline("【页面】\n报修 [模块]\n  工单 [菜单页]\n    新增 [按钮] | 打开：新增工单（业主来电代录）\n"
+                                          "    新增工单 [弹窗] | 字段：分类*（下拉：给排水、电气）、备注\n【数据】\n工单\n业主提交 [外部]\n【关系】\n业主提交 [外部] → 工单：1 → 1"))
+        modal = arch["nodes"][0]["children"][0]["children"][1]
+        self.assertEqual(modal["fields"], ["分类*（下拉：给排水、电气）", "备注"])
+        self.assertEqual(arch["relations"][0]["from"], "业主提交")
+        self.assertEqual([i for i in A.check(arch) if i["level"] == "error"], [])
+        self.assertFalse(any("在架构里没有" in i["text"] for i in A.check(arch)))

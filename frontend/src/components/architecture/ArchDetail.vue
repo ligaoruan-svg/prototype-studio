@@ -2,7 +2,9 @@
 // 右边的详情：选中什么就改什么。打字直接改到架构里（停手半秒自动保存），开始改一格之前留一份底给「撤销」
 import { computed, inject } from 'vue'
 import { Plus, RotateCw, Trash2, X } from 'lucide-vue-next'
-import { ACTIONS, CHILD_TYPES, FIELD_KINDS, LANE_KINDS, LAYER_TYPES, NODE_TYPES, SCREEN_TYPES, findNode, screens, targetsIn } from '../../lib/architecture.js'
+import ArchFieldEdit from './ArchFieldEdit.vue'
+import { splitOutside } from '../../lib/archFields.js'
+import { ACTIONS, CHILD_TYPES, FIELD_KINDS, LANE_KINDS, LAYER_TYPES, NODE_TYPES, SCREEN_TYPES, findNode, sameName, screens, targetsIn } from '../../lib/architecture.js'
 
 const s = inject('studio')
 const { arch, archSelected, archIssues, archView, locked, page } = s
@@ -22,7 +24,7 @@ const targets = computed(() => kind.value === 'node' && item.value.type === 'but
 // 一行一个（字段、列）：必填在后面加 *
 const linesText = value => (value || []).join('\n')
 function setLines(target, key, text) {
-  const values = text.split(/\n|[、,，]/).map(v => v.trim()).filter(Boolean)
+  const values = splitOutside(text)
   if (values.length) target[key] = values; else delete target[key]
   s.archDirty()
 }
@@ -32,7 +34,7 @@ function setAction(value) {
 }
 // 点「打开：xx」直接跳到那个弹窗
 function gotoTarget(name) {
-  const hit = [...(function* w(ns) { for (const n of ns || []) { yield n; yield* w(n.children) } })(arch.value.nodes)].find(n => n.name === name)
+  const hit = [...(function* w(ns) { for (const n of ns || []) { yield n; yield* w(n.children) } })(arch.value.nodes)].find(n => sameName(n.name, name))
   if (hit) s.archSelect('node', hit.id)
 }
 const outgoing = computed(() => kind.value === 'entity' ? arch.value.relations.filter(r => r.from === item.value.name) : [])
@@ -92,12 +94,13 @@ function gotoNode(id) { archView.value = 'tree'; s.archSelect('node', id) }
       <template v-if="item.type === 'button'">
         <div class="ad-two"><label>{{ $t('点了以后') }}<select :value="item.action || ''" @change="setAction($event.target.value)"><option value="">{{ $t('（还没定）') }}</option><option v-for="(label, k) in ACTIONS" :key="k" :value="k">{{ $t(label) }}</option></select></label>
           <label v-if="item.action">{{ item.action === 'open' ? $t('打开哪个') : item.action === 'jump' ? $t('跳到哪页') : item.action === 'run' ? $t('做什么') : $t('提示什么') }}<input :value="item.target || ''" :list="'ad-targets-' + item.id" @focus="s.archSnapshot()" @input="setText(item, 'target', $event.target.value)"><datalist :id="'ad-targets-' + item.id"><option v-for="t in targets" :key="t" :value="t"></option></datalist></label></div>
-        <button v-if="item.target && targets.includes(item.target)" class="quiet ad-link" @click="gotoTarget(item.target)">{{ $t('去看「{0}」 →', [item.target]) }}</button>
+        <button v-if="item.target && targets.some(t => sameName(t, item.target))" class="quiet ad-link" @click="gotoTarget(item.target)">{{ $t('去看「{0}」 →', [item.target]) }}</button>
         <label>{{ $t('什么时候出现') }}<input :value="item.when || ''" :placeholder="$t('比如：状态是草稿时；勾选了才能点。一直有就空着')" @focus="s.archSnapshot()" @input="setText(item, 'when', $event.target.value)"></label>
       </template>
       <!-- 弹窗 / 抽屉 / 向导 / 区块：里面有哪些字段 -->
       <template v-if="[...LAYER_TYPES, 'block'].includes(item.type)">
-        <label>{{ $t('字段（一行一个，必填加 *）') }}<textarea rows="5" :value="linesText(item.fields)" :placeholder="$t('名称*\n类型*\n备注')" @focus="s.archSnapshot()" @change="setLines(item, 'fields', $event.target.value)"></textarea></label>
+        <ArchFieldEdit v-if="item.type !== 'drawer'" :node="item" />
+        <label v-else>{{ $t('字段（一行一个）') }}<textarea rows="5" :value="linesText(item.fields)" @focus="s.archSnapshot()" @change="setLines(item, 'fields', $event.target.value)"></textarea></label>
         <label v-if="LAYER_TYPES.includes(item.type)">{{ $t('确认后') }}<input :value="item.after || ''" :placeholder="$t('比如：列表多一行，关联排放源数 +1')" @focus="s.archSnapshot()" @input="setText(item, 'after', $event.target.value)"></label>
       </template>
       <label v-if="item.type === 'table'">{{ $t('列（一行一个）') }}<textarea rows="5" :value="linesText(item.cols)" @focus="s.archSnapshot()" @change="setLines(item, 'cols', $event.target.value)"></textarea></label>

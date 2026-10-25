@@ -12,6 +12,7 @@ import json
 import re
 
 from . import architecture, storage
+from .arch_fields import form_fields, parse_field
 from .arch_text import from_outline, keep_ids, to_outline
 from .source_map import code_map
 
@@ -35,11 +36,14 @@ OUTLINE_NOTE = """用下面这种「大纲」写法回复，只输出大纲本�
         点编号 [按钮] | 跳到：xx详情
       新增xx [按钮] | 打开：新增xx
       导出 [按钮] | 执行：按筛选条件导出 Excel
-      新增xx [弹窗] | 字段：名称*、类型*、备注 | 确认后：列表多一行，状态是草稿
+      新增xx [弹窗] | 字段：名称*、类型*（下拉：A类/B类）、生效日期（日期）、负责人（选人）、附件（上传）、编号🔒、备注 | 确认后：列表多一行，状态是草稿
       xx详情抽屉 [抽屉]：只读 | 字段：…
       xx详情 [下钻页]：… | 入口：点列表里的编号 | 带过去：编号 | 返回：返回列表
         基本信息 [区块] | 字段：编号、名称、版本🔒
         子表 [表格] | 列：…
+
+（字段的写法：必填加 *；自动带出、不用填的加 🔒；是什么控件写在最后的括号里，选项用 / 分开，比如「报修分类*（下拉：给排水/电气照明）」。
+控件有：文本、多行、下拉、多选、单选、勾选、日期、日期时间、日期范围、时间、数字、金额、手机号、上传、图片、开关、选人、级联、提示文字。普通文本框不用写。）
 
 【数据】
 数据名 编号样子如PT-xxx [配置]：一句话
@@ -132,7 +136,7 @@ def expand_brief(project_id: str, page_id: str) -> str:
             listed.add((n.get("parent"), kind, title))
             text = f"{'  ' * (depth + 1)}- [{kind}] {title}（点「{label}」打开）"
             html = n.get("html") or ""
-            fields = _texts(html, r"<th[^>]*>(.*?)</th>", 12) + _labels(html, 12) + _dts(html, 16)
+            fields = _texts(html, r"<th[^>]*>(.*?)</th>", 12) + form_fields(html, 12) + _dts(html, 16)
             if fields:
                 text += "：" + "、".join(dict.fromkeys(fields[:20]))
             lines.append(text)
@@ -162,19 +166,6 @@ def _nav_groups(html: str, titles: list[str]) -> list[tuple[str, list[str]]]:
 
 
 SKIP_COLS = {"操作", "序号", "#", "选择", ""}
-
-
-def _labels(html: str, limit: int = 20) -> list[str]:
-    """表单项：<label> 开头那段文字（后面跟着的下拉选项不要）"""
-    out = []
-    # 必填的红星常常单独包一层：<label>指派给<span class="req">*</span></label>
-    for m in re.finditer(r"<label[^>]*>\s*([^<]{1,24})((?:<[^>]+>)*\s*\*)?", html or ""):
-        text = re.sub(r"\s+", " ", m.group(1)).strip(" ：:*")
-        if text and text not in out:
-            out.append(text + ("*" if "*" in m.group(1) or m.group(2) else ""))
-        if len(out) >= limit:
-            break
-    return out
 
 
 def _cols(html: str) -> list[str]:
@@ -214,12 +205,13 @@ def _col_of(html: str, text: str) -> str:
 def _fill(container: dict, html: str, nodes: list[dict], parent_id) -> None:
     """一个页面（或下钻页、页签、弹窗）里面有什么：筛选、表格、按钮，按钮点了打开哪个弹窗 / 跳到哪个子页面，弹窗里有哪些字段"""
     kids = container["children"]
-    labels, cols, shows = _labels(html), _cols(html), _dts(html)
+    labels, cols, shows = form_fields(html), _cols(html), _dts(html)
+    names = {parse_field(f)["name"] for f in labels}
     if container["type"] == "drawer" and (labels or shows):
-        container["fields"] = labels + [d for d in shows if d not in labels]
+        container["fields"] = labels + [d for d in shows if d not in names]
     elif container["type"] in ("modal", "wizard") and (labels or shows):
-        # 弹窗上面带出来给你看的（工单号、报修事项）是只读的，加 🔒；下面要填的照 <label>
-        container["fields"] = [d + "🔒" for d in shows if d not in labels] + labels
+        # 弹窗上面带出来给你看的（工单号、报修事项）是只读的，加 🔒；下面要填的照 <label>，带上是下拉还是日期
+        container["fields"] = [d + "🔒" for d in shows if d not in names] + labels
     elif labels:
         kids.append({"type": "block", "name": "筛选 / 表单", "fields": labels, "children": []})
     table = None

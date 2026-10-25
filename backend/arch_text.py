@@ -180,8 +180,12 @@ def _node_from_line(text: str, depth: int) -> dict:
         key = PROP_WORDS.get(word)
         if key and value:
             # 标签里常有逗号顿号（「联动：改了 A，B 跟着变」），只按分号分；别的按顿号逗号分
-            splitter = TAG_SPLIT if key == "tags" else SPLIT
-            node[key] = [v.strip() for v in splitter.split(value) if v.strip()] if key in LIST_PROPS else value
+            # 字段、列括号里可以有顿号（「类型（下拉：A、B）」），括号里的不切
+            if key in ("fields", "cols"):
+                node[key] = split_outside(value)
+            else:
+                splitter = TAG_SPLIT if key == "tags" else SPLIT
+                node[key] = [v.strip() for v in splitter.split(value) if v.strip()] if key in LIST_PROPS else value
     return node
 
 

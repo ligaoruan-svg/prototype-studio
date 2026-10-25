@@ -4,7 +4,7 @@
 import { computed, inject, nextTick, ref, watch } from 'vue'
 import { Plus } from 'lucide-vue-next'
 import ArchBlock from './ArchBlock.vue'
-import { CHILD_TYPES, NODE_TYPES, findNode, screenOf, screens, walk } from '../../lib/architecture.js'
+import { CHILD_TYPES, NODE_TYPES, findNode, sameName, screenOf, screens, walk } from '../../lib/architecture.js'
 
 const s = inject('studio')
 const { arch, archSelected } = s
@@ -34,8 +34,8 @@ const box = ref(null)
 // 点「打开「xx」」：选中那个弹窗，滚到它那儿
 function goto(name) {
   if (!current.value) return
-  const target = [...walk(current.value.children)].map(x => x.node).find(n => n.name === name)
-    || [...walk(arch.value.nodes)].map(x => x.node).find(n => n.name === name)
+  const target = [...walk(current.value.children)].map(x => x.node).find(n => sameName(n.name, name))
+    || [...walk(arch.value.nodes)].map(x => x.node).find(n => sameName(n.name, name))
   if (!target) return
   s.archSelect('node', target.id)
   nextTick(() => box.value?.querySelector(`[data-node="${target.id}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }))
