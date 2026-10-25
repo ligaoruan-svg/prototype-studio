@@ -42,10 +42,20 @@ def looks_like_brief(text: str) -> bool:
     return len(text) >= BRIEF_MIN_CHARS and len(lines) >= BRIEF_MIN_LINES
 
 
-def resolve_intent(message: str, intent: str = 'auto') -> str:
+# 「继续」「接着做」「把剩下的做完」：看上一句——上一次是在改（比如改到一半被停了），这次就接着改；上一次在聊，就接着聊
+CONTINUE = re.compile(r'^\s*(?:好的?|嗯|那|请)?[，,\s]*(?:继续(?:做|改|写)?|接着(?:做|改|写|来)?|把?剩下的(?:都)?(?:做|改|写)完|(?:没做完的)?做完)(?:吧|啊|呀|一下|下去)?[。！!\s]*$')
+
+
+def is_continue(message: str) -> bool:
+    return bool(CONTINUE.match(message or ''))
+
+
+def resolve_intent(message: str, intent: str = 'auto', previous: str | None = None) -> str:
     if intent in {'discuss', 'edit'}:
         return intent
     text = message.strip()
+    if previous in {'discuss', 'edit'} and is_continue(text):
+        return previous
     if looks_like_brief(text):
         return 'discuss'
     # 明说了别改、或者本身就是个问句，一律讨论。

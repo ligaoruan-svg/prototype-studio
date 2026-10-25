@@ -7,6 +7,7 @@ import mimetypes
 import re
 import zipfile
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
@@ -153,10 +154,27 @@ def restore(project_id: str, page_id: str, version: int):
         raise HTTPException(400, str(exc))
 
 
+def export_name(*parts: str, ext: str) -> str:
+    """导出文件名：项目名-页面名-v版本。以前单页导出叫 index.html、整个项目叫 p_7d1b6f025c.zip，下载多了分不清哪个是哪个"""
+    name = "-".join(str(p).strip() for p in parts if p and str(p).strip())
+    name = re.sub(r'[\\/:*?"<>|\r\n\t]+', "_", name).strip(" ._") or "原型"
+    return name[:80] + ext
+
+
+def attachment(filename: str) -> dict:
+    """中文文件名：filename* 给支持的浏览器和桌面版，filename 给老的（只留英文数字）"""
+    plain = re.sub(r"[^A-Za-z0-9._-]+", "_", filename).strip("_") or "prototype"
+    return {"Content-Disposition": f"attachment; filename=\"{plain}\"; filename*=UTF-8''{quote(filename)}"}
+
+
 @router.get("/api/projects/{project_id}/pages/{page_id}/download")
 def download_page(project_id: str, page_id: str):
     path = storage.page_file(project_id, page_id)
-    return FileResponse(path, filename=path.name, media_type="text/html")
+    meta = storage.load_meta(project_id)
+    page = storage.get_page(meta, page_id)
+    title = page.get("title") or Path(page.get("path") or "").stem
+    name = export_name(meta.get("name"), title if title != meta.get("name") else "", f"v{page.get('version', 1)}", ext=".html")
+    return FileResponse(path, media_type="text/html", headers=attachment(name))
 
 
 @router.get("/api/projects/{project_id}/export")
@@ -171,7 +189,7 @@ def export_project(project_id: str):
                 zf.write(p, str(p.relative_to(source)))
         zf.writestr("prototype-agent-project.json", json.dumps({"name":meta["name"],"exported_from":f"原型工坊 v{config.VERSION}"}, ensure_ascii=False, indent=2))
     buf.seek(0)
-    headers = {"Content-Disposition": f'attachment; filename="{project_id}.zip"'}
+    headers = attachment(export_name(meta.get("name"), ext=".zip"))
     return StreamingResponse(buf, media_type="application/zip", headers=headers)
 
 

@@ -13,7 +13,7 @@ from . import storage
 from .transactions import stage
 from .errors import WorkError, error_payload
 from .experience import element_name, tool_label, compact_once, changed_targets, result_report, scope_report, step_detail
-from .conversation import resolve_intent, discussion_result, history_context
+from .conversation import resolve_intent, is_continue, discussion_result, history_context
 from . import components, memory, page_check, skills, skill_digest
 # 工具清单、读源码、拼背景拆在旁边三个文件里；下面这些名字在这里也能用（测试和别的模块按 agent.xxx 取）
 from .agent_tools import TOOL_SPECS, OPERATION_ACTIONS
@@ -113,7 +113,10 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
     trace = [] if trace is None else trace
     plan: list[dict] = []   # 当前计划：程序按每轮的修改自动往前推，不用模型一轮轮调 update_plan
     shell_fresh = None   # 刚放进来、还没写内容的外壳：这时候不让翻源码
-    intent = resolve_intent(user_message, intent)
+    # 上一句是在改还是在聊：用户只说「继续」时照着上一句来（改到一半被停了，说「继续」就接着改）
+    previous_intent = next((c.get('intent') for c in reversed(storage.load_meta(project_id).get('chat', []))
+                            if c.get('role') == 'user' and c.get('page_id') == page_id and c.get('intent')), None)
+    intent = resolve_intent(user_message, intent, previous_intent)
     read_only = intent == 'discuss'
     tools = [spec for spec in TOOL_SPECS if not (read_only and spec['function']['name'] in {'apply_operations', 'report_result', 'update_plan', 'start_from_shell', 'finish_step'})]
     emit({'type':'intent','intent':intent,'label':'正在分析设计，不会修改文件' if read_only else '正在理解修改需求'})
@@ -193,6 +196,9 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
                + "\n\n———\n用户这轮说的是：\n" + user_message)
     if not lang.startswith('zh'):
         kickoff += language_note(lang)
+    if is_continue(user_message):
+        kickoff += ("\n\n（用户说的是「继续」：接着把上一次没做完的做完。上一条需求、当时的计划和汇报在前面的对话里，"
+                    "已经改好的部分都在当前页面里——别重做，从没做完的地方接着做。）")
     if memory.looks_like_rule(user_message):
         kickoff += ("\n\n（这句话里像有对整个项目长期有效的约定。如果是，除了照做，还要调 remember 用一句话记下来，"
                     "以后别的页面也照这个来；只是这一次的要求就不用记。）")
@@ -523,7 +529,7 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
                     todo = [p for p in plan if p["status"] != "done"]
                     output = {"ok":True,"logs":logs,"verified":True,
                               "note":("已通过结构和脚本检查，不用再调 verify_page，也不用再搜一遍核对——改到哪几行见 where。"
-                                      + ("这一步做完了就调 finish_step（写清做了什么、定义了哪些名字），再做下一步。" if todo
+                                      + ("这一步做完了就调 finish_step（写清做了什么、定义了哪些名字），再做下一步；下次可以把 finish_step 和修改放在同一次回复里。" if todo
                                          else "全部改完就直接 report_result。")),
                               "where": view}
                     if abs(view["shift"]) >= 20:
@@ -574,11 +580,14 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
                         raise PatchError("每个步骤都要有标题")
                     brief = str(args.get("brief") or "").strip()[:800]
                     emit({"type":"plan","steps":plan, **({"brief": brief} if brief else {})})
-                    output = {"ok":True,"steps":plan,"note":("计划记下了，不用再调 update_plan。一步一步做：每做完一步（改好了、需要的话真跑过）"
-                                                            "调 finish_step 说清这一步做了什么、定义了哪些名字；程序会帮你把对话收拾干净再做下一步。全部做完 report_result。")}
+                    output = {"ok":True,"steps":plan,"note":("计划记下了，不用再调 update_plan。一步一步做：每做完一步就调 finish_step 说清这一步做了什么、定义了哪些名字；"
+                                                            "可以和这一步的 apply_operations 放在同一次回复里（先改、后报），省一轮。程序会帮你把对话收拾干净再做下一步。全部做完 report_result。")}
                 elif fn=="finish_step":
                     if not plan:
                         raise PatchError("还没有列计划：一两处的改动不用 finish_step，改完直接 report_result")
+                    if apply_failed:
+                        # 和 report_result 一样：同一条消息里前面的修改没成功，这一步不算做完
+                        raise PatchError("这条消息里前面的修改没有成功，这一步还不算做完。先把那处改成，再调 finish_step")
                     n = _num(args.get("step"), 0)
                     if not 1 <= n <= len(plan):
                         raise PatchError(f"step 要写计划里的第几步（1 到 {len(plan)}）")

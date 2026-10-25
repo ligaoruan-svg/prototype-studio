@@ -93,6 +93,28 @@ class 一步一步(unittest.TestCase):
         self.run_agent()
         self.assertGreater(len(self.sent[-1]), 3)
 
+    def test_改和报做完放在同一条里_省一轮(self):
+        self.script(msg(PLAN), msg(edit('#t', '新标题'), ('finish_step', {'step': 1, 'summary': '标题'})), msg(REPORT))
+        out = self.run_agent()
+        step = next(t for t in out['tool_log'] if t['tool'] == 'finish_step')['output']
+        self.assertTrue(step['ok'])
+        self.assertEqual(len(self.sent), 3)
+
+    def test_同一条里修改没成功_这一步不算做完(self):
+        bad = ('apply_operations', {'operations': [{'action': 'set_text', 'selector': '#nope', 'value': 'x'}]})
+        self.script(msg(PLAN), msg(bad, ('finish_step', {'step': 1, 'summary': '标题'})), msg(REPORT))
+        out = self.run_agent()
+        step = next(t for t in out['tool_log'] if t['tool'] == 'finish_step')['output']
+        self.assertFalse(step['ok'])
+        self.assertIn('不算做完', step['error'])
+
+    def test_继续_接着上一次的修改(self):
+        storage.append_chat(self.pid, 'user', '新增一个停车管理页', {'page_id': self.page, 'intent': 'edit'})
+        self.script(msg(edit('#t', '新标题')), msg(REPORT))
+        out = agent.run_agent(self.pid, self.page, '继续', 'k', 'm', stream=False)
+        self.assertEqual(out['intent'], 'edit')
+        self.assertIn('接着把上一次没做完的做完', self.sent[0][-1]['content'])
+
     def test_没列计划不用finish_step(self):
         self.script(msg(edit('#t', '新标题')), msg(('finish_step', {'step': 1, 'summary': 'x'})), msg(REPORT))
         out = self.run_agent()

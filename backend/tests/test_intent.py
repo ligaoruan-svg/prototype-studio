@@ -78,6 +78,15 @@ class Routing(unittest.TestCase):
                 self.assertEqual(resolve_intent(text), 'edit')
         self.assertEqual(resolve_intent('这个怎么实现？'), 'discuss')
 
+    def test_继续_看上一句(self):
+        # 改到一半被停了，说「继续」就接着改；上一句在聊，「继续」就接着聊
+        for text in ['继续', '继续吧', '接着做', '好，继续改', '把剩下的做完']:
+            with self.subTest(text=text):
+                self.assertEqual(resolve_intent(text, 'auto', 'edit'), 'edit')
+                self.assertEqual(resolve_intent(text, 'auto', 'discuss'), 'discuss')
+        self.assertEqual(resolve_intent('继续', 'auto', None), 'discuss')
+        self.assertEqual(resolve_intent('继续优化一下这个页面怎么样？', 'auto', 'edit'), 'discuss', '不是单说「继续」就照常判断')
+
     def test_空输入不炸(self):
         self.assertEqual(resolve_intent(''), 'discuss')
         self.assertEqual(resolve_intent('   '), 'discuss')
