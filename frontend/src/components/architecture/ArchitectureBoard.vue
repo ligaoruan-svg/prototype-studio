@@ -2,7 +2,7 @@
 // 架构模式：页面树 / 业务流程两个视图，右边是选中项的详情，底下是生成顺序和「按架构生成」。
 // 大纲（文字编辑）和数据关系是内部的东西：AI 读写、生成时保证几页数据一致，平时不用看，收在「⋯」里
 import { computed, inject, onUnmounted, ref, watch } from 'vue'
-import { AlertCircle, Check, Ruler, ChevronDown, ChevronUp, Database, Layers, ListTree, LoaderCircle, MoreHorizontal, Network, Sparkles, Undo2, Wand2, X } from 'lucide-vue-next'
+import { AlertCircle, Check, Lightbulb, Ruler, ChevronDown, ChevronUp, Database, Layers, ListTree, LoaderCircle, MoreHorizontal, Network, Sparkles, Undo2, Wand2, X } from 'lucide-vue-next'
 import ArchNode from './ArchNode.vue'
 import ArchData from './ArchData.vue'
 import ArchFlow from './ArchFlow.vue'
@@ -58,8 +58,9 @@ function openExtra(view) { moreOpen.value = false; s.archSelect(null); archView.
       <div v-if="arch" class="arch-views" role="tablist"><button v-for="v in views" :key="v.id" role="tab" :aria-selected="archView === v.id" :class="{ active: archView === v.id }" @click="archView = v.id">{{ $t(v.label) }}</button>
         <button v-if="extras[archView]" role="tab" aria-selected="true" class="active extra" @click="archView = 'tree'">{{ $t(extras[archView]) }}<X :size="12" :aria-label="$t('关闭')" /></button></div>
       <div v-if="arch" class="arch-tools">
-        <div class="arch-pop-wrap"><button class="outline" :class="{ warn: errors }" @click="pop('issues')"><AlertCircle v-if="issues.length" :size="14" /><Check v-else :size="14" /><span class="lbl">{{ issues.length ? $t('一致性检查') : $t('对得上') }}</span><b v-if="issues.length">{{ issues.length }}</b></button>
+        <div class="arch-pop-wrap"><button class="outline" :class="{ warn: errors }" @click="pop('issues')"><AlertCircle v-if="errors" :size="14" /><Lightbulb v-else-if="issues.length" :size="14" /><Check v-else :size="14" /><span class="lbl">{{ errors ? $t('要改') : issues.length ? $t('建议') : $t('对得上') }}</span><b v-if="issues.length">{{ errors || issues.length }}</b></button>
           <div v-if="issuesOpen" class="arch-pop"><p v-if="!issues.length" class="arch-muted">{{ $t('页面、数据、流程都对得上') }}</p>
+            <p v-else-if="!errors" class="arch-muted">{{ $t('只是建议，不影响生成：照你现在的架构就能生成') }}</p>
             <button v-for="(issue, i) in issues" :key="i" class="arch-issue" :class="issue.level" @click="pickIssue(issue)"><AlertCircle :size="13" /><span>{{ issue.text }}</span></button></div></div>
         <div class="arch-pop-wrap"><button class="outline" :disabled="archBusy === 'draft'" @click="pop('ai')"><Sparkles :size="14" />{{ $t('AI') }}</button>
           <div v-if="aiOpen" class="arch-pop arch-ai"><button :disabled="!hasPage" @click="aiOpen = false; s.fromExpand()"><Layers :size="14" /><span><b>{{ $t('照展开图重新整理（不用 AI）') }}</b>{{ $t('几秒就好：菜单、页签、弹窗、子页面照原型搭出来，会替换现在的页面树') }}</span></button>

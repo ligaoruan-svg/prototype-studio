@@ -19,6 +19,8 @@ export const LAYER_TYPES = ['modal', 'drawer', 'wizard']
 // 按钮点了以后：打开哪个弹窗 / 跳到哪一页 / 直接执行 / 先二次确认
 export const ACTIONS = { open: '打开', jump: '跳到', run: '执行', confirm: '二次确认' }
 export const SCREEN_TYPES = ['page', 'tab', 'drill']
+// 会做成一个页面的：菜单页、页签、下钻页；还有下面什么都没挂的模块——它就是一个一级菜单页。后台 is_screen 同一条规则
+export const isScreenNode = n => SCREEN_TYPES.includes(n?.type) || (n?.type === 'module' && !(n.children || []).length)
 // 在某种节点下面加子项时，可以选哪些类型（第一个是默认）
 export const CHILD_TYPES = {
   root: ['module'],
@@ -136,7 +138,7 @@ export function screenOf(arch, id) {
   const hit = findNode(arch, id)
   if (!hit) return null
   const chain = [...hit.parents, hit.node]
-  return chain.find(n => SCREEN_TYPES.includes(n.type)) || null
+  return chain.find(isScreenNode) || null
 }
 // 按钮写的「新增报修工单（业主来电代录）」和弹窗名「新增报修工单」算同一个：括号里的补充、末尾的「弹窗 / 抽屉」不算
 export const looseName = name => String(name || '').replace(/[（(][^（()）]*[）)]/g, '').replace(/\s+|(弹窗|弹框|抽屉|对话框|页面)$/g, '')
@@ -152,7 +154,7 @@ export function statesOf(arch, id) {
 // 同一页里能被按钮打开 / 跳到的东西（给详情里的下拉用）
 export function targetsIn(arch, id, action) {
   const screen = screenOf(arch, id)
-  if (action === 'jump') return [...walk(arch?.nodes)].map(x => x.node).filter(n => SCREEN_TYPES.includes(n.type)).map(n => n.name)
+  if (action === 'jump') return [...walk(arch?.nodes)].map(x => x.node).filter(isScreenNode).map(n => n.name)
   return screen ? [...walk(screen.children)].map(x => x.node).filter(n => LAYER_TYPES.includes(n.type)).map(n => n.name) : []
 }
 
@@ -161,7 +163,7 @@ export function targetsIn(arch, id, action) {
 export function screens(arch) {
   const out = []
   for (const { node, parents } of walk(arch?.nodes)) {
-    if (!SCREEN_TYPES.includes(node.type) || parents.some(p => SCREEN_TYPES.includes(p.type))) continue
+    if (!isScreenNode(node) || parents.some(p => SCREEN_TYPES.includes(p.type))) continue
     const inside = [...walk(node.children)].map(x => x.node)
     out.push({ id: node.id, name: node.name, type: node.type, path: [...parents.filter(p => p.type !== 'module').map(p => p.name), node.name].join(' / '),
       module: [...parents].reverse().find(p => p.type === 'module')?.name || '',
@@ -196,7 +198,9 @@ export function generateMessage(arch, order, { fresh = true } = {}) {
 export function rebuildMessage(arch, node) {
   const hit = findNode(arch, node.id)
   const path = hit ? [...hit.parents.filter(p => p.type !== 'module').map(p => p.name), node.name].join(' / ') : node.name
-  return `按已确认的架构，只重做「${path}」这一${NODE_TYPES[node.type]?.label || '页'}：页签、弹窗、抽屉、字段都以架构为准，数据用共用的那一份。其他页面不动。`
+  // 没挂子项的模块自己就是一页；原型里还没有的（刚在树里加的）就新做出来，左侧菜单跟着加
+  const label = node.type === 'module' ? '页' : NODE_TYPES[node.type]?.label || '页'
+  return `按已确认的架构，只重做「${path}」这一${label}（原型里还没有就新做出来，左侧菜单跟着加上）：页签、弹窗、抽屉、字段都以架构为准，数据用共用的那一份。其他页面不动。`
 }
 
 // ---------- 流程布局：按箭头排列，前面的步骤在左边 ----------

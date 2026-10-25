@@ -1364,4 +1364,7 @@ export default {
   "高级：数据": "Advanced: data",
   "AI 自己维护，生成时让几页的编号、下拉选项、状态保持一致；它写错了才需要来这里改": "Maintained by AI to keep IDs, dropdown options and statuses consistent across pages; only come here if it got something wrong",
   "文字编辑": "Text editor",
+  "要改": "To fix",
+  "建议": "Suggestions",
+  "只是建议，不影响生成：照你现在的架构就能生成": "Just suggestions — you can generate from the architecture as it is",
 }

@@ -4,7 +4,7 @@ import { computed, inject } from 'vue'
 import { Plus, RotateCw, Trash2, X } from 'lucide-vue-next'
 import ArchFieldEdit from './ArchFieldEdit.vue'
 import { splitOutside } from '../../lib/archFields.js'
-import { ACTIONS, CHILD_TYPES, FIELD_KINDS, LANE_KINDS, LAYER_TYPES, NODE_TYPES, SCREEN_TYPES, findNode, sameName, screens, targetsIn } from '../../lib/architecture.js'
+import { ACTIONS, CHILD_TYPES, FIELD_KINDS, LANE_KINDS, LAYER_TYPES, NODE_TYPES, findNode, isScreenNode, sameName, screens, targetsIn } from '../../lib/architecture.js'
 
 const s = inject('studio')
 const { arch, archSelected, archIssues, archView, locked, page } = s
@@ -19,7 +19,7 @@ const typeChoices = computed(() => {
   return [...new Set([item.value.type, ...allowed])]
 })
 const issues = computed(() => archIssues.value.filter(i => item.value && (i.node === item.value.id || i.entity === item.value.id || i.step === item.value.id)))
-const isScreen = computed(() => kind.value === 'node' && SCREEN_TYPES.includes(item.value.type))
+const isScreen = computed(() => kind.value === 'node' && isScreenNode(item.value))
 const targets = computed(() => kind.value === 'node' && item.value.type === 'button' ? targetsIn(arch.value, item.value.id, item.value.action) : [])
 // 一行一个（字段、列）：必填在后面加 *
 const linesText = value => (value || []).join('\n')
@@ -117,7 +117,7 @@ function gotoNode(id) { archView.value = 'tree'; s.archSelect('node', id) }
           <span v-if="!entityNames.length" class="arch-muted">{{ $t('先在「数据关系」里加数据') }}</span></div></div>
       <label>{{ $t('标签') }}<input :value="listText(item.tags, '；')" :placeholder="$t('复用、联动…几条用分号分开')" @focus="s.archSnapshot()" @change="setList(item, 'tags', $event.target.value, /[;；]/)"></label>
       <label>{{ $t('需求编号') }}<input :value="listText(item.req)" placeholder="#85、#86" @focus="s.archSnapshot()" @change="setList(item, 'req', $event.target.value)"></label>
-      <div v-if="issues.length" class="ad-issues"><p v-for="(i, n) in issues" :key="n" :class="i.level">⚠ {{ i.text }}</p></div>
+      <div v-if="issues.length" class="ad-issues"><p v-for="(i, n) in issues" :key="n" :class="i.level">{{ i.level === 'error' ? '⚠' : '💡' }} {{ i.text }}</p></div>
       <div class="ad-actions">
         <button v-if="isScreen" class="outline" :disabled="locked || !page" :title="$t('只按架构重做这一页，别的页面不动')" @click="s.rebuildNode(item)"><RotateCw :size="14" />{{ $t('只重做这一页') }}</button>
         <button class="quiet danger" @click="s.archRemove(item.id)"><Trash2 :size="14" />{{ $t('删除') }}</button>
@@ -147,7 +147,7 @@ function gotoNode(id) { archView.value = 'tree'; s.archSelect('node', id) }
           <input v-model="r.label" :placeholder="$t('1 → N')" :aria-label="$t('关系说明')" @focus="s.archSnapshot()" @input="s.archDirty()">
           <button class="icon-button" :aria-label="$t('删掉这条关系')" @click="removeRelation(r)"><X :size="13" /></button></div>
         <button class="quiet" :disabled="entityNames.length < 2" @click="addRelation"><Plus :size="13" />{{ $t('加关系') }}</button></div>
-      <div v-if="issues.length" class="ad-issues"><p v-for="(i, n) in issues" :key="n" :class="i.level">⚠ {{ i.text }}</p></div>
+      <div v-if="issues.length" class="ad-issues"><p v-for="(i, n) in issues" :key="n" :class="i.level">{{ i.level === 'error' ? '⚠' : '💡' }} {{ i.text }}</p></div>
       <div class="ad-actions"><button class="quiet danger" @click="s.removeEntity(item.id)"><Trash2 :size="14" />{{ $t('删除这类数据') }}</button></div>
     </template>
 
@@ -161,7 +161,7 @@ function gotoNode(id) { archView.value = 'tree'; s.archSelect('node', id) }
         <div class="ad-chips"><button v-for="st in arch.steps.filter(x => x.id !== item.id)" :key="st.id" :class="{ on: (item.next || []).includes(st.id) }" @click="toggleNext(st.id)">{{ st.name }}</button></div></div>
       <label>{{ $t('对应的页面') }}<select :value="item.node || ''" @change="linkNode($event.target.value)"><option value="">{{ $t('（不对应页面）') }}</option><option v-for="sc in screenList" :key="sc.id" :value="sc.id">{{ sc.path }}</option></select></label>
       <button v-if="item.node" class="quiet" @click="gotoNode(item.node)">{{ $t('在页面树里看 →') }}</button>
-      <div v-if="issues.length" class="ad-issues"><p v-for="(i, n) in issues" :key="n" :class="i.level">⚠ {{ i.text }}</p></div>
+      <div v-if="issues.length" class="ad-issues"><p v-for="(i, n) in issues" :key="n" :class="i.level">{{ i.level === 'error' ? '⚠' : '💡' }} {{ i.text }}</p></div>
       <div class="ad-actions"><button class="quiet danger" @click="s.removeStep(item.id)"><Trash2 :size="14" />{{ $t('删除这一步') }}</button></div>
     </template>
 

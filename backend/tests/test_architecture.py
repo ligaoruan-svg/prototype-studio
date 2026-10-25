@@ -355,3 +355,9 @@ class 字段控件(unittest.TestCase):
         self.assertEqual(arch["relations"][0]["from"], "业主提交")
         self.assertEqual([i for i in A.check(arch) if i["level"] == "error"], [])
         self.assertFalse(any("在架构里没有" in i["text"] for i in A.check(arch)))
+
+    def test_空模块自己就是一个页面_照用户的生成(self):
+        arch = A.normalize(T.from_outline("【页面】\n报修 [模块]\n  工单 [菜单页]：派单\n测试 [模块]"))
+        self.assertEqual([o["name"] for o in A.order(arch)], ["工单", "测试"])
+        self.assertFalse(any("下面还没有页面" in i["text"] for i in A.check(arch)))
+        self.assertFalse(any(i["level"] == "error" for i in A.check(arch)))

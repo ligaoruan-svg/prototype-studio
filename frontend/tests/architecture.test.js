@@ -122,3 +122,12 @@ test('表格的状态列跟着数据里的状态流转', async () => {
   assert.deepEqual(statesOf(a, table.id), ['草稿', '启用', '停用'])
 
 })
+
+test('空模块自己算一个页面', async () => {
+  const { isScreenNode } = await import('../src/lib/architecture.js')
+  const a = emptyArchitecture('测试')
+  assert.ok(isScreenNode(a.nodes[0]))
+  assert.deepEqual(screens(a).map(x => x.name), [a.nodes[0].name])
+  addChild(a, a.nodes[0].id, 'page', '工单')
+  assert.ok(!isScreenNode(a.nodes[0]))
+})

@@ -224,12 +224,17 @@ def walk(nodes: list[dict], depth: int = 0, parents: tuple = ()) -> Iterator[tup
         yield from walk(item.get("children") or [], depth + 1, parents + (item,))
 
 
+def is_screen(item: dict) -> bool:
+    """会做成一个页面的：菜单页、页签、下钻页；还有下面什么都没挂的模块——它就是一个一级菜单页（左侧菜单点「测试」直接进页面）"""
+    return item["type"] in SCREEN_TYPES or (item["type"] == "module" and not item.get("children"))
+
+
 def screens(arch: dict) -> list[dict]:
     """要做出来的页面：一个菜单页一个，它下面的页签、下钻页、弹窗抽屉都算在这一页里（一页一步做完）。
-    不在任何菜单页下面的下钻页 / 页签（少见）单独算一页"""
+    不在任何菜单页下面的下钻页 / 页签（少见）单独算一页；没挂子项的模块自己算一页"""
     out = []
     for item, depth, parents in walk(arch.get("nodes") or []):
-        if item["type"] not in SCREEN_TYPES or any(p["type"] in SCREEN_TYPES for p in parents):
+        if not is_screen(item) or any(p["type"] in SCREEN_TYPES for p in parents):
             continue
         inside = [n for n, _, _ in walk(item.get("children") or [])]
         data = list(dict.fromkeys(d for n in [item, *inside] for d in n.get("data") or []))
@@ -291,9 +296,7 @@ def check(arch: dict) -> list[dict]:
         for name in item.get("data") or []:
             if name not in entities:
                 add("warn", f"「{item['name']}」用到的数据「{name}」在数据关系里没有", node=item["id"], area="data")
-        if item["type"] == "module" and not item.get("children"):
-            add("warn", f"模块「{item['name']}」下面还没有页面", node=item["id"])
-        if item["type"] in SCREEN_TYPES and not item.get("desc"):
+        if is_screen(item) and not item.get("desc"):
             add("warn", f"「{item['name']}」还没写介绍：AI 会按名字猜", node=item["id"])
         if item["type"] == "button" and item.get("action") in ("open", "jump") and item.get("target") and item["target"] not in names_all and loose_name(item["target"]) not in loose_all:
             add("warn", f"按钮「{item['name']}」要{ACTIONS[item['action']]}的「{item['target']}」在架构里没有", node=item["id"])
@@ -343,7 +346,9 @@ def bundle(arch: dict | None) -> dict:
 
 # ---------- 交给 AI 的文字 ----------
 def _node_line(item: dict) -> str:
-    parts = [f"[{NODE_TYPES[item['type']]}] {item['name']}"]
+    # 没挂子项的模块就是一个一级菜单页：左侧菜单点它直接进页面
+    kind = "一级菜单页（没有子菜单）" if item["type"] == "module" and not item.get("children") else NODE_TYPES[item["type"]]
+    parts = [f"[{kind}] {item['name']}"]
     if item.get("desc"):
         parts.append(item["desc"].replace("\n", " "))
     if item.get("action"):

@@ -54,7 +54,8 @@ function addChild(event) {
       <p v-if="node.when" class="an-when">{{ $t('出现：{0}', [node.when]) }}</p>
       <ArchFields v-if="hasForm" :node="node" :open="archShowFields" @click.stop @edit="s.archSelect('node', node.id)" />
       <p v-if="meta" class="an-meta">{{ meta }}</p>
-      <span v-if="warn.length" class="an-warn" :title="warn.map(w => w.text).join('\n')">⚠ {{ warn.length }}</span>
+      <!-- 卡片上只标要改的；建议（还没写介绍这类）不影响生成，在右边详情和「建议」里看 -->
+      <span v-if="warn.some(w => w.level === 'error')" class="an-warn" :title="warn.filter(w => w.level === 'error').map(w => w.text).join('\n')">⚠ {{ warn.filter(w => w.level === 'error').length }}</span>
       <div v-if="selected" class="an-tools" @click.stop>
         <label v-if="childTypes.length" class="an-add"><Plus :size="12" />{{ $t('子项') }}<select :aria-label="$t('加子项')" @change="addChild"><option value="">{{ $t('加什么') }}</option><option v-for="t in childTypes" :key="t" :value="t">{{ $t(NODE_TYPES[t].label) }}</option></select></label>
         <button @click="s.archSibling(node.id)"><Plus :size="12" />{{ $t('同级') }}</button>
