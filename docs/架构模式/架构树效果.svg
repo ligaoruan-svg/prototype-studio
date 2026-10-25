@@ -1,0 +1,283 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1010" width="1600" height="1010" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, Noto Sans SC, sans-serif" xmlns:c2pa="http://c2pa.org/manifest"><metadata><c2pa:manifest>AAAWgmp1bWIAAAAeanVtZGMycGEAEQAQgAAAqgA4m3EDYzJwYQAAABZcanVtYgAAAEdqdW1kYzJtYQARABCAAACqADibcQN1cm46YzJwYTphYWI4MmJjOS03MTZkLTRhMGQtYTEwYi1iOTcyZTdkMzEyYjIAAAADl2p1bWIAAAApanVtZGMyYXMAEQAQgAAAqgA4m3EDYzJwYS5hc3NlcnRpb25zAAAAALxqdW1iAAAARGp1bWRjYm9yABEAEIAAAKoAOJtxE2MycGEuaW5ncmVkaWVudC52MwAAAAAYYzJzaHdDFsgZQoEGLiGyqapknfcAAABwY2JvcqNpZGM6Zm9ybWF0bWltYWdlL3N2Zyt4bWxqaW5zdGFuY2VJRHgseG1wOmlpZDoxYzRiYmY2Yi0zODYzLTRkYWYtYjhmNC1hYTE2Yjc2NjljZjBscmVsYXRpb25zaGlwaHBhcmVudE9mAAAB4mp1bWIAAABBanVtZGNib3IAEQAQgAAAqgA4m3ETYzJwYS5hY3Rpb25zLnYyAAAAABhjMnNobgAzCnfWlld6kpPK8NGiNQAAAZljYm9yomdhY3Rpb25zgqJmYWN0aW9ua2MycGEub3BlbmVkanBhcmFtZXRlcnOha2luZ3JlZGllbnRzgaJjdXJseC1zZWxmI2p1bWJmPWMycGEuYXNzZXJ0aW9ucy9jMnBhLmluZ3JlZGllbnQudjNkaGFzaFggoSVBulB92KACR1s26bxI856yGPrfIStKE6/BJwqAeD+kZmFjdGlvbngdY29tLmFudGhyb3BpYy5jbGF1ZGUucHJvdmlkZWRqcGFyYW1ldGVyc6F4H2NvbS5hbnRocm9waWMub3JpZ2luLWNvbmZpZGVuY2VndW5rbm93bmtkZXNjcmlwdGlvbnhmQ2xhdWRlIHByb3ZpZGVkIHRoaXMgZmlsZSBhdCB0aGUgcmVxdWVzdCBvZiBhIHVzZXIgYW5kIG1heSBoYXZlIGNyZWF0ZWQgb3IgbW9kaWZpZWQgdGhlIGZpbGUgY29udGVudHMubXNvZnR3YXJlQWdlbnShZG5hbWVmQ2xhdWRlcmFsbEFjdGlvbnNJbmNsdWRlZPUAAADIanVtYgAAAEBqdW1kY2JvcgARABCAAACqADibcRNjMnBhLmhhc2guZGF0YQAAAAAYYzJzaBpxnMMj0ZQbFttCJ1/tml0AAACAY2JvcqVjYWxnZnNoYTI1NmNwYWRNAAAAAAAAAAAAAAAAAGRoYXNoWCBhFMrb96RU8JYRtADzt9dzEZrFjSlNLOpqPJjQ+Olt3mRuYW1lbmp1bWJmIG1hbmlmZXN0amV4Y2x1c2lvbnOBomVzdGFydBjxZmxlbmd0aBkeBAAAAj5qdW1iAAAAJ2p1bWRjMmNsABEAEIAAAKoAOJtxA2MycGEuY2xhaW0udjIAAAACD2Nib3KlY2FsZ2ZzaGEyNTZpc2lnbmF0dXJleE1zZWxmI2p1bWJmPS9jMnBhL3VybjpjMnBhOmFhYjgyYmM5LTcxNmQtNGEwZC1hMTBiLWI5NzJlN2QzMTJiMi9jMnBhLnNpZ25hdHVyZWppbnN0YW5jZUlEeCx4bXA6aWlkOjY1YzYzYWIxLWM1YWEtNDEyNS1iMzUwLTkwYTAwZDZjNTRjYXJjcmVhdGVkX2Fzc2VydGlvbnODomN1cmx4LXNlbGYjanVtYmY9YzJwYS5hc3NlcnRpb25zL2MycGEuaW5ncmVkaWVudC52M2RoYXNoWCChJUG6UH3YoAJHWzbpvEjznrIY+t8hK0oTr8EnCoB4P6JjdXJseCpzZWxmI2p1bWJmPWMycGEuYXNzZXJ0aW9ucy9jMnBhLmFjdGlvbnMudjJkaGFzaFggzRUCV8b8LWZLqyJns0SDxgvROb+K/VOX7Qv3wtwtzM2iY3VybHgpc2VsZiNqdW1iZj1jMnBhLmFzc2VydGlvbnMvYzJwYS5oYXNoLmRhdGFkaGFzaFgg4qahIcDMP0Lu0+GtEtoPjpQwQIKq/G4OINXAYxwXT2V0Y2xhaW1fZ2VuZXJhdG9yX2luZm+jZG5hbWVvQW50aHJvcGljIEZpbGVzZ3ZlcnNpb25lMS4wLjBrc3BlY1ZlcnNpb25lMi40LjAAABA4anVtYgAAAChqdW1kYzJjcwARABCAAACqADibcQNjMnBhLnNpZ25hdHVyZQAAABAIY2JvctKEWQISogEmGCFZAgowggIGMIIBjaADAgECAhRA5aAK7sI50L64g/oGQgU9Z1UTADAKBggqhkjOPQQDAzBJMRcwFQYDVQQKEw5BbnRocm9waWMsIFBCQzEuMCwGA1UEAxMlQW50aHJvcGljIENvbnRlbnQgQ3JlZGVudGlhbHMgUm9vdCBDQTAeFw0yNjA4MDcxODQzNTZaFw0yODA4MDYxOTQzNTZaMEQxFzAVBgNVBAoTDkFudGhyb3BpYywgUEJDMSkwJwYDVQQDEyBBbnRocm9waWMgQ2xhdWRlIENvbnRlbnQgU2lnbmluZzBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABJh6CmvLUBgFFNU0vUKlOVtE6djd17L5SuwX0LemFisBM3dkd/3cyjxFA3Qo5S46fX0/ihY0VZ7mfb9KF703t5OjWDBWMA4GA1UdDwEB/wQEAwIHgDAVBgNVHSUEDjAMBgorBgEEAYPoXgIBMAwGA1UdEwEB/wQCMAAwHwYDVR0jBBgwFoAUzlHiBIFOZFsj+OPEz5o+nMHXXMIwCgYIKoZIzj0EAwMDZwAwZAIwMXMdFJ4BetLLVY7ORuE9noqbbAZOZn/aArXyTwFAZfKrPzxF2vPoJNf1+UCdg1XGAjBwX1zd9WGqYkqmL5SFqw1QySjr1zJfpJM9+1rdDwSPLMOPOjKuiXjoU/pUUeG9RwmhY3BhZFkNngAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPZYQNvN7JE4POlTklEIYBFCvm5sU+K3mWgDHGLNwYlbUmGPXxcOwnKLoh1c8xEXHNRYKcYVBqbolf+3FN1ZTosmToo=</c2pa:manifest></metadata>
+<rect width="1600" height="1010" fill="#f6f3ef"/>
+<rect x="0" y="0" width="1600" height="56" rx="0" fill="#fbf9f6" stroke="#fbf9f6" stroke-width="1"/>
+<line x1="0" y1="56" x2="1600" y2="56" stroke="#e6ded6"/>
+<circle cx="34" cy="28" r="15" fill="#b8532f"/><rect x="26" y="20" width="16" height="16" rx="3" fill="none" stroke="#fff" stroke-width="2"/>
+<text x="58" y="34" font-size="18" fill="#2b2420" font-weight="700" text-anchor="start" >原型工坊</text>
+<text x="160" y="34" font-size="15" fill="#2b2420" font-weight="normal" text-anchor="start" >物业管理后台</text>
+<rect x="620" y="12" width="360" height="34" rx="10" fill="#efe9e3" stroke="#efe9e3" stroke-width="1"/>
+<text x="668" y="34" font-size="14" fill="#7a6f68" font-weight="normal" text-anchor="start" >预览</text>
+<text x="758" y="34" font-size="14" fill="#7a6f68" font-weight="normal" text-anchor="start" >展开</text>
+<rect x="826" y="16" width="104" height="26" rx="8" fill="#fff" stroke="#e2d6cc" stroke-width="1"/>
+<text x="878" y="34" font-size="14" fill="#b8532f" font-weight="700" text-anchor="middle" >架构</text>
+<rect x="20" y="66" width="1150" height="40" rx="10" fill="#fff" stroke="#e2d6cc" stroke-width="1"/>
+<text x="38" y="91" font-size="14" fill="#2b2420" font-weight="700" text-anchor="start" >架构 v2</text>
+<text x="102" y="91" font-size="12.5" fill="#7a6f68" font-weight="normal" text-anchor="start" >· 3 个模块 · 5 个页面 · 23 个功能</text>
+<rect x="380" y="74" width="78" height="24" rx="12" fill="#faf7f3" stroke="#e2d6cc" stroke-width="1"/>
+<text x="419.0" y="90" font-size="12" fill="#544b45" font-weight="normal" text-anchor="middle" >展开全部</text>
+<rect x="466" y="74" width="92" height="24" rx="12" fill="#faf7f3" stroke="#e2d6cc" stroke-width="1"/>
+<text x="512.0" y="90" font-size="12" fill="#544b45" font-weight="normal" text-anchor="middle" >收起到页面</text>
+<rect x="566" y="74" width="78" height="24" rx="12" fill="#b8532f" stroke="#b8532f" stroke-width="1"/>
+<text x="605.0" y="90" font-size="12" fill="#fff" font-weight="600" text-anchor="middle" >显示介绍</text>
+<rect x="660" y="74" width="200" height="24" rx="12" fill="#faf7f3" stroke="#e2d6cc" stroke-width="1"/>
+<text x="674" y="90" font-size="12" fill="#a39890" font-weight="normal" text-anchor="start" >搜索节点，比如「催缴」</text>
+<rect x="860" y="79" width="14" height="14" rx="4" fill="#2b2420" stroke="#2b2420" stroke-width="1"/>
+<text x="880" y="91" font-size="12" fill="#7a6f68" font-weight="normal" text-anchor="start" >系统</text>
+<rect x="922" y="79" width="14" height="14" rx="4" fill="#fdf2ea" stroke="#b8532f" stroke-width="1"/>
+<text x="942" y="91" font-size="12" fill="#7a6f68" font-weight="normal" text-anchor="start" >模块</text>
+<rect x="984" y="79" width="14" height="14" rx="4" fill="#eef3fc" stroke="#3b6fd8" stroke-width="1"/>
+<text x="1004" y="91" font-size="12" fill="#7a6f68" font-weight="normal" text-anchor="start" >页面</text>
+<rect x="1046" y="79" width="14" height="14" rx="4" fill="#fff" stroke="#cbbfb4" stroke-width="1"/>
+<text x="1066" y="91" font-size="12" fill="#7a6f68" font-weight="normal" text-anchor="start" >功能</text>
+<rect x="1108" y="74" width="54" height="24" rx="12" fill="#faf7f3" stroke="#e2d6cc" stroke-width="1"/>
+<text x="1135" y="90" font-size="12" fill="#544b45" font-weight="normal" text-anchor="middle" >撤销</text>
+<rect x="20" y="114" width="1150" height="876" rx="14" fill="#fbf9f6" stroke="#e6ded6" stroke-width="1"/>
+<path d="M236 541.0 C253.0 541.0 253.0 196.0 270 196.0" fill="none" stroke="#cbbfb4" stroke-width="1.6"/>
+<path d="M462 196.0 C481.0 196.0 481.0 196.0 500 196.0" fill="none" stroke="#cbbfb4" stroke-width="1.6"/>
+<path d="M236 541.0 C253.0 541.0 253.0 518.0 270 518.0" fill="none" stroke="#cbbfb4" stroke-width="1.6"/>
+<path d="M462 518.0 C481.0 518.0 481.0 288 500 288" fill="none" stroke="#cbbfb4" stroke-width="1.6"/>
+<path d="M462 518.0 C481.0 518.0 481.0 472.0 500 472.0" fill="none" stroke="#cbbfb4" stroke-width="1.6"/>
+<path d="M462 518.0 C481.0 518.0 481.0 748.0 500 748.0" fill="none" stroke="#cbbfb4" stroke-width="1.6"/>
+<path d="M236 541.0 C253.0 541.0 253.0 886.0 270 886.0" fill="none" stroke="#cbbfb4" stroke-width="1.6"/>
+<path d="M462 886.0 C481.0 886.0 481.0 886 500 886" fill="none" stroke="#cbbfb4" stroke-width="1.6"/>
+<path d="M716 196.0 C738.0 196.0 738.0 150 760 150" fill="none" stroke="#cbbfb4" stroke-width="1.6"/>
+<path d="M716 196.0 C738.0 196.0 738.0 196 760 196" fill="none" stroke="#cbbfb4" stroke-width="1.6"/>
+<path d="M716 196.0 C738.0 196.0 738.0 242 760 242" fill="none" stroke="#cbbfb4" stroke-width="1.6"/>
+<path d="M716 472.0 C738.0 472.0 738.0 334 760 334" fill="none" stroke="#cbbfb4" stroke-width="1.6"/>
+<path d="M716 472.0 C738.0 472.0 738.0 380 760 380" fill="none" stroke="#cbbfb4" stroke-width="1.6"/>
+<path d="M716 472.0 C738.0 472.0 738.0 426 760 426" fill="none" stroke="#cbbfb4" stroke-width="1.6"/>
+<path d="M716 472.0 C738.0 472.0 738.0 472 760 472" fill="none" stroke="#cbbfb4" stroke-width="1.6"/>
+<path d="M716 472.0 C738.0 472.0 738.0 518 760 518" fill="none" stroke="#cbbfb4" stroke-width="1.6"/>
+<path d="M716 472.0 C738.0 472.0 738.0 564 760 564" fill="none" stroke="#cbbfb4" stroke-width="1.6"/>
+<path d="M716 472.0 C738.0 472.0 738.0 610 760 610" fill="none" stroke="#cbbfb4" stroke-width="1.6"/>
+<path d="M716 748.0 C738.0 748.0 738.0 656 760 656" fill="none" stroke="#cbbfb4" stroke-width="1.6"/>
+<path d="M716 748.0 C738.0 748.0 738.0 702 760 702" fill="none" stroke="#cbbfb4" stroke-width="1.6"/>
+<path d="M716 748.0 C738.0 748.0 738.0 748 760 748" fill="none" stroke="#cbbfb4" stroke-width="1.6"/>
+<path d="M716 748.0 C738.0 748.0 738.0 794 760 794" fill="none" stroke="#cbbfb4" stroke-width="1.6"/>
+<path d="M716 748.0 C738.0 748.0 738.0 840 760 840" fill="none" stroke="#e8b48f" stroke-width="1.6"/>
+<rect x="40" y="481.0" width="196" height="120" rx="14" fill="#2b2420" stroke="#2b2420" stroke-width="1"/>
+<text x="56" y="511.0" font-size="16" fill="#fff" font-weight="700" text-anchor="start" >物业管理后台</text>
+<text x="56" y="535.0" font-size="12" fill="#e9ded5" font-weight="normal" text-anchor="start" >给物业经理、收费员、客服用</text>
+<text x="56" y="553.0" font-size="12" fill="#e9ded5" font-weight="normal" text-anchor="start" >管房屋、收物业费、跟报修</text>
+<rect x="56" y="569.0" width="50" height="20" rx="10.0" fill="#4a3f39" stroke="#4a3f39" stroke-width="1"/>
+<text x="81.0" y="583.0" font-size="11" fill="#f3e9e1" font-weight="600" text-anchor="middle" >经理</text>
+<rect x="112" y="569.0" width="50" height="20" rx="10.0" fill="#4a3f39" stroke="#4a3f39" stroke-width="1"/>
+<text x="137.0" y="583.0" font-size="11" fill="#f3e9e1" font-weight="600" text-anchor="middle" >收费员</text>
+<rect x="168" y="569.0" width="50" height="20" rx="10.0" fill="#4a3f39" stroke="#4a3f39" stroke-width="1"/>
+<text x="193.0" y="583.0" font-size="11" fill="#f3e9e1" font-weight="600" text-anchor="middle" >客服</text>
+<circle cx="236" cy="541.0" r="10" fill="#fff" stroke="#2b2420" stroke-width="1.4"/>
+<path d="M231.5 541.0h9M236 536.5v9" stroke="#2b2420" stroke-width="1.6"/>
+<rect x="270" y="166.0" width="192" height="60" rx="12" fill="#fdf2ea" stroke="#b8532f" stroke-width="1"/>
+<text x="284" y="191.0" font-size="14.5" fill="#2b2420" font-weight="700" text-anchor="start" >经营概览</text>
+<text x="450" y="191.0" font-size="11" fill="#9c4325" font-weight="normal" text-anchor="end" >1 页</text>
+<text x="284" y="212.0" font-size="11.5" fill="#7a6f68" font-weight="normal" text-anchor="start" >老板和经理一打开就看的</text>
+<rect x="270" y="488.0" width="192" height="60" rx="12" fill="#fdf2ea" stroke="#b8532f" stroke-width="1"/>
+<text x="284" y="513.0" font-size="14.5" fill="#2b2420" font-weight="700" text-anchor="start" >房产运营</text>
+<text x="450" y="513.0" font-size="11" fill="#9c4325" font-weight="normal" text-anchor="end" >3 页</text>
+<text x="284" y="534.0" font-size="11.5" fill="#7a6f68" font-weight="normal" text-anchor="start" >房子、钱、报修，物业的日常</text>
+<rect x="270" y="856.0" width="192" height="60" rx="12" fill="#fdf2ea" stroke="#b8532f" stroke-width="1"/>
+<text x="284" y="881.0" font-size="14.5" fill="#2b2420" font-weight="700" text-anchor="start" >社区服务</text>
+<text x="450" y="881.0" font-size="11" fill="#9c4325" font-weight="normal" text-anchor="end" >1 页</text>
+<text x="284" y="902.0" font-size="11.5" fill="#7a6f68" font-weight="normal" text-anchor="start" >和住户打交道</text>
+<rect x="500" y="166.0" width="216" height="60" rx="12" fill="#eef3fc" stroke="#3b6fd8" stroke-width="1"/>
+<text x="514" y="190.0" font-size="14" fill="#2b2420" font-weight="700" text-anchor="start" >工作台</text>
+<text x="704" y="190.0" font-size="11" fill="#2f5bb5" font-weight="normal" text-anchor="end" >经理</text>
+<text x="514" y="211.0" font-size="11.5" fill="#5d6b88" font-weight="normal" text-anchor="start" >今天要处理什么、钱收得怎么样</text>
+<rect x="500" y="258" width="216" height="60" rx="12" fill="#eef3fc" stroke="#3b6fd8" stroke-width="1"/>
+<text x="514" y="282" font-size="14" fill="#2b2420" font-weight="700" text-anchor="start" >房屋与住户</text>
+<text x="704" y="282" font-size="11" fill="#2f5bb5" font-weight="normal" text-anchor="end" >经理</text>
+<text x="514" y="303" font-size="11.5" fill="#5d6b88" font-weight="normal" text-anchor="start" >房屋台账和业主信息</text>
+<rect x="730" y="277" width="92" height="22" rx="11.0" fill="#efe9e3" stroke="#efe9e3" stroke-width="1"/>
+<text x="776.0" y="292.0" font-size="11" fill="#6b625c" font-weight="600" text-anchor="middle" >▸ 3 个功能</text>
+<rect x="500" y="442.0" width="216" height="60" rx="12" fill="#eef3fc" stroke="#3b6fd8" stroke-width="2.4"/>
+<text x="514" y="466.0" font-size="14" fill="#2b2420" font-weight="700" text-anchor="start" >费用账单</text>
+<rect x="578" y="453.0" width="40" height="18" rx="9.0" fill="#b8532f" stroke="#b8532f" stroke-width="1"/>
+<text x="598.0" y="466.0" font-size="10.5" fill="#fff" font-weight="600" text-anchor="middle" >已改</text>
+<text x="704" y="466.0" font-size="11" fill="#2f5bb5" font-weight="normal" text-anchor="end" >收费员·经理</text>
+<text x="514" y="487.0" font-size="11.5" fill="#5d6b88" font-weight="normal" text-anchor="start" >登记缴费、催缴逾期、看收缴率</text>
+<rect x="500" y="718.0" width="216" height="60" rx="12" fill="#eef3fc" stroke="#3b6fd8" stroke-width="1"/>
+<text x="514" y="742.0" font-size="14" fill="#2b2420" font-weight="700" text-anchor="start" >报修工单</text>
+<text x="704" y="742.0" font-size="11" fill="#2f5bb5" font-weight="normal" text-anchor="end" >客服</text>
+<text x="514" y="763.0" font-size="11.5" fill="#5d6b88" font-weight="normal" text-anchor="start" >从报修到回访，一单跟到底</text>
+<circle cx="716" cy="748.0" r="10" fill="#fff" stroke="#b8532f" stroke-width="1.4"/>
+<path d="M711.5 748.0h9M716 743.5v9" stroke="#b8532f" stroke-width="1.6"/>
+<rect x="500" y="856" width="216" height="60" rx="12" fill="#eef3fc" stroke="#3b6fd8" stroke-width="1"/>
+<text x="514" y="880" font-size="14" fill="#2b2420" font-weight="700" text-anchor="start" >公告通知</text>
+<text x="704" y="880" font-size="11" fill="#2f5bb5" font-weight="normal" text-anchor="end" >客服</text>
+<text x="514" y="901" font-size="11.5" fill="#5d6b88" font-weight="normal" text-anchor="start" >发布、置顶、过期自动下线</text>
+<rect x="730" y="875" width="92" height="22" rx="11.0" fill="#efe9e3" stroke="#efe9e3" stroke-width="1"/>
+<text x="776.0" y="890.0" font-size="11" fill="#6b625c" font-weight="600" text-anchor="middle" >▸ 3 个功能</text>
+<rect x="496" y="398.0" width="262" height="34" rx="10" fill="#2b2420" stroke="#2b2420" stroke-width="1"/>
+<text x="508" y="420.0" font-size="12" fill="#fff" font-weight="600" text-anchor="start" >+ 子功能</text>
+<text x="576" y="420.0" font-size="12" fill="#fff" font-weight="600" text-anchor="start" >+ 同级页面</text>
+<text x="662" y="420.0" font-size="12" fill="#fff" font-weight="600" text-anchor="start" >改名</text>
+<text x="708" y="420.0" font-size="12" fill="#ffb59a" font-weight="600" text-anchor="start" >删除</text>
+<path d="M596 432.0 l8 8 l8 -8 z" fill="#2b2420"/>
+<rect x="760" y="131" width="380" height="38" rx="10" fill="#fff" stroke="#e2d6cc" stroke-width="1"/>
+<rect x="770" y="141" width="36" height="18" rx="9.0" fill="#fff4e0" stroke="#fff4e0" stroke-width="1"/>
+<text x="788.0" y="154.0" font-size="10.5" fill="#9a6a12" font-weight="600" text-anchor="middle" >指标</text>
+<text x="814" y="155" font-size="13" fill="#2b2420" font-weight="700" text-anchor="start" >指标卡</text>
+<text x="862.5" y="155" font-size="11.5" fill="#7a6f68" font-weight="normal" text-anchor="start" >应收、已收、收缴率、待派单</text>
+<rect x="760" y="177" width="380" height="38" rx="10" fill="#fff" stroke="#e2d6cc" stroke-width="1"/>
+<rect x="770" y="187" width="36" height="18" rx="9.0" fill="#eef3fc" stroke="#eef3fc" stroke-width="1"/>
+<text x="788.0" y="200.0" font-size="10.5" fill="#2f5bb5" font-weight="600" text-anchor="middle" >列表</text>
+<text x="814" y="201" font-size="13" fill="#2b2420" font-weight="700" text-anchor="start" >待处理清单</text>
+<text x="889.5" y="201" font-size="11.5" fill="#7a6f68" font-weight="normal" text-anchor="start" >逾期账单、待派单工单，点进去处理</text>
+<rect x="760" y="223" width="380" height="38" rx="10" fill="#fff" stroke="#e2d6cc" stroke-width="1"/>
+<rect x="770" y="233" width="36" height="18" rx="9.0" fill="#f1edfb" stroke="#f1edfb" stroke-width="1"/>
+<text x="788.0" y="246.0" font-size="10.5" fill="#55439a" font-weight="600" text-anchor="middle" >图表</text>
+<text x="814" y="247" font-size="13" fill="#2b2420" font-weight="700" text-anchor="start" >收费趋势</text>
+<text x="876.0" y="247" font-size="11.5" fill="#7a6f68" font-weight="normal" text-anchor="start" >近 6 个月实收金额</text>
+<rect x="760" y="315" width="380" height="38" rx="10" fill="#fff" stroke="#e2d6cc" stroke-width="1"/>
+<rect x="770" y="325" width="36" height="18" rx="9.0" fill="#fff4e0" stroke="#fff4e0" stroke-width="1"/>
+<text x="788.0" y="338.0" font-size="10.5" fill="#9a6a12" font-weight="600" text-anchor="middle" >指标</text>
+<text x="814" y="339" font-size="13" fill="#2b2420" font-weight="700" text-anchor="start" >指标卡</text>
+<text x="862.5" y="339" font-size="11.5" fill="#7a6f68" font-weight="normal" text-anchor="start" >应收合计、已收、收缴率、逾期金额</text>
+<rect x="760" y="361" width="380" height="38" rx="10" fill="#fff" stroke="#e2d6cc" stroke-width="1"/>
+<rect x="770" y="371" width="36" height="18" rx="9.0" fill="#efeeec" stroke="#efeeec" stroke-width="1"/>
+<text x="788.0" y="384.0" font-size="10.5" fill="#6b625c" font-weight="600" text-anchor="middle" >筛选</text>
+<text x="814" y="385" font-size="13" fill="#2b2420" font-weight="700" text-anchor="start" >筛选</text>
+<text x="849.0" y="385" font-size="11.5" fill="#7a6f68" font-weight="normal" text-anchor="start" >楼栋 · 状态 · 账期 · 房号/业主</text>
+<rect x="760" y="407" width="380" height="38" rx="10" fill="#fff" stroke="#e2d6cc" stroke-width="1"/>
+<rect x="770" y="417" width="36" height="18" rx="9.0" fill="#eef3fc" stroke="#eef3fc" stroke-width="1"/>
+<text x="788.0" y="430.0" font-size="10.5" fill="#2f5bb5" font-weight="600" text-anchor="middle" >列表</text>
+<text x="814" y="431" font-size="13" fill="#2b2420" font-weight="700" text-anchor="start" >账单列表</text>
+<text x="876.0" y="431" font-size="11.5" fill="#7a6f68" font-weight="normal" text-anchor="start" >编号、房号、业主、金额、应缴日、状态</text>
+<rect x="760" y="453" width="380" height="38" rx="10" fill="#fff" stroke="#e2d6cc" stroke-width="1"/>
+<rect x="770" y="463" width="36" height="18" rx="9.0" fill="#fdf2ea" stroke="#fdf2ea" stroke-width="1"/>
+<text x="788.0" y="476.0" font-size="10.5" fill="#9c4325" font-weight="600" text-anchor="middle" >弹窗</text>
+<text x="814" y="477" font-size="13" fill="#2b2420" font-weight="700" text-anchor="start" >登记缴费</text>
+<text x="876.0" y="477" font-size="11.5" fill="#7a6f68" font-weight="normal" text-anchor="start" >填实收金额、方式 → 账单变「已缴」</text>
+<rect x="760" y="499" width="380" height="38" rx="10" fill="#fff" stroke="#e2d6cc" stroke-width="1"/>
+<rect x="770" y="509" width="36" height="18" rx="9.0" fill="#eef7f1" stroke="#eef7f1" stroke-width="1"/>
+<text x="788.0" y="522.0" font-size="10.5" fill="#246e48" font-weight="600" text-anchor="middle" >按钮</text>
+<text x="814" y="523" font-size="13" fill="#2b2420" font-weight="700" text-anchor="start" >催缴</text>
+<text x="849.0" y="523" font-size="11.5" fill="#7a6f68" font-weight="normal" text-anchor="start" >记一笔时间和方式，行内显示次数</text>
+<rect x="760" y="545" width="380" height="38" rx="10" fill="#fff" stroke="#e2d6cc" stroke-width="1"/>
+<rect x="770" y="555" width="36" height="18" rx="9.0" fill="#fdf2ea" stroke="#fdf2ea" stroke-width="1"/>
+<text x="788.0" y="568.0" font-size="10.5" fill="#9c4325" font-weight="600" text-anchor="middle" >弹窗</text>
+<text x="814" y="569" font-size="13" fill="#2b2420" font-weight="700" text-anchor="start" >减免</text>
+<rect x="849.0" y="555" width="36" height="18" rx="9.0" fill="#2f8a5b" stroke="#2f8a5b" stroke-width="1"/>
+<text x="867.0" y="568.0" font-size="10.5" fill="#fff" font-weight="600" text-anchor="middle" >新增</text>
+<text x="893.0" y="569" font-size="11.5" fill="#7a6f68" font-weight="normal" text-anchor="start" >金额 + 原因（必填），经理审批</text>
+<rect x="760" y="591" width="380" height="38" rx="10" fill="#fff" stroke="#b8532f" stroke-width="1"/>
+<rect x="770" y="601" width="36" height="18" rx="9.0" fill="#eef7f1" stroke="#eef7f1" stroke-width="1"/>
+<text x="788.0" y="614.0" font-size="10.5" fill="#246e48" font-weight="600" text-anchor="middle" >按钮</text>
+<text x="814" y="615" font-size="13" fill="#2b2420" font-weight="700" text-anchor="start" >重发收据</text>
+<text x="876.0" y="615" font-size="11.5" fill="#7a6f68" font-weight="normal" text-anchor="start" >二次确认，写清发往哪个号码</text>
+<circle cx="1124" cy="610" r="10" fill="#fbecec"/>
+<path d="M1120 606l8 8M1128 606l-8 8" stroke="#a24b37" stroke-width="1.6"/>
+<circle cx="750" cy="606" r="1.4" fill="#a39890"/><circle cx="754" cy="606" r="1.4" fill="#a39890"/>
+<circle cx="750" cy="610" r="1.4" fill="#a39890"/><circle cx="754" cy="610" r="1.4" fill="#a39890"/>
+<circle cx="750" cy="614" r="1.4" fill="#a39890"/><circle cx="754" cy="614" r="1.4" fill="#a39890"/>
+<rect x="760" y="637" width="380" height="38" rx="10" fill="#fff" stroke="#e2d6cc" stroke-width="1"/>
+<rect x="770" y="647" width="36" height="18" rx="9.0" fill="#eef3fc" stroke="#eef3fc" stroke-width="1"/>
+<text x="788.0" y="660.0" font-size="10.5" fill="#2f5bb5" font-weight="600" text-anchor="middle" >列表</text>
+<text x="814" y="661" font-size="13" fill="#2b2420" font-weight="700" text-anchor="start" >工单列表</text>
+<text x="876.0" y="661" font-size="11.5" fill="#7a6f68" font-weight="normal" text-anchor="start" >按状态分页签：待派单 / 处理中 / 已完工</text>
+<rect x="760" y="683" width="380" height="38" rx="10" fill="#fff" stroke="#e2d6cc" stroke-width="1"/>
+<rect x="770" y="693" width="36" height="18" rx="9.0" fill="#fdf2ea" stroke="#fdf2ea" stroke-width="1"/>
+<text x="788.0" y="706.0" font-size="10.5" fill="#9c4325" font-weight="600" text-anchor="middle" >弹窗</text>
+<text x="814" y="707" font-size="13" fill="#2b2420" font-weight="700" text-anchor="start" >派单</text>
+<text x="849.0" y="707" font-size="11.5" fill="#7a6f68" font-weight="normal" text-anchor="start" >选师傅、约上门时间</text>
+<rect x="760" y="729" width="380" height="38" rx="10" fill="#fff" stroke="#e2d6cc" stroke-width="1"/>
+<rect x="770" y="739" width="36" height="18" rx="9.0" fill="#eef7f1" stroke="#eef7f1" stroke-width="1"/>
+<text x="788.0" y="752.0" font-size="10.5" fill="#246e48" font-weight="600" text-anchor="middle" >按钮</text>
+<text x="814" y="753" font-size="13" fill="#2b2420" font-weight="700" text-anchor="start" >完工</text>
+<text x="849.0" y="753" font-size="11.5" fill="#7a6f68" font-weight="normal" text-anchor="start" >填处理结果，状态变「已完工」</text>
+<rect x="760" y="775" width="380" height="38" rx="10" fill="#fff" stroke="#e2d6cc" stroke-width="1"/>
+<rect x="770" y="785" width="36" height="18" rx="9.0" fill="#fdf2ea" stroke="#fdf2ea" stroke-width="1"/>
+<text x="788.0" y="798.0" font-size="10.5" fill="#9c4325" font-weight="600" text-anchor="middle" >弹窗</text>
+<text x="814" y="799" font-size="13" fill="#2b2420" font-weight="700" text-anchor="start" >回访</text>
+<rect x="849.0" y="785" width="36" height="18" rx="9.0" fill="#2f8a5b" stroke="#2f8a5b" stroke-width="1"/>
+<text x="867.0" y="798.0" font-size="10.5" fill="#fff" font-weight="600" text-anchor="middle" >新增</text>
+<text x="893.0" y="799" font-size="11.5" fill="#7a6f68" font-weight="normal" text-anchor="start" >记满意度和意见</text>
+<rect x="760" y="821" width="380" height="38" rx="10" fill="#fff" stroke="#b8532f" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="774" y="845" font-size="12.5" fill="#a39890" font-weight="normal" text-anchor="start" >输入新功能，比如「评价统计」</text>
+<rect x="1030" y="830" width="44" height="20" rx="10.0" fill="#efe9e3" stroke="#efe9e3" stroke-width="1"/>
+<text x="1052.0" y="844.0" font-size="10.5" fill="#6b625c" font-weight="600" text-anchor="middle" >功能 ▾</text>
+<rect x="1080" y="830" width="46" height="20" rx="10.0" fill="#b8532f" stroke="#b8532f" stroke-width="1"/>
+<text x="1103.0" y="844.0" font-size="10.5" fill="#fff" font-weight="600" text-anchor="middle" >添加</text>
+<rect x="395" y="934" width="400" height="36" rx="10" fill="#2b2420" stroke="#2b2420" stroke-width="1"/>
+<text x="413" y="957" font-size="12.5" fill="#fff" font-weight="normal" text-anchor="start" >已删除「社区活动」页面（含 2 个功能）</text>
+<text x="777" y="957" font-size="12.5" fill="#ffb59a" font-weight="700" text-anchor="end" >撤销</text>
+<rect x="1190" y="66" width="390" height="924" rx="14" fill="#fff" stroke="#e2d6cc" stroke-width="1"/>
+<rect x="1208" y="84" width="40" height="20" rx="10.0" fill="#eef3fc" stroke="#eef3fc" stroke-width="1"/>
+<text x="1228.0" y="98.0" font-size="11" fill="#2f5bb5" font-weight="600" text-anchor="middle" >页面</text>
+<text x="1256" y="99" font-size="17" fill="#2b2420" font-weight="700" text-anchor="start" >费用账单</text>
+<text x="1562" y="99" font-size="12" fill="#7a6f68" font-weight="normal" text-anchor="end" >房产运营 ›</text>
+<text x="1208" y="132" font-size="12" fill="#8a7f78" font-weight="600" text-anchor="start" >一句话介绍</text>
+<rect x="1208" y="140" width="354" height="60" rx="8" fill="#faf7f3" stroke="#e2d6cc" stroke-width="1"/>
+<text x="1220" y="164" font-size="12.5" fill="#2b2420" font-weight="normal" text-anchor="start" >收费员每天在这里登记缴费、催缴逾期；</text>
+<text x="1220" y="186" font-size="12.5" fill="#2b2420" font-weight="normal" text-anchor="start" >经理看收缴率，审批减免。</text>
+<text x="1208" y="226" font-size="12" fill="#8a7f78" font-weight="600" text-anchor="start" >谁用</text>
+<rect x="1208" y="236" width="56" height="22" rx="11.0" fill="#eef3fc" stroke="#eef3fc" stroke-width="1"/>
+<text x="1236.0" y="251.0" font-size="11.5" fill="#2f5bb5" font-weight="600" text-anchor="middle" >收费员</text>
+<rect x="1270" y="236" width="44" height="22" rx="11.0" fill="#eef3fc" stroke="#eef3fc" stroke-width="1"/>
+<text x="1292.0" y="251.0" font-size="11.5" fill="#2f5bb5" font-weight="600" text-anchor="middle" >经理</text>
+<rect x="1320" y="236" width="30" height="22" rx="11" fill="#fff" stroke="#e2d6cc" stroke-width="1"/>
+<text x="1335" y="252" font-size="13" fill="#7a6f68" font-weight="normal" text-anchor="middle" >+</text>
+<text x="1208" y="286" font-size="12" fill="#8a7f78" font-weight="600" text-anchor="start" >用到的数据</text>
+<rect x="1208" y="294" width="354" height="50" rx="8" fill="#faf7f3" stroke="#e2d6cc" stroke-width="1"/>
+<text x="1220" y="314" font-size="12" fill="#544b45" font-weight="normal" text-anchor="start" >账单：编号 · 房号 · 收费项目 · 账期 · 金额</text>
+<text x="1220" y="333" font-size="12" fill="#544b45" font-weight="normal" text-anchor="start" >　　　应缴日期 · 状态 · 催缴记录</text>
+<text x="1208" y="370" font-size="12" fill="#8a7f78" font-weight="600" text-anchor="start" >状态怎么变</text>
+<rect x="1208" y="380" width="44" height="22" rx="11.0" fill="#fff4e0" stroke="#fff4e0" stroke-width="1"/>
+<text x="1230.0" y="395.0" font-size="11.5" fill="#9a6a12" font-weight="600" text-anchor="middle" >待缴</text>
+<path d="M1256 391h16" stroke="#8a7f78" stroke-width="1.4"/><path d="M1270 387l4 4-4 4" fill="none" stroke="#8a7f78" stroke-width="1.4"/>
+<rect x="1280" y="380" width="44" height="22" rx="11.0" fill="#eef7f1" stroke="#eef7f1" stroke-width="1"/>
+<text x="1302.0" y="395.0" font-size="11.5" fill="#246e48" font-weight="600" text-anchor="middle" >已缴</text>
+<rect x="1330" y="380" width="44" height="22" rx="11.0" fill="#fbecec" stroke="#fbecec" stroke-width="1"/>
+<text x="1352.0" y="395.0" font-size="11.5" fill="#a24b37" font-weight="600" text-anchor="middle" >逾期</text>
+<rect x="1380" y="380" width="44" height="22" rx="11.0" fill="#2f8a5b" stroke="#2f8a5b" stroke-width="1"/>
+<text x="1402.0" y="395.0" font-size="11.5" fill="#fff" font-weight="600" text-anchor="middle" >减免</text>
+<text x="1208" y="424" font-size="12" fill="#544b45" font-weight="normal" text-anchor="start" >逾期：过了应缴日期还没缴（自动）</text>
+<text x="1208" y="456" font-size="12" fill="#8a7f78" font-weight="600" text-anchor="start" >规则</text>
+<text x="1208" y="478" font-size="12.5" fill="#2b2420" font-weight="normal" text-anchor="start" >收缴率 = 已缴金额 ÷（应收 − 减免）</text>
+<text x="1208" y="512" font-size="12" fill="#8a7f78" font-weight="600" text-anchor="start" >功能（7）</text>
+<rect x="1208" y="526" width="354" height="26" rx="7" fill="#faf7f3" stroke="#efe9e3" stroke-width="1"/>
+<rect x="1216" y="530" width="36" height="18" rx="9.0" fill="#fff4e0" stroke="#fff4e0" stroke-width="1"/>
+<text x="1234.0" y="543.0" font-size="10.5" fill="#9a6a12" font-weight="600" text-anchor="middle" >指标</text>
+<text x="1260" y="544" font-size="12.5" fill="#2b2420" font-weight="normal" text-anchor="start" >指标卡</text>
+<text x="1550" y="544" font-size="12" fill="#b0a69e" font-weight="normal" text-anchor="end" >⋮⋮</text>
+<rect x="1208" y="556" width="354" height="26" rx="7" fill="#faf7f3" stroke="#efe9e3" stroke-width="1"/>
+<rect x="1216" y="560" width="36" height="18" rx="9.0" fill="#efeeec" stroke="#efeeec" stroke-width="1"/>
+<text x="1234.0" y="573.0" font-size="10.5" fill="#6b625c" font-weight="600" text-anchor="middle" >筛选</text>
+<text x="1260" y="574" font-size="12.5" fill="#2b2420" font-weight="normal" text-anchor="start" >筛选</text>
+<text x="1550" y="574" font-size="12" fill="#b0a69e" font-weight="normal" text-anchor="end" >⋮⋮</text>
+<rect x="1208" y="586" width="354" height="26" rx="7" fill="#faf7f3" stroke="#efe9e3" stroke-width="1"/>
+<rect x="1216" y="590" width="36" height="18" rx="9.0" fill="#eef3fc" stroke="#eef3fc" stroke-width="1"/>
+<text x="1234.0" y="603.0" font-size="10.5" fill="#2f5bb5" font-weight="600" text-anchor="middle" >列表</text>
+<text x="1260" y="604" font-size="12.5" fill="#2b2420" font-weight="normal" text-anchor="start" >账单列表</text>
+<text x="1550" y="604" font-size="12" fill="#b0a69e" font-weight="normal" text-anchor="end" >⋮⋮</text>
+<rect x="1208" y="616" width="354" height="26" rx="7" fill="#faf7f3" stroke="#efe9e3" stroke-width="1"/>
+<rect x="1216" y="620" width="36" height="18" rx="9.0" fill="#fdf2ea" stroke="#fdf2ea" stroke-width="1"/>
+<text x="1234.0" y="633.0" font-size="10.5" fill="#9c4325" font-weight="600" text-anchor="middle" >弹窗</text>
+<text x="1260" y="634" font-size="12.5" fill="#2b2420" font-weight="normal" text-anchor="start" >登记缴费</text>
+<text x="1550" y="634" font-size="12" fill="#b0a69e" font-weight="normal" text-anchor="end" >⋮⋮</text>
+<rect x="1208" y="646" width="354" height="26" rx="7" fill="#faf7f3" stroke="#efe9e3" stroke-width="1"/>
+<rect x="1216" y="650" width="36" height="18" rx="9.0" fill="#eef7f1" stroke="#eef7f1" stroke-width="1"/>
+<text x="1234.0" y="663.0" font-size="10.5" fill="#246e48" font-weight="600" text-anchor="middle" >按钮</text>
+<text x="1260" y="664" font-size="12.5" fill="#2b2420" font-weight="normal" text-anchor="start" >催缴</text>
+<text x="1550" y="664" font-size="12" fill="#b0a69e" font-weight="normal" text-anchor="end" >⋮⋮</text>
+<rect x="1208" y="676" width="354" height="26" rx="7" fill="#faf7f3" stroke="#efe9e3" stroke-width="1"/>
+<rect x="1216" y="680" width="36" height="18" rx="9.0" fill="#fdf2ea" stroke="#fdf2ea" stroke-width="1"/>
+<text x="1234.0" y="693.0" font-size="10.5" fill="#9c4325" font-weight="600" text-anchor="middle" >弹窗</text>
+<text x="1260" y="694" font-size="12.5" fill="#2b2420" font-weight="normal" text-anchor="start" >减免</text>
+<rect x="1302" y="680" width="36" height="18" rx="9.0" fill="#2f8a5b" stroke="#2f8a5b" stroke-width="1"/>
+<text x="1320.0" y="693.0" font-size="10.5" fill="#fff" font-weight="600" text-anchor="middle" >新增</text>
+<text x="1550" y="694" font-size="12" fill="#b0a69e" font-weight="normal" text-anchor="end" >⋮⋮</text>
+<rect x="1208" y="706" width="354" height="26" rx="7" fill="#faf7f3" stroke="#efe9e3" stroke-width="1"/>
+<rect x="1216" y="710" width="36" height="18" rx="9.0" fill="#eef7f1" stroke="#eef7f1" stroke-width="1"/>
+<text x="1234.0" y="723.0" font-size="10.5" fill="#246e48" font-weight="600" text-anchor="middle" >按钮</text>
+<text x="1260" y="724" font-size="12.5" fill="#2b2420" font-weight="normal" text-anchor="start" >重发收据</text>
+<text x="1550" y="724" font-size="12" fill="#b0a69e" font-weight="normal" text-anchor="end" >⋮⋮</text>
+<text x="1208" y="762" font-size="12.5" fill="#b8532f" font-weight="600" text-anchor="start" >+ 添加功能</text>
+<rect x="1208" y="784" width="170" height="34" rx="10" fill="#fff" stroke="#e2d6cc" stroke-width="1"/>
+<text x="1293" y="806" font-size="12.5" fill="#544b45" font-weight="normal" text-anchor="middle" >让 AI 补全介绍</text>
+<rect x="1392" y="784" width="170" height="34" rx="10" fill="#fff" stroke="#e2d6cc" stroke-width="1"/>
+<text x="1477" y="806" font-size="12.5" fill="#544b45" font-weight="normal" text-anchor="middle" >只重做这一页</text>
+<rect x="1208" y="834" width="354" height="66" rx="12" fill="#b8532f" stroke="#b8532f" stroke-width="1"/>
+<text x="1385" y="862" font-size="15" fill="#fff" font-weight="700" text-anchor="middle" >确认架构，按架构生成</text>
+<text x="1385" y="884" font-size="11.5" fill="#fde3d6" font-weight="normal" text-anchor="middle" >5 页 · 一页一步 · 改过的 2 页会标出来</text>
+</svg>
