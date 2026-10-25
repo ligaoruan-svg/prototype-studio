@@ -214,6 +214,7 @@ class 分到弹什么(unittest.TestCase):
         self.assertEqual(page["children"][-1]["fields"], ["工单号🔒", "指派给*"])
 
 
+@unittest.skipIf(TestClient is None, "没装 fastapi")
 class 接口(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
