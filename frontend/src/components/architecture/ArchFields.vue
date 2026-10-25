@@ -2,14 +2,18 @@
 // 卡片里的字段：收起时一行摘要（几个字段、几个必填、确认后怎样），展开后画成它本来的样子——
 // 弹窗 / 向导是一张小表单（两列、必填红星、每个字段画成它的控件：下拉、日期、上传……，旁边标着是什么控件），
 // 抽屉是只读的「字段：值」，表格是一条表头加两行占位，区块（筛选、信息卡）是一排控件
-import { computed, ref, watch } from 'vue'
+import { computed, inject, ref, watch } from 'vue'
 import { ChevronDown, ChevronRight } from 'lucide-vue-next'
 import { t } from '../../lib/i18n.js'
 import { FIELD_TYPES, parseField } from '../../lib/archFields.js'
 import ArchControl from './ArchControl.vue'
+import { statesOf } from '../../lib/architecture.js'
 
 const props = defineProps({ node: Object, open: Boolean })
 const emit = defineEmits(['edit'])
+const s = inject('studio', null)
+// 表格有「状态」列：把状态怎么流转写在表格下面（待派单 → 待上门 → 处理中 → 已完成）
+const states = computed(() => props.node.type === 'table' && (props.node.cols || []).some(c => /状态/.test(c)) && s?.arch.value ? statesOf(s.arch.value, props.node.id) : [])
 const shown = ref(props.open)
 watch(() => props.open, v => { shown.value = v })
 const isTable = computed(() => props.node.type === 'table')
@@ -47,6 +51,7 @@ const confirmText = computed(() => props.node.type === 'wizard' ? t('完成') : 
       <!-- 区块：一排输入框（筛选、信息卡） -->
       <div v-else class="af-block"><span v-for="f in items" :key="f.name"><label><span class="af-n">{{ f.name }}<i v-if="f.must">*</i></span><em v-if="f.kindLabel" class="af-kind" :class="{ guess: f.guessed }">{{ f.kindLabel }}</em></label><ArchControl :f="f" /></span></div>
     </template>
+    <p v-if="states.length" class="af-states">{{ $t('状态：') }}<i v-for="st in states" :key="st">{{ st }}</i></p>
     <p v-if="node.after" class="af-after">{{ $t('确认后：{0}', [node.after]) }}</p>
     <div v-if="shown && style === 'form' && items.length" class="af-foot"><span>{{ $t('取消') }}</span><span class="p">{{ confirmText }}</span></div>
   </div>

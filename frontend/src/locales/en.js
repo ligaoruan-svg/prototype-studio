@@ -1358,4 +1358,10 @@ export default {
   "选人": "Person",
   "级联": "Cascader",
   "提示文字": "Note",
+  "状态：": "Status: ",
+  "用文字编辑": "Edit as text",
+  "整份架构写成一段缩进文字，适合一次改很多、粘贴 Excel 功能清单": "The whole architecture as indented text — handy for big edits or pasting a feature list from Excel",
+  "高级：数据": "Advanced: data",
+  "AI 自己维护，生成时让几页的编号、下拉选项、状态保持一致；它写错了才需要来这里改": "Maintained by AI to keep IDs, dropdown options and statuses consistent across pages; only come here if it got something wrong",
+  "文字编辑": "Text editor",
 }

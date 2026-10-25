@@ -1,26 +1,30 @@
 <script setup>
-// 架构模式：页面树 / 数据关系 / 业务流程三个视图，右边是选中项的详情，底下是生成顺序和「按架构生成」
+// 架构模式：页面树 / 业务流程两个视图，右边是选中项的详情，底下是生成顺序和「按架构生成」。
+// 大纲（文字编辑）和数据关系是内部的东西：AI 读写、生成时保证几页数据一致，平时不用看，收在「⋯」里
 import { computed, inject, onUnmounted, ref, watch } from 'vue'
-import { AlertCircle, Check, Ruler, ChevronDown, ChevronUp, ClipboardPaste, Layers, ListTree, LoaderCircle, Network, Sparkles, Undo2, Wand2, X } from 'lucide-vue-next'
+import { AlertCircle, Check, Ruler, ChevronDown, ChevronUp, Database, Layers, ListTree, LoaderCircle, MoreHorizontal, Network, Sparkles, Undo2, Wand2, X } from 'lucide-vue-next'
 import ArchNode from './ArchNode.vue'
 import ArchData from './ArchData.vue'
 import ArchFlow from './ArchFlow.vue'
 import ArchDetail from './ArchDetail.vue'
 import ArchOutline from './ArchOutline.vue'
-import ArchPage from './ArchPage.vue'
 import { NODE_TYPES } from '../../lib/architecture.js'
 import { t } from '../../lib/i18n.js'
 
 const s = inject('studio')
 const { arch, archIssues, archOrder, archCounts, archBusy, archError, archView, archSelected, archShowDesc, archQuery, archRemoved,
   archHistory, archDraft, locked, page, sourceInfo } = s
-const need = ref(''), issuesOpen = ref(false), aiOpen = ref(false), rulesOpen = ref(false), main = ref(null)
+const need = ref(''), issuesOpen = ref(false), aiOpen = ref(false), rulesOpen = ref(false), moreOpen = ref(false), main = ref(null)
 // 换视图时回到左上角：三个视图宽窄不一样，留着上一个的滚动位置会看到半截
 watch(archView, () => { if (main.value) { main.value.scrollLeft = 0; main.value.scrollTop = 0 } })
 const hasPage = computed(() => !!page.value && (sourceInfo.value.source || '').length > 400)
-const errors = computed(() => archIssues.value.filter(i => i.level === 'error').length)
+// 数据关系那边对不上只在打开「高级：数据」时列出来，平时不打扰
+const issues = computed(() => archIssues.value.filter(i => i.area !== 'data' || archView.value === 'data'))
+const errors = computed(() => issues.value.filter(i => i.level === 'error').length)
 const levels = [{ v: 1, label: '模块' }, { v: 2, label: '菜单页' }, { v: 3, label: '页签' }, { v: 99, label: '全部' }]
-const views = [{ id: 'tree', label: '页面树' }, { id: 'page', label: '页面结构' }, { id: 'outline', label: '大纲' }, { id: 'data', label: '数据关系' }, { id: 'flow', label: '业务流程' }]
+const views = [{ id: 'tree', label: '页面树' }, { id: 'flow', label: '业务流程' }]
+// 从「⋯」打开的：在页签那里临时多一个，点 × 回页面树
+const extras = { outline: '文字编辑', data: '高级：数据' }
 // 生成顺序默认收成一行（几十页时占半屏）；点「展开」才全部列出来
 const orderOpen = ref(false)
 // AI 起草的进度：每秒刷一下用了多久
@@ -30,7 +34,7 @@ onUnmounted(() => clearInterval(ticker))
 const draftSeconds = computed(() => archDraft.value ? Math.max(0, Math.round((now.value - archDraft.value.started) / 1000)) : 0)
 const counts = computed(() => {
   const c = archCounts.value || {}
-  return [[c.modules, '{0} 个模块'], [c.pages, '{0} 个菜单页'], [c.tabs, '{0} 个页签'], [c.drills, '{0} 个下钻页'], [c.layers, '{0} 个弹窗 / 抽屉'], [c.entities, '{0} 类数据']]
+  return [[c.modules, '{0} 个模块'], [c.pages, '{0} 个菜单页'], [c.tabs, '{0} 个页签'], [c.drills, '{0} 个下钻页'], [c.layers, '{0} 个弹窗 / 抽屉']]
     .filter(([n]) => n).map(([n, label]) => t(label, [n]))
 })
 function pickIssue(issue) {
@@ -42,7 +46,8 @@ function pickIssue(issue) {
 function draft(mode) { aiOpen.value = false; s.draftArch(mode, mode === 'refine' ? '' : need.value.trim()) }
 function root() { s.archSelect('root', 'root') }
 function setRules(text) { s.archSnapshot(); arch.value.rules = text.split('\n').map(v => v.trim()).filter(Boolean); s.archDirty() }
-function pop(name) { issuesOpen.value = name === 'issues' && !issuesOpen.value; aiOpen.value = name === 'ai' && !aiOpen.value; rulesOpen.value = name === 'rules' && !rulesOpen.value }
+function pop(name) { issuesOpen.value = name === 'issues' && !issuesOpen.value; aiOpen.value = name === 'ai' && !aiOpen.value; rulesOpen.value = name === 'rules' && !rulesOpen.value; moreOpen.value = name === 'more' && !moreOpen.value }
+function openExtra(view) { moreOpen.value = false; s.archSelect(null); archView.value = view }
 </script>
 
 <template>
@@ -50,11 +55,12 @@ function pop(name) { issuesOpen.value = name === 'issues' && !issuesOpen.value; 
     <header class="arch-bar" @click.stop>
       <div class="arch-title"><Network :size="16" /><b>{{ $t('架构') }}</b>
         <span v-if="arch" class="arch-state" :class="arch.status">{{ arch.status === 'confirmed' ? $t('已确认') : $t('草稿') }}</span></div>
-      <div v-if="arch" class="arch-views" role="tablist"><button v-for="v in views" :key="v.id" role="tab" :aria-selected="archView === v.id" :class="{ active: archView === v.id }" @click="archView = v.id">{{ $t(v.label) }}</button></div>
+      <div v-if="arch" class="arch-views" role="tablist"><button v-for="v in views" :key="v.id" role="tab" :aria-selected="archView === v.id" :class="{ active: archView === v.id }" @click="archView = v.id">{{ $t(v.label) }}</button>
+        <button v-if="extras[archView]" role="tab" aria-selected="true" class="active extra" @click="archView = 'tree'">{{ $t(extras[archView]) }}<X :size="12" :aria-label="$t('关闭')" /></button></div>
       <div v-if="arch" class="arch-tools">
-        <div class="arch-pop-wrap"><button class="outline" :class="{ warn: errors }" @click="pop('issues')"><AlertCircle v-if="archIssues.length" :size="14" /><Check v-else :size="14" /><span class="lbl">{{ archIssues.length ? $t('一致性检查') : $t('对得上') }}</span><b v-if="archIssues.length">{{ archIssues.length }}</b></button>
-          <div v-if="issuesOpen" class="arch-pop"><p v-if="!archIssues.length" class="arch-muted">{{ $t('页面、数据、流程都对得上') }}</p>
-            <button v-for="(issue, i) in archIssues" :key="i" class="arch-issue" :class="issue.level" @click="pickIssue(issue)"><AlertCircle :size="13" /><span>{{ issue.text }}</span></button></div></div>
+        <div class="arch-pop-wrap"><button class="outline" :class="{ warn: errors }" @click="pop('issues')"><AlertCircle v-if="issues.length" :size="14" /><Check v-else :size="14" /><span class="lbl">{{ issues.length ? $t('一致性检查') : $t('对得上') }}</span><b v-if="issues.length">{{ issues.length }}</b></button>
+          <div v-if="issuesOpen" class="arch-pop"><p v-if="!issues.length" class="arch-muted">{{ $t('页面、数据、流程都对得上') }}</p>
+            <button v-for="(issue, i) in issues" :key="i" class="arch-issue" :class="issue.level" @click="pickIssue(issue)"><AlertCircle :size="13" /><span>{{ issue.text }}</span></button></div></div>
         <div class="arch-pop-wrap"><button class="outline" :disabled="archBusy === 'draft'" @click="pop('ai')"><Sparkles :size="14" />{{ $t('AI') }}</button>
           <div v-if="aiOpen" class="arch-pop arch-ai"><button :disabled="!hasPage" @click="aiOpen = false; s.fromExpand()"><Layers :size="14" /><span><b>{{ $t('照展开图重新整理（不用 AI）') }}</b>{{ $t('几秒就好：菜单、页签、弹窗、子页面照原型搭出来，会替换现在的页面树') }}</span></button>
             <button @click="draft('refine')"><Wand2 :size="14" /><span><b>{{ $t('补全') }}</b>{{ $t('给缺介绍的页面补介绍、补字段和流程，已有的不动') }}</span></button>
@@ -63,6 +69,9 @@ function pop(name) { issuesOpen.value = name === 'issues' && !issuesOpen.value; 
         <div class="arch-pop-wrap"><button class="outline" :title="$t('统一规则')" @click="pop('rules')"><Ruler :size="14" /><span class="lbl">{{ $t('统一规则') }}</span></button>
           <div v-if="rulesOpen" class="arch-pop arch-rules"><b>{{ $t('电脑端统一规则') }}</b><p class="arch-muted">{{ $t('生成时每一页都按这几条来，一行一条，可以改') }}</p>
             <textarea rows="11" :value="(arch.rules || []).join('\n')" @change="setRules($event.target.value)"></textarea></div></div>
+        <div class="arch-pop-wrap"><button class="icon-button" :title="$t('更多')" :aria-label="$t('更多')" :aria-expanded="moreOpen" @click="pop('more')"><MoreHorizontal :size="16" /></button>
+          <div v-if="moreOpen" class="arch-pop arch-ai arch-more"><button @click="openExtra('outline')"><ListTree :size="14" /><span><b>{{ $t('用文字编辑') }}</b>{{ $t('整份架构写成一段缩进文字，适合一次改很多、粘贴 Excel 功能清单') }}</span></button>
+            <button @click="openExtra('data')"><Database :size="14" /><span><b>{{ $t('高级：数据') }}</b>{{ $t('AI 自己维护，生成时让几页的编号、下拉选项、状态保持一致；它写错了才需要来这里改') }}</span></button></div></div>
         <button class="icon-button" :disabled="!archHistory.length" :title="$t('撤销')" :aria-label="$t('撤销')" @click="s.undoArch()"><Undo2 :size="15" /></button>
         <span class="arch-saving"><LoaderCircle v-if="archBusy === 'saving'" :size="13" class="spin" /></span>
       </div>
@@ -115,7 +124,6 @@ function pop(name) { issuesOpen.value = name === 'issues' && !issuesOpen.value; 
           </div>
           <p class="arch-legend"><span v-for="(v, k) in NODE_TYPES" :key="k" class="an-legend" :class="k">{{ $t(v.label) }}</span></p>
         </div>
-        <ArchPage v-else-if="archView === 'page'" />
         <ArchOutline v-else-if="archView === 'outline'" />
         <ArchData v-else-if="archView === 'data'" />
         <ArchFlow v-else />

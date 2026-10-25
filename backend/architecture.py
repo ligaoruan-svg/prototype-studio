@@ -274,7 +274,8 @@ def order(arch: dict) -> list[dict]:
 
 
 def check(arch: dict) -> list[dict]:
-    """架构自己对不对得上：引用的数据要有、流程的箭头要指得到、页面要有介绍。error 要先改，warn 只是提醒"""
+    """架构自己对不对得上：引用的数据要有、流程的箭头要指得到、页面要有介绍。error 要先改，warn 只是提醒。
+    数据关系是 AI 自己维护的内部东西（界面上收在「⋯ › 高级：数据」），那边对不上只提醒、不挡生成，记成 area 是 data。"""
     issues: list[dict] = []
     entities = {e["name"]: e for e in arch.get("entities") or []}
 
@@ -284,14 +285,12 @@ def check(arch: dict) -> list[dict]:
     pages = screens(arch)
     if not pages:
         add("warn", "还没有页面：先加一个模块和菜单页")
-    used = set()
     names_all = {n["name"] for n, _, _ in walk(arch.get("nodes") or [])}
     loose_all = {loose_name(n) for n in names_all}
     for item, depth, parents in walk(arch.get("nodes") or []):
         for name in item.get("data") or []:
-            used.add(name)
             if name not in entities:
-                add("error", f"「{item['name']}」用到的数据「{name}」在数据关系里没有", node=item["id"])
+                add("warn", f"「{item['name']}」用到的数据「{name}」在数据关系里没有", node=item["id"], area="data")
         if item["type"] == "module" and not item.get("children"):
             add("warn", f"模块「{item['name']}」下面还没有页面", node=item["id"])
         if item["type"] in SCREEN_TYPES and not item.get("desc"):
@@ -305,13 +304,11 @@ def check(arch: dict) -> list[dict]:
     for e in entities.values():
         for f in e["fields"]:
             if f.get("kind") == "ref" and f.get("ref") not in entities:
-                add("error", f"「{e['name']}.{f['name']}」引用的「{f.get('ref') or '（没选）'}」不存在", entity=e["id"])
-        if e["name"] not in used and not e["external"] and pages:
-            add("warn", f"数据「{e['name']}」没有页面用到", entity=e["id"])
+                add("warn", f"「{e['name']}.{f['name']}」引用的「{f.get('ref') or '（没选）'}」不存在", entity=e["id"], area="data")
     for r in arch.get("relations") or []:
         for end in (r["from"], r["to"]):
             if end not in entities:
-                add("error", f"关系「{r['from']} → {r['to']}」里的「{end}」不存在")
+                add("warn", f"关系「{r['from']} → {r['to']}」里的「{end}」不存在", area="data")
     step_ids = {s["id"] for s in arch.get("steps") or []}
     node_ids = {n["id"] for n, _, _ in walk(arch.get("nodes") or [])}
     lane_ids = {l["id"] for l in arch.get("lanes") or []}

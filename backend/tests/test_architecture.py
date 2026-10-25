@@ -82,13 +82,16 @@ class 顺序和检查(unittest.TestCase):
         issues = A.check(A.normalize(device_arch()))
         self.assertEqual([i for i in issues if i["level"] == "error"], [])
 
-    def test_引用不存在就报错(self):
+    def test_数据对不上只提醒_不挡生成(self):
         raw = device_arch()
         raw["entities"][2]["fields"][0]["ref"] = "设备台账"
         raw["nodes"][0]["children"][1]["data"] = ["不存在的数据"]
-        texts = [i["text"] for i in A.check(A.normalize(raw)) if i["level"] == "error"]
-        self.assertTrue(any("设备台账" in t for t in texts))
-        self.assertTrue(any("不存在的数据" in t for t in texts))
+        issues = A.check(A.normalize(raw))
+        data = [i for i in issues if i.get("area") == "data"]
+        self.assertTrue(any("设备台账" in i["text"] for i in data))
+        self.assertTrue(any("不存在的数据" in i["text"] for i in data))
+        self.assertFalse(any(i["level"] == "error" for i in data))
+        self.assertFalse(any("没有页面用到" in i["text"] for i in issues))
 
     def test_环不会卡死(self):
         raw = {"entities": [{"name": "甲", "fields": [{"name": "x", "kind": "ref", "ref": "乙"}]},

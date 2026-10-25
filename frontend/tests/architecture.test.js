@@ -86,7 +86,6 @@ test('手动编：大纲视图、粘贴功能清单、键盘加删改名；AI �
   const board = readFileSync(new URL('../src/components/architecture/ArchitectureBoard.vue', import.meta.url), 'utf8')
   const outline = readFileSync(new URL('../src/components/architecture/ArchOutline.vue', import.meta.url), 'utf8')
   const logic = readFileSync(new URL('../src/composables/useArchitecture.js', import.meta.url), 'utf8')
-  assert.match(board, /id: 'outline', label: '大纲'/)
   assert.match(board, /s\.stopDraft\(\)/)
   assert.match(board, /arch-order-toggle/)
   assert.match(board, /s\.fromExpand\(\)/)
@@ -107,6 +106,19 @@ test('分到弹什么：按钮点了打开谁、页面结构视图一次看一�
   assert.equal(screenOf(a, btn.id).name, '设备巡检计划')
   assert.ok(targetsIn(a, btn.id, 'open').includes('新增路线弹窗'))
   assert.ok(targetsIn(a, btn.id, 'jump').includes('设备巡检计划'))
+  // 顶上只留页面树、业务流程；大纲、数据关系是内部的，收在「⋯」里
   const board = readFileSync(new URL('../src/components/architecture/ArchitectureBoard.vue', import.meta.url), 'utf8')
-  assert.match(board, /id: 'page', label: '页面结构'/)
+  assert.match(board, /const views = \[\{ id: 'tree', label: '页面树' \}, \{ id: 'flow', label: '业务流程' \}\]/)
+  assert.match(board, /openExtra\('outline'\)/)
+  assert.match(board, /openExtra\('data'\)/)
+})
+
+test('表格的状态列跟着数据里的状态流转', async () => {
+  const { statesOf } = await import('../src/lib/architecture.js')
+  const { a, tab1 } = sample()
+  const table = addChild(a, tab1.id, 'table', '路线列表')
+  a.entities[1].states = ['草稿', '启用', '停用']
+  tab1.data = ['路线']
+  assert.deepEqual(statesOf(a, table.id), ['草稿', '启用', '停用'])
+
 })

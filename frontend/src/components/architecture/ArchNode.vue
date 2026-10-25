@@ -5,7 +5,6 @@ import { ChevronDown, ChevronRight, ChevronUp, Plus, Trash2 } from 'lucide-vue-n
 import ArchNode from './ArchNode.vue'
 import { ACTIONS, CHILD_TYPES, LAYER_TYPES, NODE_TYPES, countBelow } from '../../lib/architecture.js'
 import ArchFields from './ArchFields.vue'
-import { t } from '../../lib/i18n.js'
 
 const props = defineProps({ node: Object, depth: { type: Number, default: 0 }, siblings: { type: Array, default: () => [] } })
 const s = inject('studio')
@@ -35,9 +34,8 @@ const hit = computed(() => {
   return !!q && (props.node.name.includes(q) || (props.node.desc || '').includes(q))
 })
 const warn = computed(() => archIssues.value.filter(i => i.node === props.node.id))
-// 卡片上只留一行小字：地址 · 谁用 · 用到几类数据；标签、需求编号这些在右边详情里看
-const meta = computed(() => [props.node.route ? '#' + props.node.route : '', (props.node.who || []).join('·'),
-  (props.node.data || []).length ? t('{0} 类数据', [props.node.data.length]) : '', (props.node.req || []).join(' ')].filter(Boolean).join(' · '))
+// 卡片上只留一行小字：地址 · 谁用 · 需求编号；标签这些在右边详情里看（用到哪些数据是内部的，不放卡片上）
+const meta = computed(() => [props.node.route ? '#' + props.node.route : '', (props.node.who || []).join('·'), (props.node.req || []).join(' ')].filter(Boolean).join(' · '))
 function addChild(event) {
   const type = event.target.value
   event.target.value = ''

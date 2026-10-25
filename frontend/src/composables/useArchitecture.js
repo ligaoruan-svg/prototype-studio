@@ -107,8 +107,9 @@ export function useArchitecture(s) {
     if (sel.kind === 'lane') return a.lanes.find(x => x.id === sel.id) || null
     return null
   }
-  function archAdd(parentId, type) { const node = change(a => addChild(a, parentId, type)); select('node', node.id); return node }
-  function archSibling(id) { const node = change(a => addSibling(a, id)); if (node) select('node', node.id) }
+  // 加出来的直接进入改名：不然名字都叫「新菜单页」，再按回车又多出一个同名的
+  function archAdd(parentId, type) { const node = change(a => addChild(a, parentId, type)); select('node', node.id); archRenaming.value = node.id; return node }
+  function archSibling(id) { const node = change(a => addSibling(a, id)); if (node) { select('node', node.id); archRenaming.value = node.id } }
   function archMove(id, delta) { change(a => moveNode(a, id, delta)) }
   function archToggle(id) { const node = findNode(arch.value, id)?.node; if (node) change(() => { node.collapsed = !node.collapsed }) }
   function archRemove(id) {
@@ -200,14 +201,14 @@ export function useArchitecture(s) {
     const key = event.key, command = event.metaKey || event.ctrlKey
     if (command && key.toLowerCase() === 'z' && !event.shiftKey) { event.preventDefault?.(); undoArch(); return true }
     const sel = archSelected.value
-    if (!['tree', 'page'].includes(archView.value) || sel?.kind !== 'node' || command) return false
+    if (archView.value !== 'tree' || sel?.kind !== 'node' || command) return false
     const node = findNode(arch.value, sel.id)?.node
     if (!node) return false
-    if (key === 'Enter') { event.preventDefault?.(); archSibling(node.id); archRenaming.value = archSelected.value?.id || ''; return true }
+    if (key === 'Enter') { event.preventDefault?.(); archSibling(node.id); return true }
     if (key === 'Tab') {
       event.preventDefault?.()
       const type = (CHILD_TYPES[node.type] || [])[0]
-      if (type) { archAdd(node.id, type); archRenaming.value = archSelected.value?.id || '' }
+      if (type) archAdd(node.id, type)
       return true
     }
     if (key === 'Delete' || key === 'Backspace') { event.preventDefault?.(); archRemove(node.id); return true }

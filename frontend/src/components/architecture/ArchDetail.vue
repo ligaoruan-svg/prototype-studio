@@ -111,14 +111,14 @@ function gotoNode(id) { archView.value = 'tree'; s.archSelect('node', id) }
           <label>{{ $t('带过去') }}<input :value="item.params || ''" :placeholder="$t('比如：模板编号')" @focus="s.archSnapshot()" @input="setText(item, 'params', $event.target.value)"></label></div>
         <label>{{ $t('怎么回去') }}<input :value="item.back || ''" :placeholder="$t('比如：返回列表，菜单仍高亮原来那项')" @focus="s.archSnapshot()" @input="setText(item, 'back', $event.target.value)"></label>
       </template>
-      <div v-if="isScreen || ['table', ...LAYER_TYPES].includes(item.type)" class="ad-field"><span>{{ $t('用到的数据') }}</span>
+      <!-- 用到哪些数据：只在「高级：数据」里能改，平时 AI 自己维护 -->
+      <div v-if="archView === 'data' && (isScreen || ['table', ...LAYER_TYPES].includes(item.type))" class="ad-field"><span>{{ $t('用到的数据') }}</span>
         <div class="ad-chips"><button v-for="name in entityNames" :key="name" :class="{ on: (item.data || []).includes(name) }" @click="toggleData(name)">{{ name }}</button>
           <span v-if="!entityNames.length" class="arch-muted">{{ $t('先在「数据关系」里加数据') }}</span></div></div>
       <label>{{ $t('标签') }}<input :value="listText(item.tags, '；')" :placeholder="$t('复用、联动…几条用分号分开')" @focus="s.archSnapshot()" @change="setList(item, 'tags', $event.target.value, /[;；]/)"></label>
       <label>{{ $t('需求编号') }}<input :value="listText(item.req)" placeholder="#85、#86" @focus="s.archSnapshot()" @change="setList(item, 'req', $event.target.value)"></label>
       <div v-if="issues.length" class="ad-issues"><p v-for="(i, n) in issues" :key="n" :class="i.level">⚠ {{ i.text }}</p></div>
       <div class="ad-actions">
-        <button v-if="isScreen && archView !== 'page'" class="outline" @click="archView = 'page'">{{ $t('看页面结构') }}</button>
         <button v-if="isScreen" class="outline" :disabled="locked || !page" :title="$t('只按架构重做这一页，别的页面不动')" @click="s.rebuildNode(item)"><RotateCw :size="14" />{{ $t('只重做这一页') }}</button>
         <button class="quiet danger" @click="s.archRemove(item.id)"><Trash2 :size="14" />{{ $t('删除') }}</button>
       </div>
