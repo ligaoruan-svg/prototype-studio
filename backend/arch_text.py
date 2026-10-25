@@ -41,15 +41,21 @@ from .architecture import NODE_TYPES, walk
 TYPE_WORDS = {
     "module": ["模块", "子系统", "系统模块"], "page": ["菜单页", "页面", "菜单", "一级页面"], "tab": ["页签", "标签页", "tab", "Tab"],
     "drill": ["下钻页", "下钻", "详情页", "子页面"], "modal": ["弹窗", "弹框", "对话框", "表单弹窗"], "drawer": ["抽屉", "侧滑", "详情抽屉"],
-    "wizard": ["向导", "步骤", "分步"], "jump": ["跳转", "链接"], "block": ["区块", "区域", "板块"], "feature": ["功能", "按钮", "操作", "功能点"],
+    "wizard": ["向导", "步骤", "分步"], "jump": ["跳转", "链接"], "block": ["区块", "区域", "板块", "卡片"], "table": ["表格", "列表", "表"],
+    "button": ["按钮", "操作", "链接按钮", "行操作"], "feature": ["功能", "功能点", "规则", "联动"],
 }
 WORD_TYPE = {w: t for t, words in TYPE_WORDS.items() for w in words}
 LANE_WORDS = {"系统": "system", "系统自动": "system", "不做": "skip", "本次不做": "skip", "外部": "external", "外部系统": "external", "人": "user"}
 LANE_LABEL = {"user": "", "system": "系统", "skip": "不做", "external": "外部"}
-PROPS = [("data", "数据"), ("route", "地址"), ("who", "谁用"), ("entry", "入口"), ("params", "带过去"), ("back", "返回"), ("tags", "标签"), ("req", "需求")]
+PROPS = [("when", "出现"), ("fields", "字段"), ("cols", "列"), ("after", "确认后"), ("data", "数据"), ("route", "地址"), ("who", "谁用"),
+         ("entry", "入口"), ("params", "带过去"), ("back", "返回"), ("tags", "标签"), ("req", "需求")]
 PROP_WORDS = {"数据": "data", "地址": "route", "路由": "route", "谁用": "who", "入口": "entry", "怎么进来": "entry", "带过去": "params", "参数": "params",
-              "返回": "back", "怎么回去": "back", "标签": "tags", "需求": "req", "需求编号": "req"}
-LIST_PROPS = {"data", "who", "tags", "req"}
+              "返回": "back", "怎么回去": "back", "标签": "tags", "需求": "req", "需求编号": "req", "字段": "fields", "表单": "fields",
+              "列": "cols", "表头": "cols", "出现": "when", "什么时候出现": "when", "确认后": "after", "保存后": "after"}
+# 按钮点了以后：「打开：新增设施弹窗」「跳到：模板详情」「执行：导出 Excel」「二次确认：删除后不能恢复」
+ACTION_WORDS = {"打开": "open", "弹出": "open", "跳到": "jump", "跳转": "jump", "执行": "run", "二次确认": "confirm", "确认框": "confirm"}
+ACTION_LABEL = {"open": "打开", "jump": "跳到", "run": "执行", "confirm": "二次确认"}
+LIST_PROPS = {"data", "who", "tags", "req", "fields", "cols"}
 SECTIONS = {"页面": "nodes", "页面树": "nodes", "数据": "entities", "数据关系": "entities", "关系": "relations", "流程": "flow", "业务流程": "flow"}
 SEP = re.compile(r"\s*[|｜]\s*")
 SPLIT = re.compile(r"[,，、;；]\s*")
@@ -89,6 +95,8 @@ def to_outline(arch: dict | None) -> str:
         text = "  " * depth + f"{node['name']} [{NODE_TYPES[node['type']]}]"
         if node.get("desc"):
             text += "：" + node["desc"].replace("\n", " ")
+        if node.get("action"):
+            text += f" | {ACTION_LABEL[node['action']]}：{node.get('target') or ''}"
         for key, label in PROPS:
             value = node.get(key)
             if value:
@@ -163,8 +171,13 @@ def _node_from_line(text: str, depth: int) -> dict:
         km = re.match(r"^(?P<k>[^:：]+)[:：]\s*(?P<v>.*)$", part)
         if not km:
             continue
-        key = PROP_WORDS.get(km.group("k").strip())
-        value = km.group("v").strip()
+        word, value = km.group("k").strip(), km.group("v").strip()
+        if word in ACTION_WORDS:
+            node["action"] = ACTION_WORDS[word]
+            if value:
+                node["target"] = value
+            continue
+        key = PROP_WORDS.get(word)
         if key and value:
             # 标签里常有逗号顿号（「联动：改了 A，B 跟着变」），只按分号分；别的按顿号逗号分
             splitter = TAG_SPLIT if key == "tags" else SPLIT

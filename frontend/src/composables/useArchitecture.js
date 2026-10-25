@@ -199,7 +199,7 @@ export function useArchitecture(s) {
     const key = event.key, command = event.metaKey || event.ctrlKey
     if (command && key.toLowerCase() === 'z' && !event.shiftKey) { event.preventDefault?.(); undoArch(); return true }
     const sel = archSelected.value
-    if (archView.value !== 'tree' || sel?.kind !== 'node' || command) return false
+    if (!['tree', 'page'].includes(archView.value) || sel?.kind !== 'node' || command) return false
     const node = findNode(arch.value, sel.id)?.node
     if (!node) return false
     if (key === 'Enter') { event.preventDefault?.(); archSibling(node.id); archRenaming.value = archSelected.value?.id || ''; return true }

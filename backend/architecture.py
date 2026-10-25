@@ -18,7 +18,10 @@ from . import storage
 from .atomicio import write_atomic
 
 NODE_TYPES = {"module": "模块", "page": "菜单页", "tab": "页签", "drill": "下钻页", "modal": "弹窗", "drawer": "抽屉",
-              "wizard": "向导", "jump": "跳转", "block": "区块", "feature": "功能"}
+              "wizard": "向导", "jump": "跳转", "block": "区块", "table": "表格", "button": "按钮", "feature": "功能"}
+LAYER_TYPES = ("modal", "drawer", "wizard")    # 点按钮打开的那一层
+# 按钮点了以后怎样：打开哪个弹窗 / 跳到哪一页 / 直接执行 / 先二次确认
+ACTIONS = {"open": "打开", "jump": "跳到", "run": "执行", "confirm": "二次确认"}
 SCREEN_TYPES = ("page", "tab", "drill")       # 会成为一个能看到的页面
 FIELD_KINDS = {"key": "编号", "ref": "引用", "derived": "自动算", "locked": "继承", "plain": ""}
 LANE_KINDS = {"user": "操作的人", "system": "系统自动", "skip": "本次不做", "external": "外部系统"}
@@ -34,7 +37,7 @@ PC_RULES = [
 ]
 DEFAULT_LANES = [{"id": "l_user", "name": "管理员", "kind": "user", "note": "电脑"},
                  {"id": "l_sys", "name": "系统自动", "kind": "system", "note": ""}]
-MAX_NODES, MAX_DEPTH, MAX_ENTITIES, MAX_FIELDS, MAX_STEPS = 400, 7, 60, 40, 120
+MAX_NODES, MAX_DEPTH, MAX_ENTITIES, MAX_FIELDS, MAX_STEPS = 2000, 10, 60, 40, 120
 ID_RE = re.compile(r"^[a-z][\w-]{0,31}$")
 
 
@@ -102,11 +105,17 @@ def normalize(raw: Any) -> dict[str, Any]:
             return None
         count += 1
         out = {"id": uid(item.get("id"), "n"), "type": kind, "name": name, "desc": _text(item.get("desc"), 400)}
-        for key, limit in (("route", 60), ("entry", 160), ("params", 120), ("back", 160)):
+        for key, limit in (("route", 60), ("entry", 160), ("params", 120), ("back", 160), ("target", 60), ("when", 120), ("after", 200)):
             if _s(item.get(key), limit):
                 out[key] = _s(item.get(key), limit)
-        for key, n in (("who", 8), ("data", 12), ("tags", 8), ("req", 8)):
-            values = _strings(item.get(key), n, 40)
+        if item.get("action") in ACTIONS:
+            out["action"] = item["action"]
+        for key, n, size in (("who", 8, 40), ("data", 12, 40), ("tags", 8, 80), ("req", 8, 40), ("fields", 40, 40), ("cols", 30, 30)):
+            raw_value = item.get(key)
+            if key == "tags" and isinstance(raw_value, list):   # 标签里常有逗号，是列表就不再拆
+                values = list(dict.fromkeys(_s(t, size) for t in raw_value[:n] if _s(t, size)))
+            else:
+                values = _strings(raw_value, n, size)
             if values:
                 out[key] = values
         if item.get("collapsed") is True:
@@ -261,6 +270,7 @@ def check(arch: dict) -> list[dict]:
     if not pages:
         add("warn", "还没有页面：先加一个模块和菜单页")
     used = set()
+    names_all = {n["name"] for n, _, _ in walk(arch.get("nodes") or [])}
     for item, depth, parents in walk(arch.get("nodes") or []):
         for name in item.get("data") or []:
             used.add(name)
@@ -270,6 +280,8 @@ def check(arch: dict) -> list[dict]:
             add("warn", f"模块「{item['name']}」下面还没有页面", node=item["id"])
         if item["type"] in SCREEN_TYPES and not item.get("desc"):
             add("warn", f"「{item['name']}」还没写介绍：AI 会按名字猜", node=item["id"])
+        if item["type"] == "button" and item.get("action") in ("open", "jump") and item.get("target") and item["target"] not in names_all:
+            add("warn", f"按钮「{item['name']}」要{ACTIONS[item['action']]}的「{item['target']}」在架构里没有", node=item["id"])
         if item["type"] == "drill" and not item.get("entry"):
             add("warn", f"下钻页「{item['name']}」没写从哪进", node=item["id"])
         if depth == 0 and item["type"] != "module":
@@ -305,7 +317,7 @@ def summary(arch: dict) -> dict:
     nodes = [n for n, _, _ in walk(arch.get("nodes") or [])]
     count = lambda *kinds: sum(1 for n in nodes if n["type"] in kinds)
     return {"modules": count("module"), "pages": count("page"), "tabs": count("tab"), "drills": count("drill"),
-            "layers": count("modal", "drawer", "wizard"), "features": count("feature", "block", "jump"),
+            "layers": count("modal", "drawer", "wizard"), "features": count("feature", "block", "jump", "table"), "buttons": count("button"),
             "entities": len(arch.get("entities") or []), "screens": len(screens(arch))}
 
 
@@ -321,8 +333,10 @@ def _node_line(item: dict) -> str:
     parts = [f"[{NODE_TYPES[item['type']]}] {item['name']}"]
     if item.get("desc"):
         parts.append(item["desc"].replace("\n", " "))
-    for key, label in (("who", "谁用"), ("entry", "入口"), ("route", "地址"), ("params", "带过去"), ("back", "返回"),
-                       ("data", "数据"), ("tags", "标签"), ("req", "需求")):
+    if item.get("action"):
+        parts.append(f"点了：{ACTIONS[item['action']]}" + (f"「{item['target']}」" if item.get("target") else ""))
+    for key, label in (("when", "什么时候出现"), ("who", "谁用"), ("entry", "入口"), ("route", "地址"), ("params", "带过去"), ("back", "返回"),
+                       ("fields", "字段"), ("cols", "列"), ("after", "确认后"), ("data", "数据"), ("tags", "标签"), ("req", "需求")):
         value = item.get(key)
         if value:
             parts.append(f"{label}：{'、'.join(value) if isinstance(value, list) else value}")

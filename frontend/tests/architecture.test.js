@@ -96,3 +96,17 @@ test('手动编：大纲视图、粘贴功能清单、键盘加删改名；AI �
   assert.match(logic, /key === 'Tab'[\s\S]*archAdd/)
   assert.match(logic, /consumeAgentStream/)
 })
+
+test('分到弹什么：按钮点了打开谁、页面结构视图一次看一页', async () => {
+  const { ACTIONS, CHILD_TYPES, targetsIn, screenOf } = await import('../src/lib/architecture.js')
+  assert.deepEqual(Object.keys(ACTIONS), ['open', 'jump', 'run', 'confirm'])
+  assert.ok(CHILD_TYPES.page.includes('button') && CHILD_TYPES.table.includes('button'))
+  const { a, tab1 } = sample()
+  const btn = addChild(a, tab1.id, 'button', '新增路线')
+  addChild(a, tab1.id, 'modal', '新增路线弹窗')
+  assert.equal(screenOf(a, btn.id).name, '设备巡检计划')
+  assert.ok(targetsIn(a, btn.id, 'open').includes('新增路线弹窗'))
+  assert.ok(targetsIn(a, btn.id, 'jump').includes('设备巡检计划'))
+  const board = readFileSync(new URL('../src/components/architecture/ArchitectureBoard.vue', import.meta.url), 'utf8')
+  assert.match(board, /id: 'page', label: '页面结构'/)
+})

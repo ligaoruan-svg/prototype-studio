@@ -7,6 +7,7 @@ import ArchData from './ArchData.vue'
 import ArchFlow from './ArchFlow.vue'
 import ArchDetail from './ArchDetail.vue'
 import ArchOutline from './ArchOutline.vue'
+import ArchPage from './ArchPage.vue'
 import { NODE_TYPES } from '../../lib/architecture.js'
 import { t } from '../../lib/i18n.js'
 
@@ -19,7 +20,7 @@ watch(archView, () => { if (main.value) { main.value.scrollLeft = 0; main.value.
 const hasPage = computed(() => !!page.value && (sourceInfo.value.source || '').length > 400)
 const errors = computed(() => archIssues.value.filter(i => i.level === 'error').length)
 const levels = [{ v: 1, label: '模块' }, { v: 2, label: '菜单页' }, { v: 3, label: '页签' }, { v: 99, label: '全部' }]
-const views = [{ id: 'tree', label: '页面树' }, { id: 'outline', label: '大纲' }, { id: 'data', label: '数据关系' }, { id: 'flow', label: '业务流程' }]
+const views = [{ id: 'tree', label: '页面树' }, { id: 'page', label: '页面结构' }, { id: 'outline', label: '大纲' }, { id: 'data', label: '数据关系' }, { id: 'flow', label: '业务流程' }]
 // 生成顺序默认收成一行（几十页时占半屏）；点「展开」才全部列出来
 const orderOpen = ref(false)
 // AI 起草的进度：每秒刷一下用了多久
@@ -113,6 +114,7 @@ function pop(name) { issuesOpen.value = name === 'issues' && !issuesOpen.value; 
           </div>
           <p class="arch-legend"><span v-for="(v, k) in NODE_TYPES" :key="k" class="an-legend" :class="k">{{ $t(v.label) }}</span></p>
         </div>
+        <ArchPage v-else-if="archView === 'page'" />
         <ArchOutline v-else-if="archView === 'outline'" />
         <ArchData v-else-if="archView === 'data'" />
         <ArchFlow v-else />

@@ -2,7 +2,7 @@
 // 右边的详情：选中什么就改什么。打字直接改到架构里（停手半秒自动保存），开始改一格之前留一份底给「撤销」
 import { computed, inject } from 'vue'
 import { Plus, RotateCw, Trash2, X } from 'lucide-vue-next'
-import { CHILD_TYPES, FIELD_KINDS, LANE_KINDS, NODE_TYPES, SCREEN_TYPES, findNode, screens } from '../../lib/architecture.js'
+import { ACTIONS, CHILD_TYPES, FIELD_KINDS, LANE_KINDS, LAYER_TYPES, NODE_TYPES, SCREEN_TYPES, findNode, screens, targetsIn } from '../../lib/architecture.js'
 
 const s = inject('studio')
 const { arch, archSelected, archIssues, archView, locked, page } = s
@@ -18,6 +18,23 @@ const typeChoices = computed(() => {
 })
 const issues = computed(() => archIssues.value.filter(i => item.value && (i.node === item.value.id || i.entity === item.value.id || i.step === item.value.id)))
 const isScreen = computed(() => kind.value === 'node' && SCREEN_TYPES.includes(item.value.type))
+const targets = computed(() => kind.value === 'node' && item.value.type === 'button' ? targetsIn(arch.value, item.value.id, item.value.action) : [])
+// 一行一个（字段、列）：必填在后面加 *
+const linesText = value => (value || []).join('\n')
+function setLines(target, key, text) {
+  const values = text.split(/\n|[、,，]/).map(v => v.trim()).filter(Boolean)
+  if (values.length) target[key] = values; else delete target[key]
+  s.archDirty()
+}
+function setAction(value) {
+  const node = item.value
+  s.archChange(() => { if (value) node.action = value; else { delete node.action; delete node.target } })
+}
+// 点「打开：xx」直接跳到那个弹窗
+function gotoTarget(name) {
+  const hit = [...(function* w(ns) { for (const n of ns || []) { yield n; yield* w(n.children) } })(arch.value.nodes)].find(n => n.name === name)
+  if (hit) s.archSelect('node', hit.id)
+}
 const outgoing = computed(() => kind.value === 'entity' ? arch.value.relations.filter(r => r.from === item.value.name) : [])
 
 // 逗号分开的几项（谁用、标签、需求编号、角色、状态）
@@ -71,20 +88,34 @@ function gotoNode(id) { archView.value = 'tree'; s.archSelect('node', id) }
         <span v-if="parentOf" class="arch-muted">{{ parentOf.name }} ›</span><button class="icon-button" :aria-label="$t('关闭')" @click="s.archSelect(null)"><X :size="14" /></button></div>
       <input class="ad-name" v-model="item.name" :aria-label="$t('名称')" @focus="s.archSnapshot()" @input="s.archDirty()">
       <label>{{ $t('一句话介绍') }}<textarea v-model="item.desc" rows="3" :placeholder="$t('这一块干什么、最先要看到什么')" @focus="s.archSnapshot()" @input="s.archDirty()"></textarea></label>
-      <label v-if="item.type !== 'module'">{{ $t('谁用') }}<input :value="listText(item.who)" :placeholder="$t('用顿号分开')" @focus="s.archSnapshot()" @change="setList(item, 'who', $event.target.value)"></label>
+      <!-- 按钮：点了怎样 -->
+      <template v-if="item.type === 'button'">
+        <div class="ad-two"><label>{{ $t('点了以后') }}<select :value="item.action || ''" @change="setAction($event.target.value)"><option value="">{{ $t('（还没定）') }}</option><option v-for="(label, k) in ACTIONS" :key="k" :value="k">{{ $t(label) }}</option></select></label>
+          <label v-if="item.action">{{ item.action === 'open' ? $t('打开哪个') : item.action === 'jump' ? $t('跳到哪页') : item.action === 'run' ? $t('做什么') : $t('提示什么') }}<input :value="item.target || ''" :list="'ad-targets-' + item.id" @focus="s.archSnapshot()" @input="setText(item, 'target', $event.target.value)"><datalist :id="'ad-targets-' + item.id"><option v-for="t in targets" :key="t" :value="t"></option></datalist></label></div>
+        <button v-if="item.target && targets.includes(item.target)" class="quiet ad-link" @click="gotoTarget(item.target)">{{ $t('去看「{0}」 →', [item.target]) }}</button>
+        <label>{{ $t('什么时候出现') }}<input :value="item.when || ''" :placeholder="$t('比如：状态是草稿时；勾选了才能点。一直有就空着')" @focus="s.archSnapshot()" @input="setText(item, 'when', $event.target.value)"></label>
+      </template>
+      <!-- 弹窗 / 抽屉 / 向导 / 区块：里面有哪些字段 -->
+      <template v-if="[...LAYER_TYPES, 'block'].includes(item.type)">
+        <label>{{ $t('字段（一行一个，必填加 *）') }}<textarea rows="5" :value="linesText(item.fields)" :placeholder="$t('名称*\n类型*\n备注')" @focus="s.archSnapshot()" @change="setLines(item, 'fields', $event.target.value)"></textarea></label>
+        <label v-if="LAYER_TYPES.includes(item.type)">{{ $t('确认后') }}<input :value="item.after || ''" :placeholder="$t('比如：列表多一行，关联排放源数 +1')" @focus="s.archSnapshot()" @input="setText(item, 'after', $event.target.value)"></label>
+      </template>
+      <label v-if="item.type === 'table'">{{ $t('列（一行一个）') }}<textarea rows="5" :value="linesText(item.cols)" @focus="s.archSnapshot()" @change="setLines(item, 'cols', $event.target.value)"></textarea></label>
+      <label v-if="isScreen">{{ $t('谁用') }}<input :value="listText(item.who)" :placeholder="$t('用顿号分开')" @focus="s.archSnapshot()" @change="setList(item, 'who', $event.target.value)"></label>
       <template v-if="isScreen || item.type === 'jump'">
         <label>{{ $t('怎么进来') }}<input :value="item.entry || ''" :placeholder="item.type === 'drill' ? $t('比如：点列表里的模板编号') : $t('比如：左侧菜单')" @focus="s.archSnapshot()" @input="setText(item, 'entry', $event.target.value)"></label>
         <div class="ad-two"><label>{{ $t('地址') }}<input :value="item.route || ''" placeholder="ops-route" @focus="s.archSnapshot()" @input="setText(item, 'route', $event.target.value.replace(/^#/, ''))"></label>
           <label>{{ $t('带过去') }}<input :value="item.params || ''" :placeholder="$t('比如：模板编号')" @focus="s.archSnapshot()" @input="setText(item, 'params', $event.target.value)"></label></div>
         <label>{{ $t('怎么回去') }}<input :value="item.back || ''" :placeholder="$t('比如：返回列表，菜单仍高亮原来那项')" @focus="s.archSnapshot()" @input="setText(item, 'back', $event.target.value)"></label>
       </template>
-      <div v-if="item.type !== 'module'" class="ad-field"><span>{{ $t('用到的数据') }}</span>
+      <div v-if="isScreen || ['table', ...LAYER_TYPES].includes(item.type)" class="ad-field"><span>{{ $t('用到的数据') }}</span>
         <div class="ad-chips"><button v-for="name in entityNames" :key="name" :class="{ on: (item.data || []).includes(name) }" @click="toggleData(name)">{{ name }}</button>
           <span v-if="!entityNames.length" class="arch-muted">{{ $t('先在「数据关系」里加数据') }}</span></div></div>
-      <label>{{ $t('标签') }}<input :value="listText(item.tags)" :placeholder="$t('复用、联动、按状态出现…用顿号分开')" @focus="s.archSnapshot()" @change="setList(item, 'tags', $event.target.value)"></label>
+      <label>{{ $t('标签') }}<input :value="listText(item.tags, '；')" :placeholder="$t('复用、联动…几条用分号分开')" @focus="s.archSnapshot()" @change="setList(item, 'tags', $event.target.value, /[;；]/)"></label>
       <label>{{ $t('需求编号') }}<input :value="listText(item.req)" placeholder="#85、#86" @focus="s.archSnapshot()" @change="setList(item, 'req', $event.target.value)"></label>
       <div v-if="issues.length" class="ad-issues"><p v-for="(i, n) in issues" :key="n" :class="i.level">⚠ {{ i.text }}</p></div>
       <div class="ad-actions">
+        <button v-if="isScreen && archView !== 'page'" class="outline" @click="archView = 'page'">{{ $t('看页面结构') }}</button>
         <button v-if="isScreen" class="outline" :disabled="locked || !page" :title="$t('只按架构重做这一页，别的页面不动')" @click="s.rebuildNode(item)"><RotateCw :size="14" />{{ $t('只重做这一页') }}</button>
         <button class="quiet danger" @click="s.archRemove(item.id)"><Trash2 :size="14" />{{ $t('删除') }}</button>
       </div>

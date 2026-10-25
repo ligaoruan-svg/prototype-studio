@@ -11,20 +11,27 @@ export const NODE_TYPES = {
   wizard: { label: '向导', short: '向导' },
   jump: { label: '跳转', short: '跳转' },
   block: { label: '区块', short: '区块' },
+  table: { label: '表格', short: '表格' },
+  button: { label: '按钮', short: '按钮' },
   feature: { label: '功能', short: '功能' },
 }
+export const LAYER_TYPES = ['modal', 'drawer', 'wizard']
+// 按钮点了以后：打开哪个弹窗 / 跳到哪一页 / 直接执行 / 先二次确认
+export const ACTIONS = { open: '打开', jump: '跳到', run: '执行', confirm: '二次确认' }
 export const SCREEN_TYPES = ['page', 'tab', 'drill']
 // 在某种节点下面加子项时，可以选哪些类型（第一个是默认）
 export const CHILD_TYPES = {
   root: ['module'],
   module: ['page'],
-  page: ['tab', 'drawer', 'modal', 'drill', 'wizard', 'jump', 'block', 'feature'],
-  tab: ['drawer', 'modal', 'drill', 'wizard', 'jump', 'block', 'feature'],
-  drill: ['block', 'drawer', 'modal', 'drill', 'jump', 'feature'],
-  modal: ['feature', 'block'],
-  drawer: ['feature', 'block'],
-  wizard: ['feature', 'block'],
-  block: ['feature', 'block'],
+  page: ['tab', 'block', 'table', 'button', 'modal', 'drawer', 'drill', 'wizard', 'feature'],
+  tab: ['block', 'table', 'button', 'modal', 'drawer', 'drill', 'wizard', 'feature'],
+  drill: ['block', 'table', 'button', 'modal', 'drawer', 'drill', 'feature'],
+  modal: ['block', 'table', 'button', 'feature'],
+  drawer: ['block', 'table', 'button', 'feature'],
+  wizard: ['block', 'table', 'button', 'feature'],
+  block: ['button', 'table', 'block', 'feature'],
+  table: ['button', 'feature'],
+  button: ['feature'],
   jump: [],
   feature: [],
 }
@@ -122,6 +129,20 @@ export function impactOf(arch, id) {
   const steps = (arch.steps || []).filter(s => ids.has(s.node)).length
   const below = countBelow(node)
   return [below ? `含 ${below} 项` : '', steps ? `流程里 ${steps} 步会断开链接` : ''].filter(Boolean).join('，')
+}
+
+// 一个节点在哪一页里（最外层的菜单页 / 下钻页）
+export function screenOf(arch, id) {
+  const hit = findNode(arch, id)
+  if (!hit) return null
+  const chain = [...hit.parents, hit.node]
+  return chain.find(n => SCREEN_TYPES.includes(n.type)) || null
+}
+// 同一页里能被按钮打开 / 跳到的东西（给详情里的下拉用）
+export function targetsIn(arch, id, action) {
+  const screen = screenOf(arch, id)
+  if (action === 'jump') return [...walk(arch?.nodes)].map(x => x.node).filter(n => SCREEN_TYPES.includes(n.type)).map(n => n.name)
+  return screen ? [...walk(screen.children)].map(x => x.node).filter(n => LAYER_TYPES.includes(n.type)).map(n => n.name) : []
 }
 
 // ---------- 页面、顺序（后台算的顺序优先，这里是没连上后台时的兜底） ----------

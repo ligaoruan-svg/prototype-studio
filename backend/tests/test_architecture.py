@@ -146,6 +146,57 @@ class 大纲(unittest.TestCase):
         self.assertEqual(e["states"], ["草稿", "启用"])
 
 
+class 分到弹什么(unittest.TestCase):
+    def test_按钮_弹窗字段_表格列_写出去读回来(self):
+        text = ("模板详情 [下钻页] | 入口：点模板名称\n"
+                "  顶部操作栏 [区块]\n"
+                "    行业模板库 [按钮] | 打开：选择行业模板\n"
+                "    删除设施/活动 [按钮] | 二次确认：删除后不能恢复 | 出现：勾选了才能点\n"
+                "  选择行业模板 [弹窗] | 字段：行业*、模板版本 | 确认后：活动数据行按行业模板覆盖\n"
+                "  固定燃烧源 [表格] | 列：设施/活动、排放源\n"
+                "    编辑 [按钮] | 打开：不存在的弹窗\n")
+        arch = A.normalize(T.from_outline(text))
+        bar = arch["nodes"][0]["children"][0]
+        self.assertEqual(bar["children"][0]["action"], "open")
+        self.assertEqual(bar["children"][0]["target"], "选择行业模板")
+        self.assertEqual((bar["children"][1]["action"], bar["children"][1]["when"]), ("confirm", "勾选了才能点"))
+        layer = arch["nodes"][0]["children"][1]
+        self.assertEqual(layer["fields"], ["行业*", "模板版本"])
+        self.assertIn("覆盖", layer["after"])
+        self.assertEqual(arch["nodes"][0]["children"][2]["cols"], ["设施/活动", "排放源"])
+        self.assertEqual(T.to_outline(A.normalize(T.from_outline(T.to_outline(arch)))), T.to_outline(arch))
+        warns = [i["text"] for i in A.check(arch)]
+        self.assertTrue(any("不存在的弹窗" in w for w in warns))        # 按钮打开的东西找不到要提醒
+        self.assertFalse(any("选择行业模板" in w for w in warns))
+        self.assertIn("点了：打开「选择行业模板」", A.brief(arch))
+        self.assertIn("字段：行业*、模板版本", A.brief(arch))
+
+    def test_照展开图拆到按钮和弹窗(self):
+        page = {"type": "page", "name": "碳排核算模板配置", "children": []}
+        html = "<label>年度<select><option>2026</option></select></label><table><tr><th>序号</th><th>模板编号</th><th>状态</th><th>操作</th></tr></table>"
+        nodes = [
+            {"id": 1, "parent": None, "label": "新增模板", "title": "新增核算模板", "html": "<label>模板名称*</label><label>行业</label>"},
+            {"id": 2, "parent": None, "label": "表格行 · TMP-BUILD-2026-V2", "title": "TMP-BUILD-2026-V2", "kind": "subpage", "html": "<th>设施/活动</th>"},
+            {"id": 3, "parent": 2, "label": "新增子类别", "title": "新增子类别", "html": "<label>子类别名称</label>"},
+            {"id": 4, "parent": None, "label": "页签 · GWP值", "title": "GWP值", "kind": "subpage", "html": ""},
+        ]
+        D._fill(page, html, nodes, None)
+        kinds = [(c["type"], c["name"]) for c in page["children"]]
+        self.assertIn(("block", "筛选 / 表单"), kinds)
+        self.assertIn(("button", "新增模板"), kinds)
+        self.assertIn(("modal", "新增核算模板"), kinds)
+        self.assertIn(("drill", "碳排核算模板详情"), kinds)          # 编号当标题的详情页换成「xx详情」
+        self.assertIn(("tab", "GWP值"), kinds)
+        table = next(c for c in page["children"] if c["type"] == "table")
+        self.assertEqual(table["cols"], ["模板编号", "状态"])
+        self.assertEqual(table["children"][0]["action"], "jump")       # 表格行里的按钮挂在表格下面
+        modal = next(c for c in page["children"] if c["type"] == "modal")
+        self.assertEqual(modal["fields"], ["模板名称*", "行业"])
+        drill = next(c for c in page["children"] if c["type"] == "drill")
+        self.assertIn("TMP-BUILD-2026-V2", drill["entry"])
+        self.assertTrue(any(c["type"] == "button" and c["name"] == "新增子类别" for c in drill["children"]))
+
+
 class 功能清单(unittest.TestCase):
     def test_有表头_合并单元格沿用上一行(self):
         text = "编号\t模块\t菜单\t功能\t功能描述\n85\t设备管理\t设备定义\t新增定义\t定义参数模板\n86\t\t设备录入\t新增录入\t4 步向导\n87\t\t\t批量导入\t下载模板\n88\t巡检\t巡检计划\t新增计划\t"
