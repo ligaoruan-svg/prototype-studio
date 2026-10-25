@@ -1403,4 +1403,7 @@ export default {
   "只改画布上的页面树，不碰原型": "Only changes the page tree on the canvas, not the prototype",
   "页面树已更新": "Page tree updated",
   "正在改页面树": "Updating the page tree",
+  "画布上改了，原型里还没有：": "Changed on the canvas, not in the prototype yet:",
+  "{0} 处没同步": "{0} not synced",
+  "把这几处填进输入框、切到「自动」，你看一眼再发": "Fills these into the message box and switches to Auto — review before sending",
 }

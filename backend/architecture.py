@@ -213,6 +213,23 @@ def load(project_id: str) -> dict[str, Any] | None:
         return None
 
 
+def _base_path(project_id: str):
+    return storage.project_dir(project_id) / "architecture.base.json"
+
+
+def load_base(project_id: str) -> list[dict] | None:
+    """上一次从原型读出来的样子（编号和画布对得上）。画布和它比，多做的就是还没同步到原型的改动。没读过就是 None"""
+    path = _base_path(project_id)
+    try:
+        return normalize({"nodes": json.loads(path.read_text("utf-8"))})["nodes"] if path.exists() else None
+    except (ValueError, OSError):
+        return None
+
+
+def save_base(project_id: str, nodes: list[dict]) -> None:
+    write_atomic(_base_path(project_id), json.dumps(nodes, ensure_ascii=False))
+
+
 def save(project_id: str, raw: Any) -> dict[str, Any]:
     storage.load_meta(project_id)   # 项目不存在 / 在回收站里就报错，不凭空建目录
     arch = normalize(raw)

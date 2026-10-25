@@ -1,11 +1,17 @@
 """从展开图（业务页面、弹窗、子页面、表头、表单项）读出页面树，不用 AI，几秒就好。
 
-架构画布是你的规划：从原型读的时候只合并、不冲掉（merge）——
-原型里新做出来的补进画布；你规划了、原型里还没有的留着（标「原型里还没有」）；原型里删掉的也留着（标「原型里已经没有」）。
+画布和原型怎么对齐（refresh_canvas）：
+- base：上一次从原型读出来的样子（存在 architecture.base.json），编号和画布上的对得上
+- 画布 = base + 你在画布上做的改动（加、删、改名、挪、改字段）。改动 = diff(base, 画布)，就是「同步到原型」要交给 AI 的那几处
+- 再读一次原型：新的 base 按名字对上旧的编号；画布 = 新 base 上重放你还没同步的改动——
+  所以原型里新做的补进来，你删掉的不会被补回来，改名的不会变成两个；AI 照着改好了，那一条改动自然就没了
+- 原型里删掉、画布上还留着的，标「原型里已经没有」；只写在画布上的介绍、谁用这些，按编号带过去
 """
 from __future__ import annotations
 
+import copy
 import re
+import uuid
 
 from . import storage
 from .arch_fields import form_fields, parse_field
@@ -194,48 +200,158 @@ def expand_tree(project_id: str, page_id: str) -> list[dict]:
     return out
 
 
-# ---------- 合并：原型里有的补进画布，画布上规划的不动 ----------
-FILL_KEYS = ("desc", "route", "entry", "back", "params", "when", "after", "action", "target")
+# ---------- 和原型对齐 ----------
+# 原型里看得出来的：画布上改了要同步到原型
+VISIBLE = ("type", "fields", "cols", "action", "target", "when")
+# 只写在画布上、原型里看不出来的：按编号带过去，不算要同步的改动
+NOTES = ("desc", "who", "req", "tags", "entry", "back", "params", "after", "route", "data")
 
 
-def _match(items: list[dict], node: dict) -> dict | None:
-    same = [o for o in items if o["name"] == node["name"]] or [o for o in items if loose_name(o["name"]) == loose_name(node["name"])]
+def _walk(nodes: list[dict], parent: str = ""):
+    for i, n in enumerate(nodes):
+        yield n, parent, i
+        yield from _walk(n.get("children") or [], n.get("id", ""))
+
+
+def _index(nodes: list[dict]) -> dict[str, tuple[dict, str, int]]:
+    return {n["id"]: (n, parent, i) for n, parent, i in _walk(nodes) if n.get("id")}
+
+
+def gone(node: dict) -> bool:
+    """原型里以前有、现在没了，画布上还留着"""
+    return bool(node.get("seen")) and not node.get("proto")
+
+
+def diff(before: list[dict], after: list[dict]) -> list[dict]:
+    """画布比 base 多做了什么：整棵加进来 / 删掉的只记最上面那一个。原型里已经没有的那些不算（那是原型那边的事）"""
+    old, now, ops = _index(before), _index(after), []
+    for nid, (node, parent, i) in now.items():
+        if nid not in old:
+            if (not parent or parent in old) and not gone(node):
+                ops.append({"op": "add", "node": copy.deepcopy(node), "parent": parent, "index": i})
+            continue
+        prev, prev_parent, _ = old[nid]
+        if prev["name"] != node["name"]:
+            ops.append({"op": "rename", "id": nid, "name": node["name"]})
+        if prev_parent != parent:
+            ops.append({"op": "move", "id": nid, "parent": parent, "index": i})
+        props = {k: node.get(k) for k in VISIBLE if prev.get(k) != node.get(k)}
+        if props:
+            ops.append({"op": "edit", "id": nid, "props": props})
+    for nid, (node, parent, _) in old.items():
+        if nid not in now and (not parent or parent in now):
+            ops.append({"op": "remove", "id": nid})
+    return ops
+
+
+def _list_of(tree: list[dict], parent: str) -> list[dict] | None:
+    if not parent:
+        return tree
+    hit = _index(tree).get(parent)
+    return hit[0].setdefault("children", []) if hit else None
+
+
+def _detach(tree: list[dict], nid: str) -> dict | None:
+    hit = _index(tree).get(nid)
+    if not hit:
+        return None
+    lst = _list_of(tree, hit[1])
+    lst.remove(hit[0])
+    return hit[0]
+
+
+def _graft(target: dict, planned: dict) -> None:
+    """规划的那一页原型里已经有了（AI 做出来了）：原型里有的为准，还没做的子项、字段接上去，照旧算「还没有」"""
+    for key in ("fields", "cols"):
+        names = {parse_field(f)["name"] for f in target.get(key) or []}
+        extra = [f for f in planned.get(key) or [] if parse_field(f)["name"] not in names]
+        if extra:
+            target[key] = (target.get(key) or []) + extra
+    for child in planned.get("children") or []:
+        same = _match(target.setdefault("children", []), child)
+        if same:
+            _graft(same, child)
+        else:
+            target["children"].append(child)
+
+
+def replay(tree: list[dict], ops: list[dict]) -> list[dict]:
+    """在新读出来的树上重放画布上还没同步的改动；对不上的（原型那边已经照着改了、或者那一项没了）就跳过"""
+    for op in [o for o in ops if o["op"] == "remove"]:
+        _detach(tree, op["id"])
+    for op in ops:
+        node = _index(tree).get(op.get("id", ""), (None,))[0]
+        if op["op"] == "rename" and node:
+            node["name"] = op["name"]
+        elif op["op"] == "edit" and node:
+            for k, v in op["props"].items():
+                if v in (None, "", []):
+                    node.pop(k, None)
+                else:
+                    node[k] = v
+        elif op["op"] == "move" and node and op["parent"] != op["id"]:
+            target = _list_of(tree, op["parent"])
+            if target is not None:
+                _detach(tree, op["id"])
+                target.insert(min(op["index"], len(target)), node)
+        elif op["op"] == "add":
+            target = _list_of(tree, op["parent"])
+            if target is None:
+                target = tree
+            same = _match(target, op["node"])
+            if same:
+                _graft(same, op["node"])
+            else:
+                target.insert(min(op["index"], len(target)), op["node"])
+    return tree
+
+
+def _match(items: list[dict], node: dict, alias: dict | None = None) -> dict | None:
+    names = lambda o: {o["name"], (alias or {}).get(o.get("id"), o["name"])}   # noqa: E731
+    same = [o for o in items if node["name"] in names(o)] or [o for o in items if loose_name(node["name"]) in {loose_name(x) for x in names(o)}]
     return next((o for o in same if o["type"] == node["type"]), same[0] if same else None)
 
 
-def _mark(nodes: list[dict], **flags) -> None:
-    for n in nodes:
-        n.update(flags)
-        _mark(n.get("children") or [], **flags)
-
-
-def _union(mine: list[str], theirs: list[str]) -> list[str]:
-    """字段、列：画布上写的为准；原型里多出来的接在后面。画布上没写控件、原型里认出来了的，换成原型的"""
-    by_name = {parse_field(f)["name"]: f for f in theirs}
-    out = [by_name[parse_field(f)["name"]] if parse_field(f)["guessed"] and parse_field(f)["name"] in by_name and not parse_field(by_name[parse_field(f)["name"]])["guessed"] else f for f in mine]
-    names = {parse_field(f)["name"] for f in mine}
-    return out + [f for f in theirs if parse_field(f)["name"] not in names]
-
-
-def _merge(mine: list[dict], fresh: list[dict]) -> None:
+def _align(fresh: list[dict], old: list[dict], alias: dict) -> None:
+    """新读出来的树对上旧 base 的编号：按名字（画布上改过名的也认），对不上的给新编号；都标成原型里有"""
     for node in fresh:
-        same = _match(mine, node)
-        if not same:
-            _mark([node], proto=True, seen=True)
-            mine.append(node)
+        prev = _match(old, node, alias)
+        if prev:
+            old = [o for o in old if o is not prev]
+        node["id"] = prev["id"] if prev else "n" + uuid.uuid4().hex[:8]
+        node["proto"] = node["seen"] = True
+        _align(node.get("children") or [], (prev or {}).get("children") or [], alias)
+
+
+def refresh_canvas(canvas: list[dict], base: list[dict] | None, fresh: list[dict]) -> tuple[list[dict], list[dict]]:
+    """返回 (新画布, 新 base)。base 没有（第一次读）：画布上原型里读到过的当作 base，没读到过的（自己规划的）算改动"""
+    if base is None:
+        def keep(nodes):
+            return [{**n, "children": keep(n.get("children") or [])} for n in nodes if n.get("seen") or n.get("proto")]
+        base = keep(copy.deepcopy(canvas))
+    ops = diff(base, canvas)
+    alias = {op["id"]: op["name"] for op in ops if op["op"] == "rename"}
+    _align(fresh, copy.deepcopy(base), alias)
+    new_base = copy.deepcopy(fresh)
+    tree = replay(copy.deepcopy(fresh), ops)
+    # 只写在画布上的介绍、谁用这些：按编号带过去
+    notes = {nid: n for nid, (n, _, _) in _index(canvas).items()}
+    for nid, (node, _, _) in _index(tree).items():
+        prev = notes.get(nid)
+        for key in NOTES:
+            if prev and prev.get(key) and not node.get(key):
+                node[key] = prev[key]
+    # 原型里删掉了、画布上还留着的：留着，标「原型里已经没有」，删不删你决定
+    names = {(n["name"], n["type"]) for n, _, _ in _walk(tree)}
+    have = _index(tree)
+    for nid, (node, parent, i) in _index(canvas).items():
+        if nid in have or (node["name"], node["type"]) in names or (parent and parent not in have) or not (node.get("seen") or node.get("proto")):
             continue
-        same["proto"] = same["seen"] = True
-        for key in FILL_KEYS:
-            if node.get(key) and not same.get(key):
-                same[key] = node[key]
-        for key in ("fields", "cols"):
-            if node.get(key):
-                same[key] = _union(same.get(key) or [], node[key])
-        _merge(same.setdefault("children", []), node.get("children") or [])
-
-
-def merge(current: list[dict], fresh: list[dict]) -> list[dict]:
-    """把从原型读出来的树并进画布：先当作都没读到，读到的再标上。画布上的节点一个都不删"""
-    _mark(current, proto=False)
-    _merge(current, fresh)
-    return current
+        lst = _list_of(tree, parent)
+        if lst is not None:
+            left = copy.deepcopy(node)
+            for n, _, _ in _walk([left]):
+                n["proto"], n["seen"] = False, True
+            lst.insert(min(i, len(lst)), left)
+            have = _index(tree)
+    return tree, new_base

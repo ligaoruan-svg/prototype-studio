@@ -2,13 +2,14 @@
 // - 导入过原型的：打开就从原型读（和「展开」一样把每页点一遍），只合并不冲掉——原型里新做的补进来，画布上规划的留着
 // - 没有原型的：画布是空的，自己加，或者在「架构」模式里跟 AI 说
 // - 「架构」模式里 AI 只改画布，不碰原型代码；切回「自动」「直接改」时 AI 拿画布当背景做页面
-import { ref, watch } from 'vue'
-import { CHILD_TYPES, NODE_TYPES, addChild, addSibling, clone, diffNodes, emptyArchitecture, findNode, impactOf, moveNode, removeNode } from '../lib/architecture.js'
+import { computed, ref, watch } from 'vue'
+import { CHILD_TYPES, NODE_TYPES, addChild, addSibling, clone, diffNodes, emptyArchitecture, findNode, impactOf, moveNode, pendingChanges, removeNode, syncMessage } from '../lib/architecture.js'
 import { expand, expandAll } from '../lib/expandStore.js'
 
 export function useArchitecture(s) {
   const { project, archOpen, boardOpen, boardFocus, view, api, sourceInfo, previewRoute, composerIntent, input } = s
   const arch = ref(null), archIssues = ref([]), archCounts = ref({})
+  const archBase = ref(null)       // 上次从原型读出来的样子；画布和它比，多做的就是还没同步到原型的
   const archMounted = ref(false), archLoaded = ref(''), archBusy = ref(''), archError = ref('')
   const archSelected = ref(null), archShowDesc = ref(true), archQuery = ref('')
   const archShowFields = ref(false)   // 弹窗、表格默认只露一行字段摘要，点开画成小表单
@@ -25,6 +26,7 @@ export function useArchitecture(s) {
   function apply(bundle, replace = true) {
     if (replace) arch.value = bundle.architecture
     archIssues.value = bundle.issues || []; archCounts.value = bundle.counts || {}
+    if ('base' in bundle) archBase.value = bundle.base
   }
   async function loadArch(force = false) {
     const pid = project.value?.id
@@ -38,7 +40,7 @@ export function useArchitecture(s) {
     } catch (e) { archError.value = e.message }
   }
   // 换项目：画布跟着换；开着的话马上读新的
-  watch(() => project.value?.id, () => { archLoaded.value = ''; arch.value = null; archIssues.value = []; history.value = []; if (archOpen.value) showArch() })
+  watch(() => project.value?.id, () => { archLoaded.value = ''; arch.value = null; archBase.value = null; archIssues.value = []; history.value = []; if (archOpen.value) showArch() })
 
   async function showArch() {
     if (!project.value) return
@@ -162,6 +164,15 @@ export function useArchitecture(s) {
     archFlash.value = new Set(ids)
     clearTimeout(flashTimer); flashTimer = setTimeout(() => { archFlash.value = new Set() }, 4000)
   }
+  // 还没同步到原型的改动。有原型但还没读过（base 还没有）时先不算，免得一打开就满屏都是
+  const archChanges = computed(() => !arch.value || (!archBase.value && hasPrototype()) ? [] : pendingChanges(archBase.value, arch.value.nodes))
+  // 同步到原型：把这几处写成一段话填进输入框、切到「自动」，你看一眼（可以补一句）再发。AI 改完，原型一变画布自动再读，对上的就不算了
+  function syncToPrototype() {
+    if (!archChanges.value.length) return
+    composerIntent.value = 'auto'
+    input.value = syncMessage(archChanges.value)
+    s.composer?.value?.focus()
+  }
   // 画布上规划了、原型里还没有的：一键把话填进输入框，切到「自动」，你看一眼再发
   function makeInPrototype(node) {
     const hit = findNode(arch.value, node.id)
@@ -198,7 +209,7 @@ export function useArchitecture(s) {
 
   return { arch, archIssues, archCounts, archMounted, archBusy, archError, archSelected, archShowDesc, archShowFields, archQuery,
     archRemoved, archHistory: history, loadArch, showArch, hideArch, saveArch: saveNow, archSnapshot: snapshot, archDirty: dirty, archChange: change,
-    archLevel, archExpand, nodeOpen, openNode, setLevel, archReading, archFlash,
+    archLevel, archExpand, nodeOpen, openNode, setLevel, archReading, archFlash, archBase, archChanges, syncToPrototype,
     undoArch, archSelect: select, archSelectedItem: selectedItem, archAdd, archSibling, archMove, archToggle, archRemove,
     readPrototype, afterArchChat, makeInPrototype, archRenaming, archKey, renameNode,
     cloneArch: () => clone(arch.value) }

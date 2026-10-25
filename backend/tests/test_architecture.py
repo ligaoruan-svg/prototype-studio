@@ -239,7 +239,7 @@ class 接口(unittest.TestCase):
         self.assertEqual(body['order'][0]['name'], '设备定义')
         self.assertEqual(body['counts']['tabs'], 3)
 
-    def test_从原型读_只合并不冲掉(self):
+    def test_从原型读_画布上没同步的改动留着(self):
         page = storage.load_meta(self.pid)['pages'][0]['id']
         url = f'/api/projects/{self.pid}/architecture'
         self.assertEqual(self.c.post(url + '/refresh', json={}).json()['reason'], 'no_expand')   # 没展开过：什么都不动
@@ -247,23 +247,58 @@ class 接口(unittest.TestCase):
         storage.save_expand_entry(self.pid, page, '#order', 'h', {'page': '<table><tr><th>工单号</th></tr></table>', 'nodes': []})
         r = self.c.post(url + '/refresh', json={}).json()
         self.assertTrue(r['refreshed'])
-        nodes = r['architecture']['nodes']
-        self.assertEqual([n['name'] for n in nodes], ['报修工单', '测试'])   # 没分组的菜单项放最外层
-        self.assertTrue(all(n.get('proto') and n.get('seen') for n in nodes))
-        # 画布上写了介绍、规划了一页「维修工」：再读，规划的留着（原型里还没有），介绍留着
-        nodes[0]['desc'] = '接单派单'
-        nodes.append({'type': 'page', 'name': '维修工'})
-        self.c.put(url, json={'architecture': r['architecture']})
-        # 原型里删掉了「测试」
-        storage.save_expand_routes(self.pid, page, [{'hash': '#order', 'title': '报修工单'}])
+        self.assertEqual([n['name'] for n in r['architecture']['nodes']], ['报修工单', '测试'])   # 没分组的菜单项放最外层
+        self.assertEqual(r['base'], r['architecture']['nodes'])                               # 刚读完：画布就是原型的样子
+        # 画布上：写介绍、删掉「测试」、规划一页「维修工」；原型没变，再读一次，这些都还在
+        arch = r['architecture']
+        arch['nodes'][0]['desc'] = '接单派单'
+        arch['nodes'] = [arch['nodes'][0], {'type': 'page', 'name': '维修工'}]
+        self.c.put(url, json={'architecture': arch})
         r = self.c.post(url + '/refresh', json={}).json()
-        by = {n['name']: n for n in r['architecture']['nodes']}
-        self.assertEqual(list(by), ['报修工单', '测试', '维修工'])
-        self.assertEqual(by['报修工单']['desc'], '接单派单')
-        self.assertTrue(by['报修工单'].get('proto'))
-        self.assertTrue(by['测试'].get('seen') and not by['测试'].get('proto'))     # 原型里已经没有
-        self.assertFalse(by['维修工'].get('seen') or by['维修工'].get('proto'))     # 原型里还没有
+        self.assertEqual([n['name'] for n in r['architecture']['nodes']], ['报修工单', '维修工'])
+        self.assertEqual(r['architecture']['nodes'][0]['desc'], '接单派单')
         self.assertIn('（规划中，原型里还没有）', A.brief(r['architecture']))
+
+
+class 和原型对齐(unittest.TestCase):
+    """画布 = base（上次从原型读的样子）+ 画布上还没同步的改动；再读原型时改动重放上去"""
+    def fresh(self, *pages, fields=None):
+        return [{"type": "page", "name": n, "children": [{"type": "modal", "name": "新增", "fields": (fields or {}).get(n, ["名称*"])}]} for n in pages]
+
+    def test_改名_删掉_规划_改字段_都留着_AI改好了就对上(self):
+        canvas, base = D.refresh_canvas([], None, self.fresh("报修工单", "测试", "统计"))
+        self.assertEqual(D.diff(base, canvas), [])
+        import copy
+        canvas = copy.deepcopy(canvas)
+        canvas[0]["name"] = "报修单"                                    # 改名
+        canvas[0]["children"][0]["fields"] = ["名称*", "备注"]           # 改字段
+        del canvas[1]                                                   # 删掉「测试」
+        canvas.append({"id": "nplan01", "type": "page", "name": "维修工", "children": [{"id": "nplan02", "type": "modal", "name": "新增", "fields": ["名称*"]}]})   # 规划
+        canvas[1]["desc"] = "按月看"                                     # 只写在画布上的介绍
+        ops = D.diff(base, canvas)
+        self.assertEqual(sorted(o["op"] for o in ops), ["add", "edit", "remove", "rename"])
+        # 原型没变，再读：改动都还在，删掉的不会补回来，改名的不会变成两个
+        again, base2 = D.refresh_canvas(canvas, base, self.fresh("报修工单", "测试", "统计"))
+        self.assertEqual([n["name"] for n in again], ["报修单", "统计", "维修工"])
+        self.assertEqual(again[0]["children"][0]["fields"], ["名称*", "备注"])
+        self.assertEqual(again[1]["desc"], "按月看")
+        self.assertFalse(again[2].get("seen"))
+        # AI 照着改好了：原型里就是这个样子，再读一次，没有要同步的了；编号都没变
+        done, base3 = D.refresh_canvas(again, base2, self.fresh("报修单", "统计", "维修工", fields={"报修单": ["名称*", "备注"]}))
+        self.assertEqual([n["name"] for n in done], ["报修单", "统计", "维修工"])
+        self.assertEqual(done[0]["id"], canvas[0]["id"])
+        self.assertTrue(done[2].get("proto"))
+        self.assertEqual(D.diff(base3, done), [])
+
+    def test_原型里删掉的_画布上留着标出来(self):
+        canvas, base = D.refresh_canvas([], None, self.fresh("报修工单", "测试"))
+        tree, base2 = D.refresh_canvas(canvas, base, self.fresh("报修工单"))
+        self.assertEqual([n["name"] for n in tree], ["报修工单", "测试"])
+        self.assertTrue(D.gone(tree[1]))
+        self.assertEqual(D.diff(base2, tree), [])                       # 不算要同步的改动
+        tree2, _ = D.refresh_canvas([tree[0]], base2, self.fresh("报修工单"))   # 你删了它：就没了
+        self.assertEqual([n["name"] for n in tree2], ["报修工单"])
+
 
 class 字段控件(unittest.TestCase):
     def test_照原型认控件(self):

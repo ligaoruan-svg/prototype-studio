@@ -2,7 +2,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { addChild, addSibling, clone, diffNodes, emptyArchitecture, findNode, impactOf, moveNode, protoState, removeNode, screens } from '../src/lib/architecture.js'
+import { addChild, addSibling, changeLabel, clone, diffNodes, emptyArchitecture, findNode, impactOf, moveNode, pendingChanges, protoState, removeNode, screens, syncMessage } from '../src/lib/architecture.js'
 import { appSource } from './appSource.js'
 
 function sample() {
@@ -76,7 +76,8 @@ test('界面接上了：顶栏有「架构」、打开画布才有「架构」�
   assert.match(appSource(), /intent !== 'architecture'/)                 // 画布开着时，别的模式把画布当背景
   assert.match(appSource(), /result\.intent === 'architecture'[\s\S]*afterArchChat/)
   assert.match(node, /s\.makeInPrototype\(node\)/)
-  assert.doesNotMatch(board, /业务流程|数据关系|统一规则|同步到原型|arch-sub|展开到/)
+  assert.doesNotMatch(board, /业务流程|数据关系|统一规则|arch-sub|展开到/)
+  assert.match(board, /s\.syncToPrototype\(\)/)
   assert.match(logic, /key === 'Enter'[\s\S]*archSibling/)
   assert.match(logic, /key === 'Tab'[\s\S]*archAdd/)
 })
@@ -109,4 +110,28 @@ test('空模块自己算一个页面', async () => {
   assert.deepEqual(screens(a).map(x => x.name), [a.nodes[0].name])
   addChild(a, a.nodes[0].id, 'page', '工单')
   assert.ok(!isScreenNode(a.nodes[0]))
+})
+
+test('还没同步到原型的：只看原型里看得出来的，原型里删掉的不算；拼成一段话交给 AI', () => {
+  const { a, mod, tab1, tab2 } = sample()
+  for (const { node } of [...(function* w(ns) { for (const n of ns) { yield { node: n }; yield* w(n.children || []) } })(a.nodes)]) { node.proto = node.seen = true }
+  const base = clone(a.nodes)
+  tab1.desc = '只写在画布上的介绍'                                   // 不用同步
+  const modal = addChild(a, tab2.id, 'modal', '新增巡检点')
+  modal.fields = ['点位名称*', '类型*（下拉：温度/压力）']
+  addChild(a, modal.id, 'button', '保存')
+  mod.name = '设备'
+  const gone = addChild(a, tab2.id, 'drawer', '旧抽屉'); gone.seen = true   // 原型里已经没有、画布上还留着
+  const changes = pendingChanges(base, a.nodes)
+  assert.deepEqual(changes.map(c => c.kind).sort(), ['add', 'rename'])
+  assert.deepEqual(changes.map(changeLabel).sort(), ['「新模块」改名为「设备」', '新增弹窗「新增巡检点」'])
+  const msg = syncMessage(changes)
+  assert.match(msg, /只改下面这几处/)
+  assert.match(msg, /在「设备 \/ 设备巡检计划 \/ 巡检点」下面新增 弹窗「新增巡检点」；字段：点位名称\*、类型\*（下拉：温度\/压力）\n {2}- 按钮「保存」/)
+  modal.fields = ['点位名称*', '备注']
+  const again = pendingChanges(clone(a.nodes), a.nodes)
+  assert.deepEqual(again, [])
+  const base2 = clone(a.nodes); modal.fields = ['点位名称*']
+  assert.match(syncMessage(pendingChanges(base2, a.nodes)), /字段去掉 备注/)
+  assert.ok(pendingChanges(null, emptyArchitecture('x').nodes).length === 1)   // 从零编的：整棵都算
 })

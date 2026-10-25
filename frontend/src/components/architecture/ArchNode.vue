@@ -12,6 +12,8 @@ const { archSelected, archShowDesc, archShowFields, archQuery, archIssues, archR
 // 和原型对不对得上：虚线 = 你规划了、原型里还没有；淡掉 = 原型里已经没有。只在最上面那一层标字（下面的跟着虚线就够了）
 const state = computed(() => protoState(props.node))
 const tagged = computed(() => state.value !== 'in' && state.value !== props.parentState)
+// 改过、还没同步到原型的（改名、改字段、挪了位置）：卡片右上角一个小点
+const changed = computed(() => s.archChanges.value.some(c => c.id === props.node.id && c.kind !== 'add'))
 // 弹窗、抽屉、向导、区块、表格：卡片里带上字段 / 列
 const hasForm = computed(() => [...LAYER_TYPES, 'block', 'table'].includes(props.node.type))
 // 搜索时，命中的节点上面几层自动展开
@@ -48,7 +50,7 @@ function addChild(event) {
 
 <template>
   <div class="an-row">
-    <div class="an-card" :class="[node.type, state, { selected, hit, leaf: !kids.length, form: hasForm, flash: archFlash.has(node.id), warn: warn.some(w => w.level === 'error') }]" @click.stop="pick" @dblclick.stop="archRenaming = node.id">
+    <div class="an-card" :class="[node.type, state, { selected, hit, leaf: !kids.length, form: hasForm, flash: archFlash.has(node.id), changed, warn: warn.some(w => w.level === 'error') }]" @click.stop="pick" @dblclick.stop="archRenaming = node.id">
       <div class="an-head"><span class="an-type">{{ $t(NODE_TYPES[node.type].short) }}</span><input v-if="renaming" ref="nameInput" class="an-rename" :value="node.name" :aria-label="$t('名称')" @click.stop @keydown.enter.prevent="commitName" @keydown.esc.stop.prevent="cancelName" @blur="commitName"><b v-else>{{ node.name }}</b>
         <button v-if="kids.length" class="an-fold" :title="open ? $t('收起') : $t('展开')" :aria-label="open ? $t('收起') : $t('展开')" @click.stop="s.openNode(node, depth, siblings)"><ChevronDown v-if="open" :size="13" /><ChevronRight v-else :size="13" /></button></div>
       <p v-if="tagged" class="an-proto" @click.stop><span>{{ state === 'planned' ? $t('原型里还没有') : $t('原型里已经没有') }}</span>
