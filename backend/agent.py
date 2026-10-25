@@ -15,6 +15,7 @@ from .errors import WorkError, error_payload
 from .experience import element_name, tool_label, compact_once, changed_targets, result_report, scope_report, step_detail
 from .conversation import resolve_intent, is_continue, discussion_result, history_context
 from . import components, memory, page_check, skills, skill_digest
+from . import architecture as arch_mod
 # 工具清单、读源码、拼背景拆在旁边三个文件里；下面这些名字在这里也能用（测试和别的模块按 agent.xxx 取）
 from .agent_tools import TOOL_SPECS, OPERATION_ACTIONS
 from .agent_source import READ_CAP, read_budget, inspect_output, expand_components, locate_lines, lines_text, _num, _slice_lines, _search_source  # noqa: F401
@@ -64,6 +65,7 @@ OUTPUT_RAISE_CAP = 65_536
 # 计划里做完一步（finish_step）：对话已经超过上下文预算的这么多，就把过程收拾掉、带着现在的页面重开下一步
 STEP_RESET_SHARE = 0.4
 AUTO_CHECK_LIMIT = 2
+ARCH_ROUNDS_CAP = 120   # 按架构整套生成时轮次上限最多放到这么多
 
 
 def run_agent(project_id: str, page_id: str, user_message: str, *args, **kwargs) -> dict[str, Any]:
@@ -108,7 +110,8 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
               max_tokens: int = 32000, context_budget: int = 200_000, max_rounds: int = 24,
               on_event=None, intent: str = 'auto', include_annotations: bool = True,
               stream: bool = True, should_stop=None, scene: dict | None = None, trace: list | None = None,
-              start_source: str | None = None, lang: str = 'zh', live_checks: bool = False) -> dict[str, Any]:
+              start_source: str | None = None, lang: str = 'zh', live_checks: bool = False,
+              architecture: bool = False) -> dict[str, Any]:
     emit = on_event or (lambda event: None)
     trace = [] if trace is None else trace
     plan: list[dict] = []   # 当前计划：程序按每轮的修改自动往前推，不用模型一轮轮调 update_plan
@@ -189,6 +192,12 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
         shell_fresh = working_source
         background += ("\n这一页是按项目风格刚建好的空外壳，还没写内容。" + SHELL_NOTE
                        + "\n外壳现成的组件和样式类：" + json.dumps(shell_api(working_source), ensure_ascii=False))
+    # 按架构做：页面树、共用数据、流程和统一规则都放进背景。放在第一条消息里，做完一步重开时也还在
+    arch = arch_mod.load(project_id) if architecture and not read_only else None
+    if arch:
+        background += "\n\n" + arch_mod.brief(arch)
+        # 一页一步做完整个架构要的轮次比改一处多得多：每页按 4 轮算，进度照常按「有没有推进」放宽
+        max_rounds = min(ARCH_ROUNDS_CAP, max(max_rounds, 8 + 4 * len(arch_mod.order(arch))))
     if repairing:
         background += ("\n现在的页面是你上一次改好、但运行检查报错、还没保存的那一版（已经包含你上次写的全部内容）。"
                        "只修上面的报错，不要从头再做，也不要重新调 start_from_shell。")
@@ -667,6 +676,7 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
             resume = ("（接着做同一个任务。为了让对话干净，前面读源码、试错的过程已经收起；页面里已经包含你前面写的全部内容。）\n"
                       f"计划：\n{plan_text}\n\n已经做完的步骤：\n{done_text}\n"
                       f"保存的修改意见：\n{annotation_text}\n" + source_block(working_source, prefetch_ok=False)
+                      + (("\n\n" + arch_mod.brief(arch)) if arch else "")
                       + f"\n\n———\n用户这轮说的是：\n{user_message}\n\n"
                       + f"现在做「{nxt['title'] if nxt else '收尾'}」。做完调 finish_step；全部做完、真跑过就 report_result。")
             messages[:] = [messages[0], {"role": "user", "content": resume}]

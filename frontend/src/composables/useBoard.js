@@ -17,13 +17,13 @@ export function useBoard(s) {
     if (!page.value || !previewDoc.value) return
     if (!boardOpen.value) boardRoute.value = previewRoute.value
     boardMounted.value = true
-    view.value = 'preview'; boardOpen.value = true
+    view.value = 'preview'; boardOpen.value = true; s.archOpen.value = false
     // 展开主要是用来选中修改的：从预览的交互模式进来，默认切到点选；想交互再切回去
     if (mode.value === 'interact') { mode.value = 'select'; send({ type: 'PA_SET_MODE', mode: 'select' }) }
   }
   // 从展开视图回到预览：预览跟到展开里正在看的那一页
   // 预览和展开都一直挂着，切换只是换哪个露在前面：不重载、不重拍，点一下就到
-  function showPreview() { if (boardOpen.value) gotoRoute(boardRoute.value); view.value = 'preview'; boardOpen.value = false; boardFocus.value = null }
+  function showPreview() { if (boardOpen.value) gotoRoute(boardRoute.value); view.value = 'preview'; boardOpen.value = false; boardFocus.value = null; s.archOpen.value = false }
   // 预览跟到展开里正在看的那一页：原型是单页应用，换个 #路由 就行，不用整页重载
   function gotoRoute(route) { if (route == null || route === previewRoute.value) return; previewRoute.value = route; send({ type: 'PA_ROUTE', hash: route }) }
   // 后台副本的源码：和预览同一份、同样的演示数据，只是路由换成要展开的那一页；它点出来的改动不会写回来

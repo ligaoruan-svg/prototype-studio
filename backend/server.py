@@ -12,7 +12,7 @@ from . import config
 from .errors import WorkError, error_payload
 from .patcher import PatchError
 from .paths import APP_ROOT as ROOT
-from .routes import agent_runs, memory, pages, projects, settings
+from .routes import agent_runs, architecture, memory, pages, projects, settings
 from .safety import host_name
 
 FRONTEND_DIST = ROOT / "frontend" / "dist"
@@ -70,7 +70,7 @@ async def _work(request, exc):
 
 
 # 各领域的接口。界面文件的兜底路由（/{path}）要放在最后，所以先挂这些
-for _module in (settings, memory, projects, pages, agent_runs):
+for _module in (settings, memory, projects, pages, agent_runs, architecture):
     app.include_router(_module.router)
 
 

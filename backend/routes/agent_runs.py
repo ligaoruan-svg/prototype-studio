@@ -34,6 +34,7 @@ class AgentIn(BaseModel):
     include_annotations: bool = True
     repair_pending: str = ''   # 运行检查没过的那一版：在它的基础上修报错，不从头再做
     lang: str = Field(default='zh', pattern='^[a-z]{2}(-[A-Za-z]{2,4})?$')   # 界面语言：用户这句话看不出语言时，AI 按它回复
+    architecture: bool = False   # 按已确认的架构做：把架构（页面树、数据、流程、统一规则）放进背景
 
 
 @router.post("/api/projects/{project_id}/agent/chat")
@@ -43,7 +44,8 @@ def agent_chat(project_id: str, body: AgentIn, x_deepseek_key: str | None = Head
         return run_agent(project_id, body.page_id, body.message, key, body.model or settings['model'],
                          settings['base_url'], body.selection, body.runtime_feedback, body.reference, settings['max_tokens'],
                          settings.get('context_budget', 200_000), settings.get('max_rounds', 24),
-                         intent=body.intent, include_annotations=body.include_annotations, scene=body.scene, lang=body.lang)
+                         intent=body.intent, include_annotations=body.include_annotations, scene=body.scene, lang=body.lang,
+                         architecture=body.architecture)
     except Exception as exc:
         if not isinstance(exc, (WorkError, PatchError)):
             logging.getLogger(__name__).exception('Unexpected agent request failure')
@@ -99,7 +101,8 @@ def agent_stream(project_id: str, body: AgentIn):
                                settings.get('max_rounds', 24),
                                on_event=events.put, intent=body.intent, include_annotations=body.include_annotations, scene=body.scene,
                                stream=settings.get('stream', True), should_stop=stop.is_set,
-                               start_source=(draft or {}).get('after'), lang=body.lang, live_checks=True)
+                               start_source=(draft or {}).get('after'), lang=body.lang, live_checks=True,
+                               architecture=body.architecture)
             events.put({'type':'complete','result':result})
             synthesize_later(project_id)
         except Exception as exc:

@@ -6,6 +6,7 @@ import { computed, nextTick, onMounted, onUnmounted, provide, ref, watch } from 
 import { PanelsTopLeft, Plus, Upload, X, Hand, Undo2, Check, LoaderCircle, AlertCircle, Braces, Copy, Pencil } from 'lucide-vue-next'
 import { MessageCircle, Redo2, PenLine } from 'lucide-vue-next'
 import ExpandBoard from './components/expand/ExpandBoard.vue'
+import ArchitectureBoard from './components/architecture/ArchitectureBoard.vue'
 import AppHeader from './components/layout/AppHeader.vue'
 import ConversationPanel from './components/layout/ConversationPanel.vue'
 import InspectorPanel from './components/layout/InspectorPanel.vue'
@@ -25,6 +26,7 @@ import { useImages } from './composables/useImages.js'
 import { useExport } from './composables/useExport.js'
 import { useSideResize } from './composables/useSideResize.js'
 import { usePageCheck } from './composables/usePageCheck.js'
+import { useArchitecture } from './composables/useArchitecture.js'
 
 // ---------- 共享状态 ----------
 const projects = ref([]), project = ref(null), pageId = ref('')
@@ -51,6 +53,7 @@ const previewOwner = ref('')   // 当前预览源码属于哪个「项目:页面
 const moreMenu = ref(null)
 const cardPatch = ref(null)
 const boardMounted = ref(false)   // 展开第一次打开后就一直留着，卡片不用每次重新载入
+const archOpen = ref(false)   // 架构模式：先定页面树、数据、流程，再按它生成
 const boardOpen = ref(false), boardFocus = ref(null), boardRoute = ref(''), pendingReplay = ref(null), openedModal = ref(null)
 // 评论：写在右侧，存成一条意见（攒几条一起交给 AI），或者直接发给 AI
 const commentDraft = ref('')
@@ -261,8 +264,8 @@ function keydown(event) {
   if (editing || event.altKey) return
   if (command && key === 'z' && !event.shiftKey) { event.preventDefault?.(); s.undo(); return }
   if (command) return
-  if (key === 'escape') { if (s.presenting.value) { s.stopPresent(); return } if (boardFocus.value != null) { boardFocus.value = null; return } if (boardOpen.value) { s.showPreview(); return } closeSelection(); setTool('browse') }
-  if (s.presenting.value) return
+  if (key === 'escape') { if (s.presenting.value) { s.stopPresent(); return } if (archOpen.value) { if (s.archSelected.value) s.archSelect(null); else s.showPreview(); return } if (boardFocus.value != null) { boardFocus.value = null; return } if (boardOpen.value) { s.showPreview(); return } closeSelection(); setTool('browse') }
+  if (s.presenting.value || archOpen.value) return
   if (key === 'e' && page.value) { event.preventDefault?.(); s.toggleBoard(); return }
   const next = { h: 'browse', c: 'comment', b: 'comment', v: 'edit', p: 'present' }[key]
   if (next && page.value) { event.preventDefault?.(); setTool(next) }
@@ -274,7 +277,7 @@ const s = {
   textValue, note, input, busy, saving, loading, status, error, notice, pendingUser, pendingRef, lastResult, previewFrame, previewDoc,
   composer, chatBox, fileInput, dialog, dialogType, dialogBusy, dialogError, codeRegion, runtimeErrors, recentClicks, previewRoute,
   imageInput, reference, runs, canvasWidth, previewScroll, pendingHighlights, savedAt, validationDetails, composerIntent, previewHash,
-  previewOwner, moreMenu, cardPatch, boardMounted, boardOpen, boardFocus, boardRoute, pendingReplay, openedModal, commentDraft,
+  previewOwner, moreMenu, cardPatch, boardMounted, archOpen, boardOpen, boardFocus, boardRoute, pendingReplay, openedModal, commentDraft,
   currentRuns, page, annotations, messages, locked, playing, dynEdit, canEdit, textEditable, undoCount, colors, aiOnly, selectionPlace,
   endpoint, runtimeKey, api, post, toast, send, forceReload, setMode, tool, TOOLS, setTool, shotUrl, visiblePins,
   clearSelectionOnly, closeSelection, hideGuide, modalContext, elementLabel, preparePreview, refresh, chooseProject, choosePage,
@@ -291,10 +294,11 @@ Object.assign(s, useDialogs(s))
 Object.assign(s, useImages(s))
 Object.assign(s, useExport(s))
 Object.assign(s, usePageCheck(s))
+Object.assign(s, useArchitecture(s))
 const { sideWidth, dragging: resizingSide, startResize, resetWidth, nudge: nudgeSide } = useSideResize()
 // 模板里直接用到的
 const { presenting, exitShown, peekExit, hideExitSoon, stopPresent, drawing, drawNote, drawBusy, drawInput, drawClear, drawSend, drawSave,
-  openFromBoard, pickFromBoard, previewLoaded, onMessage, requestExport, openDialog } = s
+  openFromBoard, pickFromBoard, previewLoaded, onMessage, requestExport, openDialog, archMounted } = s
 
 watch(view, value => { if (value === 'preview' && previewDoc.value) previewDoc.value = preparePreview(previewDoc.value) })
 watch(mode, () => send({ type: 'PA_SET_MODE', mode: mode.value }))
@@ -324,8 +328,9 @@ provide('studio', s)
       <section class="canvas-panel" :aria-label="$t('原型画布')">
         <div v-if="view === 'preview'" class="canvas" :class="device">
 
-          <ExpandBoard v-if="boardMounted" :class="{ 'view-hidden': !boardOpen }" :aria-hidden="!boardOpen" v-model:focus="boardFocus" v-model:route="boardRoute" :notes="annotations" :patch="cardPatch" :page-name="page?.title" :selection="selected" :mode="mode" @open="openFromBoard" @select="pickFromBoard" @clear="closeSelection" @mode="setMode" @export="requestExport" />
-          <div class="preview-shell" :class="{ 'is-selecting': mode !== 'interact', 'view-hidden': boardOpen }" :aria-hidden="boardOpen"><iframe v-if="previewDoc" ref="previewFrame" :title="$t('原型预览')" :srcdoc="previewDoc" :sandbox="PREVIEW_SANDBOX" @load="previewLoaded"></iframe><div v-else class="empty-canvas"><div class="empty-emblem"><PanelsTopLeft :size="30" :stroke-width="1.4" /></div><h1>{{ $t('给想法一个可操作的样子') }}</h1><p>{{ $t('从已有的 HTML 开始修改，') }}<br>{{ $t('或描述需求，让 AI 帮你搭建第一版。') }}</p><div><button class="primary" @click="openDialog('new')"><Plus :size="16" />{{ $t('新建原型') }}</button><button class="outline" @click="fileInput.click()"><Upload :size="16" />{{ $t('导入原型') }}</button></div><span>{{ $t('支持 HTML、包含多页面的 ZIP') }}</span></div><div v-if="drawing && tool === 'comment' && !boardOpen" class="draw-bar" @keydown.esc.stop="drawClear"><PenLine :size="15" /><input ref="drawInput" v-model="drawNote" maxlength="1000" :placeholder="$t('给画的 {0} 笔写一句说明，比如：这块改成卡片布局', [$t(drawing.count)])" :aria-label="$t('标记说明')" @keydown.enter.exact.prevent="drawSend" @keydown.meta.enter.prevent="drawSend"><button class="icon-button" :title="$t('撤销一笔')" :aria-label="$t('撤销一笔')" :disabled="!drawing.count || drawBusy" @click="send({ type: 'PA_DRAW_UNDO' })"><Undo2 :size="15" /></button><button class="icon-button" :title="$t('重做')" :aria-label="$t('重做')" :disabled="!drawing.redo || drawBusy" @click="send({ type: 'PA_DRAW_REDO' })"><Redo2 :size="15" /></button><button class="quiet" :disabled="drawBusy" @click="drawClear">{{ $t('取消') }}</button><button class="outline" :title="$t('先记下，攒几条一起改')" :disabled="drawBusy || locked || !drawNote.trim()" @click="drawSave">{{ $t('记下') }}</button><button class="primary" :title="$t('回车发送')" :disabled="drawBusy || locked || !drawNote.trim()" @click="drawSend"><LoaderCircle v-if="drawBusy" :size="14" class="spin" /><span v-else>{{ $t('发送') }}</span></button></div><div v-if="loading" class="loading-veil"><LoaderCircle class="spin" :size="25" /><span>{{ $t('正在加载原型…') }}</span></div></div>
+          <ArchitectureBoard v-if="archMounted" :class="{ 'view-hidden': !archOpen }" :aria-hidden="!archOpen" />
+          <ExpandBoard v-if="boardMounted" :class="{ 'view-hidden': !boardOpen || archOpen }" :aria-hidden="!boardOpen || archOpen" v-model:focus="boardFocus" v-model:route="boardRoute" :notes="annotations" :patch="cardPatch" :page-name="page?.title" :selection="selected" :mode="mode" @open="openFromBoard" @select="pickFromBoard" @clear="closeSelection" @mode="setMode" @export="requestExport" />
+          <div class="preview-shell" :class="{ 'is-selecting': mode !== 'interact', 'view-hidden': boardOpen || archOpen }" :aria-hidden="boardOpen || archOpen"><iframe v-if="previewDoc" ref="previewFrame" :title="$t('原型预览')" :srcdoc="previewDoc" :sandbox="PREVIEW_SANDBOX" @load="previewLoaded"></iframe><div v-else class="empty-canvas"><div class="empty-emblem"><PanelsTopLeft :size="30" :stroke-width="1.4" /></div><h1>{{ $t('给想法一个可操作的样子') }}</h1><p>{{ $t('从已有的 HTML 开始修改，') }}<br>{{ $t('或描述需求，让 AI 帮你搭建第一版。') }}</p><div><button class="primary" @click="openDialog('new')"><Plus :size="16" />{{ $t('新建原型') }}</button><button class="outline" @click="fileInput.click()"><Upload :size="16" />{{ $t('导入原型') }}</button></div><span>{{ $t('支持 HTML、包含多页面的 ZIP') }}</span></div><div v-if="drawing && tool === 'comment' && !boardOpen" class="draw-bar" @keydown.esc.stop="drawClear"><PenLine :size="15" /><input ref="drawInput" v-model="drawNote" maxlength="1000" :placeholder="$t('给画的 {0} 笔写一句说明，比如：这块改成卡片布局', [$t(drawing.count)])" :aria-label="$t('标记说明')" @keydown.enter.exact.prevent="drawSend" @keydown.meta.enter.prevent="drawSend"><button class="icon-button" :title="$t('撤销一笔')" :aria-label="$t('撤销一笔')" :disabled="!drawing.count || drawBusy" @click="send({ type: 'PA_DRAW_UNDO' })"><Undo2 :size="15" /></button><button class="icon-button" :title="$t('重做')" :aria-label="$t('重做')" :disabled="!drawing.redo || drawBusy" @click="send({ type: 'PA_DRAW_REDO' })"><Redo2 :size="15" /></button><button class="quiet" :disabled="drawBusy" @click="drawClear">{{ $t('取消') }}</button><button class="outline" :title="$t('先记下，攒几条一起改')" :disabled="drawBusy || locked || !drawNote.trim()" @click="drawSave">{{ $t('记下') }}</button><button class="primary" :title="$t('回车发送')" :disabled="drawBusy || locked || !drawNote.trim()" @click="drawSend"><LoaderCircle v-if="drawBusy" :size="14" class="spin" /><span v-else>{{ $t('发送') }}</span></button></div><div v-if="loading" class="loading-veil"><LoaderCircle class="spin" :size="25" /><span>{{ $t('正在加载原型…') }}</span></div></div>
           
         </div>
         <div v-else class="code-panel"><div class="code-toolbar"><Braces :size="15" /><select :aria-label="$t('源码区域')" v-model="codeRegion"><option value="all">{{ $t('完整文件 · 只读') }}</option><option v-for="region in sourceInfo.regions" :key="region.name" :value="region.name">{{ $t(region.label || '自定义区域') }}</option></select><span>{{ $t('{0} 行', [codeText.split('\n').length]) }}</span><button class="quiet" @click="copySource"><Check v-if="codeCopied" :size="14" /><Copy v-else :size="14" />{{ codeCopied ? $t('已复制') : $t('复制') }}</button></div><div class="source-scroll"><pre class="line-numbers" aria-hidden="true">{{ lineNumbers }}</pre><pre class="source-code"><code>{{ codeText }}</code></pre></div></div>

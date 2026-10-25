@@ -36,7 +36,7 @@ export function useAgentRun(s) {
     reference.value = null
     lastResult.value = null; status.value = intent === 'edit' ? '正在读页面' : '思考中'; leftOpen.value = true
     try {
-      const response = await fetch('/api/projects/' + project.value.id + '/agent/stream', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ page_id: pageId.value, message, selection: target, runtime_feedback: runtimeFeedback, reference: sentRef, scene: previewScene(), intent, include_annotations: options.includeAnnotations !== false, repair_pending: options.repairPending || '', lang: locale.value }) })
+      const response = await fetch('/api/projects/' + project.value.id + '/agent/stream', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ page_id: pageId.value, message, selection: target, runtime_feedback: runtimeFeedback, reference: sentRef, scene: previewScene(), intent, include_annotations: options.includeAnnotations !== false, repair_pending: options.repairPending || '', lang: locale.value, architecture: !!options.architecture }) })
       const result = await consumeAgentStream(response, event => {
         if (event.type === 'started' && event.run_id) current.runId = event.run_id
         if (event.type === 'page_check') s.runPageCheck(event)   // AI 要真跑一下页面：不等它跑完，接着收别的事件
