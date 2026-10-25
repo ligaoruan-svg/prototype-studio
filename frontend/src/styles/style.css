@@ -606,19 +606,31 @@ input[type=color]::-webkit-color-swatch { border: none; border-radius: 2px; }
 
 /* ===== 架构模式：页面树 / 数据关系 / 业务流程 ===== */
 .arch-board { --arch-line: #cdc3b9; --mod: #b8532f; --mod-bg: #fdf2ea; --pg: #3b6fd8; --pg-bg: #eef3fc; --tab: #1f8a7a; --tab-bg: #e7f5f2; --pur: #6a4fc4; --pur-bg: #f1edfb;
-  position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; margin-top: 10px; border: 1px solid var(--line); border-radius: 14px; background: #fbfaf7; overflow: hidden; }
+  container-type: inline-size; position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; margin-top: 10px; border: 1px solid var(--line); border-radius: 14px; background: #fbfaf7; overflow: hidden; }
 .arch-bar { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-bottom: 1px solid var(--line); background: #fff; }
-.arch-title { flex: 1 1 auto; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.arch-title { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; }
+.arch-title b { font-size: 14.5px; }
+.arch-sub { display: flex; align-items: center; gap: 10px; min-height: 42px; padding: 6px 12px; border-bottom: 1px solid var(--line); background: #fcfbf8; }
+.arch-sub .arch-counts { margin-left: auto; }
 .arch-title b, .arch-state, .arch-views { flex-shrink: 0; }
 .arch-title > svg { color: var(--primary); }
 .arch-state { font-size: 11px; padding: 1px 8px; border-radius: 10px; background: var(--quiet); color: var(--muted); }
 .arch-state.confirmed { background: #eaf6ef; color: #246e48; }
-.arch-counts { min-width: 0; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.arch-views { display: flex; gap: 2px; padding: 3px; border-radius: 10px; background: #efede6; }
+.arch-counts { flex: 0 1 auto; min-width: 0; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arch-views { margin-left: 4px; display: flex; gap: 2px; padding: 3px; border-radius: 10px; background: #efede6; }
 .arch-views button { height: 26px; padding: 0 12px; border-radius: 7px; font-size: 12.5px; color: #7d776a; }
 .arch-views button.active { background: #fff; color: var(--primary); font-weight: 600; box-shadow: 0 1px 2px #3b2a2118; }
 .arch-tools { flex-shrink: 0; display: flex; align-items: center; gap: 8px; margin-left: auto; }
-.arch-tools .outline { min-height: 30px; padding: 5px 10px; }
+.arch-tools .outline { min-height: 30px; padding: 5px 10px; gap: 5px; }
+.arch-tools .outline > b { font-weight: 600; }
+/* 架构区域窄的时候（左边对话开着、窗口不大）：按钮只留图标，视图页签收紧，右上角的关闭一直看得到 */
+@container (max-width: 860px) {
+  .arch-tools .lbl, .arch-state, .arch-level > span { display: none; }
+  .arch-views button { padding: 0 9px; }
+  .arch-bar { gap: 8px; }
+  .arch-tools { gap: 6px; }
+}
+@container (max-width: 640px) { .arch-title b, .arch-sub .arch-check { display: none; } .arch-search { width: 110px; } }
 .arch-tools .outline.warn { color: var(--danger); border-color: #f0c6bf; background: var(--danger-bg); }
 .arch-search { width: 150px; height: 30px; border: 1px solid var(--line); border-radius: 8px; padding: 0 9px; background: var(--shell); }
 .arch-level { display: flex; align-items: center; gap: 2px; padding: 2px; border-radius: 9px; background: #efede6; font-size: 12px; }
@@ -820,6 +832,5 @@ input[type=color]::-webkit-color-swatch { border: none; border-radius: 2px; }
 .ad-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
 .quiet.danger { color: var(--danger); }
 .ad-rules { font-size: 12.5px !important; line-height: 1.6; }
-@media (max-width: 1500px) { .arch-search { width: 110px; } }
-@media (max-width: 1360px) { .arch-check { display: none; } }
+@media (max-width: 1100px) { .arch-sub .arch-counts { display: none; } }
 @media (max-width: 960px) { .arch-side { display: none; } .arch-tools .arch-search, .arch-check { display: none; } }

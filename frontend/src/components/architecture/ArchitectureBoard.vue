@@ -1,7 +1,7 @@
 <script setup>
 // 架构模式：页面树 / 数据关系 / 业务流程三个视图，右边是选中项的详情，底下是生成顺序和「按架构生成」
 import { computed, inject, onUnmounted, ref, watch } from 'vue'
-import { AlertCircle, Check, ChevronDown, ChevronUp, ClipboardPaste, Layers, ListTree, LoaderCircle, Network, Sparkles, Undo2, Wand2, X } from 'lucide-vue-next'
+import { AlertCircle, Check, Ruler, ChevronDown, ChevronUp, ClipboardPaste, Layers, ListTree, LoaderCircle, Network, Sparkles, Undo2, Wand2, X } from 'lucide-vue-next'
 import ArchNode from './ArchNode.vue'
 import ArchData from './ArchData.vue'
 import ArchFlow from './ArchFlow.vue'
@@ -48,14 +48,10 @@ function pop(name) { issuesOpen.value = name === 'issues' && !issuesOpen.value; 
   <section class="arch-board" :aria-label="$t('架构')" @click="s.archSelect(null); pop('')">
     <header class="arch-bar" @click.stop>
       <div class="arch-title"><Network :size="16" /><b>{{ $t('架构') }}</b>
-        <span v-if="arch" class="arch-state" :class="arch.status">{{ arch.status === 'confirmed' ? $t('已确认') : $t('草稿') }}</span>
-        <span v-if="arch" class="arch-counts">{{ counts.join(' · ') }}</span></div>
+        <span v-if="arch" class="arch-state" :class="arch.status">{{ arch.status === 'confirmed' ? $t('已确认') : $t('草稿') }}</span></div>
       <div v-if="arch" class="arch-views" role="tablist"><button v-for="v in views" :key="v.id" role="tab" :aria-selected="archView === v.id" :class="{ active: archView === v.id }" @click="archView = v.id">{{ $t(v.label) }}</button></div>
       <div v-if="arch" class="arch-tools">
-        <input v-if="archView === 'tree'" v-model="archQuery" class="arch-search" :placeholder="$t('搜索节点')" :aria-label="$t('搜索节点')">
-        <div v-if="archView === 'tree'" class="arch-level" role="group" :aria-label="$t('展开到')"><span>{{ $t('展开到') }}</span><button v-for="l in levels" :key="l.v" :class="{ active: s.archLevel.value === l.v }" @click="s.setLevel(l.v)">{{ $t(l.label) }}</button></div>
-        <label v-if="archView === 'tree'" class="arch-check"><input v-model="archShowDesc" type="checkbox">{{ $t('显示介绍') }}</label>
-        <div class="arch-pop-wrap"><button class="outline" :class="{ warn: errors }" @click="pop('issues')"><AlertCircle v-if="archIssues.length" :size="14" /><Check v-else :size="14" />{{ archIssues.length ? $t('一致性检查 {0}', [archIssues.length]) : $t('对得上') }}</button>
+        <div class="arch-pop-wrap"><button class="outline" :class="{ warn: errors }" @click="pop('issues')"><AlertCircle v-if="archIssues.length" :size="14" /><Check v-else :size="14" /><span class="lbl">{{ archIssues.length ? $t('一致性检查') : $t('对得上') }}</span><b v-if="archIssues.length">{{ archIssues.length }}</b></button>
           <div v-if="issuesOpen" class="arch-pop"><p v-if="!archIssues.length" class="arch-muted">{{ $t('页面、数据、流程都对得上') }}</p>
             <button v-for="(issue, i) in archIssues" :key="i" class="arch-issue" :class="issue.level" @click="pickIssue(issue)"><AlertCircle :size="13" /><span>{{ issue.text }}</span></button></div></div>
         <div class="arch-pop-wrap"><button class="outline" :disabled="archBusy === 'draft'" @click="pop('ai')"><Sparkles :size="14" />{{ $t('AI') }}</button>
@@ -63,7 +59,7 @@ function pop(name) { issuesOpen.value = name === 'issues' && !issuesOpen.value; 
             <button @click="draft('refine')"><Wand2 :size="14" /><span><b>{{ $t('补全') }}</b>{{ $t('给缺介绍的页面补介绍、补字段和流程，已有的不动') }}</span></button>
             <button :disabled="!hasPage" @click="draft('page')"><Network :size="14" /><span><b>{{ $t('从当前原型重新整理') }}</b>{{ $t('照着现在的原型重新起一份，会替换现在的架构') }}</span></button>
             <div class="arch-ai-need"><textarea v-model="need" rows="3" :placeholder="$t('换个需求重新起草：做什么系统、给谁用、管哪些东西')"></textarea><button class="primary" :disabled="!need.trim()" @click="draft('request')">{{ $t('重新起草') }}</button></div></div></div>
-        <div class="arch-pop-wrap"><button class="outline" @click="pop('rules')">{{ $t('统一规则') }}</button>
+        <div class="arch-pop-wrap"><button class="outline" :title="$t('统一规则')" @click="pop('rules')"><Ruler :size="14" /><span class="lbl">{{ $t('统一规则') }}</span></button>
           <div v-if="rulesOpen" class="arch-pop arch-rules"><b>{{ $t('电脑端统一规则') }}</b><p class="arch-muted">{{ $t('生成时每一页都按这几条来，一行一条，可以改') }}</p>
             <textarea rows="11" :value="(arch.rules || []).join('\n')" @change="setRules($event.target.value)"></textarea></div></div>
         <button class="icon-button" :disabled="!archHistory.length" :title="$t('撤销')" :aria-label="$t('撤销')" @click="s.undoArch()"><Undo2 :size="15" /></button>
@@ -71,6 +67,15 @@ function pop(name) { issuesOpen.value = name === 'issues' && !issuesOpen.value; 
       </div>
       <button class="icon-button arch-close" :title="$t('回到预览 · Esc')" :aria-label="$t('回到预览')" @click="s.showPreview()"><X :size="16" /></button>
     </header>
+
+    <div v-if="arch" class="arch-sub" @click.stop>
+      <template v-if="archView === 'tree'">
+        <input v-model="archQuery" class="arch-search" :placeholder="$t('搜索节点')" :aria-label="$t('搜索节点')">
+        <div class="arch-level" role="group" :aria-label="$t('展开到')"><span>{{ $t('展开到') }}</span><button v-for="l in levels" :key="l.v" :class="{ active: s.archLevel.value === l.v }" @click="s.setLevel(l.v)">{{ $t(l.label) }}</button></div>
+        <label class="arch-check"><input v-model="archShowDesc" type="checkbox">{{ $t('显示介绍') }}</label>
+      </template>
+      <span class="arch-counts" :title="counts.join(' · ')">{{ counts.join(' · ') }}</span>
+    </div>
 
     <div v-if="archError" class="arch-error" role="alert" @click.stop><AlertCircle :size="14" /><span>{{ $t(archError) }}</span><button class="icon-button" :aria-label="$t('关闭')" @click="archError = ''"><X :size="13" /></button></div>
 

@@ -1274,4 +1274,5 @@ export default {
   "{0} 页签": "{0} tabs",
   "展开到": "Show down to",
   "全部": "All",
+  "一致性检查": "Consistency check",
 }
