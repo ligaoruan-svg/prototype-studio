@@ -53,7 +53,7 @@ const previewOwner = ref('')   // 当前预览源码属于哪个「项目:页面
 const moreMenu = ref(null)
 const cardPatch = ref(null)
 const boardMounted = ref(false)   // 展开第一次打开后就一直留着，卡片不用每次重新载入
-const archOpen = ref(false)   // 架构模式：先定页面树、数据、流程，再按它生成
+const archOpen = ref(false)   // 架构：原型的页面树，跟着原型自动读；在树里改了再同步到原型
 const boardOpen = ref(false), boardFocus = ref(null), boardRoute = ref(''), pendingReplay = ref(null), openedModal = ref(null)
 // 评论：写在右侧，存成一条意见（攒几条一起交给 AI），或者直接发给 AI
 const commentDraft = ref('')

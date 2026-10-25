@@ -1,4 +1,5 @@
-// 架构模式里不依赖界面的那部分：节点类型、树的增删改移、流程和数据的布局、按架构生成时发给 AI 的话。
+// 架构模式里不依赖界面的那部分：节点类型、树的增删改移、和上次同步时比改了什么、同步到原型时发给 AI 的话。
+// 架构是原型的镜子：后台从展开图读出页面树；你在树里改了，再让 AI 只把改的那几处改进原型。
 // 数据结构和 backend/architecture.py 一致；后台存的时候会再收拾一遍（类型、编号、长度）
 
 export const NODE_TYPES = {
@@ -23,7 +24,7 @@ export const SCREEN_TYPES = ['page', 'tab', 'drill']
 export const isScreenNode = n => SCREEN_TYPES.includes(n?.type) || (n?.type === 'module' && !(n.children || []).length)
 // 在某种节点下面加子项时，可以选哪些类型（第一个是默认）
 export const CHILD_TYPES = {
-  root: ['module'],
+  root: ['module', 'page'],
   module: ['page'],
   page: ['tab', 'block', 'table', 'button', 'modal', 'drawer', 'drill', 'wizard', 'feature'],
   tab: ['block', 'table', 'button', 'modal', 'drawer', 'drill', 'wizard', 'feature'],
@@ -37,20 +38,6 @@ export const CHILD_TYPES = {
   jump: [],
   feature: [],
 }
-export const FIELD_KINDS = { key: '编号', ref: '引用', derived: '自动算', locked: '继承', plain: '普通' }
-export const FIELD_MARKS = { key: '🔑', ref: '↗', derived: 'ƒ', locked: '🔒', plain: '·' }
-export const LANE_KINDS = { user: '操作的人', system: '系统自动', skip: '本次不做', external: '外部系统' }
-export const PC_RULES = [
-  '列表页：页头 → 筛选区（查询 / 重置）→ 操作栏（左边新增、右边导出）→ 表格 → 分页',
-  '查看用右侧抽屉，只读；新增 / 编辑用居中弹窗，和查看共用一套表单',
-  '多步操作用向导弹窗，带步骤条',
-  '跳转带上编号：打开对应的抽屉，或切到对应页签；关掉回到原来的列表',
-  '行操作按状态出现（比如离线才有「停用」、待执行才有「开始」）',
-  '一个菜单下的几个页签共用菜单入口，每个页签都能单独直达',
-  '外部系统回传的数据标明「由 XX 系统回传，只读」',
-  '全局只有一份演示数据：引用的东西必须存在；个数、进度、摘要这类派生值从数据算，不能写死',
-]
-
 export const newId = prefix => prefix + Math.random().toString(36).slice(2, 10).padEnd(8, '0')
 export const clone = value => JSON.parse(JSON.stringify(value))
 
@@ -58,9 +45,7 @@ export function emptyArchitecture(name = '') {
   return {
     version: 1, status: 'draft', scope: 'pc', name, summary: '', roles: [],
     nodes: [{ id: newId('n'), type: 'module', name: '新模块', desc: '', children: [] }],
-    entities: [], relations: [],
-    lanes: [{ id: 'l_user', name: '管理员', kind: 'user', note: '电脑' }, { id: 'l_sys', name: '系统自动', kind: 'system', note: '' }],
-    steps: [], rules: [...PC_RULES],
+    entities: [], relations: [], lanes: [], steps: [], rules: [],
   }
 }
 
@@ -123,14 +108,11 @@ export function moveNode(arch, id, delta) {
   list.splice(to, 0, node)
   return true
 }
-// 删除影响到什么：用到的数据有没有别的页面在用、流程里有几步指着它
+// 删除影响到什么：下面挂着几项
 export function impactOf(arch, id) {
   const node = findNode(arch, id)?.node
-  if (!node) return ''
-  const ids = new Set([node.id, ...[...walk(node.children)].map(x => x.node.id)])
-  const steps = (arch.steps || []).filter(s => ids.has(s.node)).length
-  const below = countBelow(node)
-  return [below ? `含 ${below} 项` : '', steps ? `流程里 ${steps} 步会断开链接` : ''].filter(Boolean).join('，')
+  const below = node ? countBelow(node) : 0
+  return below ? `含 ${below} 项` : ''
 }
 
 // 一个节点在哪一页里（最外层的菜单页 / 下钻页）
@@ -143,10 +125,18 @@ export function screenOf(arch, id) {
 // 按钮写的「新增报修工单（业主来电代录）」和弹窗名「新增报修工单」算同一个：括号里的补充、末尾的「弹窗 / 抽屉」不算
 export const looseName = name => String(name || '').replace(/[（(][^（()）]*[）)]/g, '').replace(/\s+|(弹窗|弹框|抽屉|对话框|页面)$/g, '')
 export const sameName = (a, b) => a === b || (!!looseName(a) && looseName(a) === looseName(b))
-// 表格上的「状态」列怎么流转：这一页（和它上面几层）用到的数据里，写了状态的那一类
+// 表格上的「状态」列怎么流转：同一页里写了选项的「xx状态」下拉（筛选里的「报修状态：待派单/处理中/已完成」），
+// 没有就看这一页用到的数据里写的状态
 export function statesOf(arch, id) {
   const hit = findNode(arch, id)
   if (!hit) return []
+  const screen = [...hit.parents, hit.node].find(isScreenNode)
+  for (const { node } of walk(screen ? screen.children : [])) {
+    for (const raw of node.fields || []) {
+      const m = String(raw).match(/^[^（(]*状态[^（(]*[（(](?:下拉|单选)[：:]([^）)]+)[）)]/)
+      if (m) return m[1].split(/\s*[/／、]\s*/).filter(Boolean)
+    }
+  }
   const used = [...hit.parents, hit.node].flatMap(n => n.data || [])
   const pool = (arch.entities || []).filter(e => e.states?.length)
   return (pool.find(e => used.includes(e.name)) || (pool.length === 1 ? pool[0] : null))?.states || []
@@ -158,8 +148,8 @@ export function targetsIn(arch, id, action) {
   return screen ? [...walk(screen.children)].map(x => x.node).filter(n => LAYER_TYPES.includes(n.type)).map(n => n.name) : []
 }
 
-// ---------- 页面、顺序（后台算的顺序优先，这里是没连上后台时的兜底） ----------
-// 一个菜单页一步：它下面的页签、下钻页、弹窗抽屉都在这一页里做
+// ---------- 页面 ----------
+// 会做成页面的：菜单页（它下面的页签、下钻页、弹窗抽屉都算在这一页里）、没挂子项的模块
 export function screens(arch) {
   const out = []
   for (const { node, parents } of walk(arch?.nodes)) {
@@ -171,100 +161,86 @@ export function screens(arch) {
   }
   return out
 }
-export function entityRanks(arch) {
-  const entities = Object.fromEntries((arch?.entities || []).map(e => [e.name, e]))
-  const ranks = {}
-  const rank = (name, stack) => {
-    if (name in ranks) return ranks[name]
-    if (stack.includes(name) || !entities[name]) return 0
-    const deps = entities[name].fields.filter(f => f.kind === 'ref' && entities[f.ref] && f.ref !== name).map(f => f.ref)
-    ranks[name] = 1 + Math.max(-1, ...deps.map(d => rank(d, [...stack, name])))
-    return ranks[name]
+
+// ---------- 和上次同步时比：改了什么 ----------
+// 比较的是这些：名字、类型、位置（挂在谁下面、排第几不算）、介绍和各项写法
+const COMPARE = ['type', 'desc', 'fields', 'cols', 'action', 'target', 'when', 'after', 'route', 'entry', 'params', 'back', 'who']
+const PROP_LABEL = { desc: '介绍', fields: '字段', cols: '列', action: '点了以后', target: '点了以后', when: '什么时候出现', after: '确认后', route: '地址', entry: '怎么进来', params: '带过去', back: '怎么回去', who: '谁用', type: '类型' }
+const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
+function index(nodes) {
+  const out = new Map()
+  for (const { node, parents } of walk(nodes)) out.set(node.id, { node, parentId: parents[parents.length - 1]?.id || '', path: [...parents.map(p => p.name), node.name] })
+  return out
+}
+// 返回一条条改动：{ kind: 'add' | 'remove' | 'rename' | 'move' | 'edit', id, ... }。整棵加进来 / 删掉的只记最上面那一个
+export function diffNodes(before = [], after = []) {
+  const old = index(before), now = index(after), out = []
+  for (const [id, cur] of now) {
+    const prev = old.get(id)
+    if (!prev) { if (!cur.parentId || old.has(cur.parentId)) out.push({ kind: 'add', id, node: cur.node, parent: cur.path.slice(0, -1) }); continue }
+    if (prev.node.name !== cur.node.name) out.push({ kind: 'rename', id, from: prev.node.name, to: cur.node.name, path: cur.path })
+    if (prev.parentId !== cur.parentId) out.push({ kind: 'move', id, node: cur.node, from: prev.path.slice(0, -1), to: cur.path.slice(0, -1) })
+    const props = COMPARE.filter(k => !same(prev.node[k], cur.node[k]))
+    if (props.length) out.push({ kind: 'edit', id, node: cur.node, path: cur.path, props, before: prev.node })
   }
-  Object.keys(entities).forEach(n => rank(n, []))
-  return ranks
+  // 删掉的：上面几层用现在的名字（上面那层刚改过名也对得上）
+  for (const [id, prev] of old) if (!now.has(id) && (!prev.parentId || now.has(prev.parentId))) out.push({ kind: 'remove', id, node: prev.node, path: [...(prev.parentId ? now.get(prev.parentId).path : []), prev.node.name] })
+  return out
+}
+// 给人看的一行：「新增菜单页「测试」」「改了「派单」的字段」
+export function changeLabel(c) {
+  const type = NODE_TYPES[c.node?.type]?.label || ''
+  if (c.kind === 'add') return `新增${type}「${c.node.name}」`
+  if (c.kind === 'remove') return `删掉${type}「${c.node.name}」`
+  if (c.kind === 'rename') return `「${c.from}」改名为「${c.to}」`
+  if (c.kind === 'move') return `「${c.node.name}」挪到「${c.to.join(' / ') || '最外层'}」下面`
+  return `改了「${c.node.name}」的${[...new Set(c.props.map(k => PROP_LABEL[k]))].join('、')}`
 }
 
-// ---------- 发给 AI 的话 ----------
-export function generateMessage(arch, order, { fresh = true } = {}) {
-  const list = (order?.length ? order : screens(arch)).map((s, i) => {
-    const extra = [s.tabs?.length ? '页签：' + s.tabs.join('、') : '', s.drills?.length ? '下钻页：' + s.drills.join('、') : ''].filter(Boolean).join('；')
-    return `${i + 1}. ${s.module ? s.module + ' › ' : ''}${s.name}${extra ? `（${extra}）` : ''}`
-  }).join('\n')
-  return `按已确认的架构生成原型（只做电脑端）。${fresh ? '' : '页面里已经有的内容保留，按架构补齐、调整。'}\n`
-    + `先在脚本里按架构的「数据」定义一份共用的演示数据，再按下面的顺序一个菜单页一步做（这一页的页签、下钻页、弹窗一起做完），每做完一页调 finish_step：\n${list}\n`
-    + '每一页都按架构里的统一规则来；本次不做的环节和外部系统不做页面，只生成它们产生的数据。'
+// ---------- 同步到原型：发给 AI 的话 ----------
+const where = path => path.length ? `「${path.join(' / ')}」` : '最外层'
+// 一个节点写成一句：类型、名字、点了怎样、字段、列……
+function describe(node) {
+  const type = node.type === 'module' && !(node.children || []).length ? '一级菜单页（左侧菜单加一项，点了直接进这一页）' : NODE_TYPES[node.type]?.label || ''
+  const parts = [`${type}「${node.name}」`]
+  if (node.desc) parts.push(node.desc)
+  if (node.action) parts.push(`点了${ACTIONS[node.action]}${node.target ? `「${node.target}」` : ''}`)
+  if (node.when) parts.push(`出现：${node.when}`)
+  if (node.fields?.length) parts.push(`字段：${node.fields.join('、')}`)
+  if (node.cols?.length) parts.push(`列：${node.cols.join('、')}`)
+  if (node.after) parts.push(`确认后：${node.after}`)
+  return parts.join('；')
 }
-export function rebuildMessage(arch, node) {
-  const hit = findNode(arch, node.id)
-  const path = hit ? [...hit.parents.filter(p => p.type !== 'module').map(p => p.name), node.name].join(' / ') : node.name
-  // 没挂子项的模块自己就是一页；原型里还没有的（刚在树里加的）就新做出来，左侧菜单跟着加
-  const label = node.type === 'module' ? '页' : NODE_TYPES[node.type]?.label || '页'
-  return `按已确认的架构，只重做「${path}」这一${label}（原型里还没有就新做出来，左侧菜单跟着加上）：页签、弹窗、抽屉、字段都以架构为准，数据用共用的那一份。其他页面不动。`
+function describeTree(node, depth = 1) {
+  const lines = [describe(node)]
+  for (const child of node.children || []) lines.push('  '.repeat(depth) + '- ' + describeTree(child, depth + 1))
+  return lines.join('\n')
 }
-
-// ---------- 流程布局：按箭头排列，前面的步骤在左边 ----------
-export function layoutFlow(arch) {
-  const steps = arch?.steps || [], lanes = arch?.lanes || []
-  const byId = Object.fromEntries(steps.map(s => [s.id, s]))
-  const col = {}
-  const depth = (id, stack = []) => {
-    if (id in col) return col[id]
-    if (stack.includes(id)) return 0
-    const parents = steps.filter(s => (s.next || []).includes(id))
-    col[id] = parents.length ? 1 + Math.max(...parents.map(p => depth(p.id, [...stack, id]))) : 0
-    return col[id]
-  }
-  steps.forEach(s => depth(s.id))
-  const laneIndex = Object.fromEntries(lanes.map((l, i) => [l.id, i]))
-  const taken = new Set(), cells = []
-  for (const s of steps) {
-    const row = laneIndex[s.lane] ?? 0
-    let c = col[s.id]
-    while (taken.has(`${row}:${c}`)) c++
-    taken.add(`${row}:${c}`)
-    cells.push({ step: s, row, col: c })
-  }
-  const columns = Math.max(1, ...cells.map(c => c.col + 1))
-  const edges = []
-  for (const s of steps) for (const n of s.next || []) if (byId[n]) edges.push({ from: s.id, to: n })
-  return { cells, columns, edges }
+function fieldDelta(before = [], after = []) {
+  const name = f => String(f).replace(/[*🔒]|[（(].*$/g, '').trim()
+  const was = new Map(before.map(f => [name(f), f])), now = new Map(after.map(f => [name(f), f]))
+  const parts = []
+  const added = after.filter(f => !was.has(name(f))), gone = before.filter(f => !now.has(name(f))), changed = after.filter(f => was.has(name(f)) && was.get(name(f)) !== f)
+  if (added.length) parts.push('加上 ' + added.join('、'))
+  if (gone.length) parts.push('去掉 ' + gone.map(name).join('、'))
+  if (changed.length) parts.push('改成 ' + changed.join('、'))
+  return parts.join('；') || '按这个来：' + after.join('、')
 }
-
-// ---------- 数据布局：被依赖的在左边一列 ----------
-export function layoutData(arch) {
-  const ranks = entityRanks(arch)
-  const columns = []
-  for (const e of arch?.entities || []) {
-    const r = ranks[e.name] ?? 0
-    ;(columns[r] ||= []).push(e)
-  }
-  const edges = [], seen = new Set()
-  const names = new Set((arch?.entities || []).map(e => e.name))
-  for (const r of arch?.relations || []) {
-    if (!names.has(r.from) || !names.has(r.to)) continue
-    seen.add(r.from + '>' + r.to); seen.add(r.to + '>' + r.from)
-    edges.push({ from: r.from, to: r.to, label: r.label || '' })
-  }
-  // 字段引用了别的数据、又没单独写关系的：自动画一条，名字用字段名
-  for (const e of arch?.entities || []) for (const f of e.fields || [])
-    if (f.kind === 'ref' && names.has(f.ref) && f.ref !== e.name && !seen.has(f.ref + '>' + e.name)) {
-      seen.add(f.ref + '>' + e.name); seen.add(e.name + '>' + f.ref)
-      edges.push({ from: f.ref, to: e.name, label: f.note ? `${f.name} · ${f.note}` : f.name })
-    }
-  return { columns: columns.map(c => c || []), edges }
-}
-
-// 两张卡片之间的连线：同一列的竖着连，不同列的横着连（带一点弯）
-export function connector(a, b) {
-  if (!a || !b) return ''
-  if (Math.abs(a.x - b.x) < 20) {
-    const down = b.y > a.y
-    const x1 = a.x + a.w / 2, y1 = down ? a.y + a.h : a.y, x2 = b.x + b.w / 2, y2 = down ? b.y : b.y + b.h
-    return `M${x1} ${y1} C${x1} ${(y1 + y2) / 2} ${x2} ${(y1 + y2) / 2} ${x2} ${y2}`
-  }
-  const forward = b.x > a.x
-  const x1 = forward ? a.x + a.w : a.x, y1 = a.y + a.h / 2, x2 = forward ? b.x : b.x + b.w, y2 = b.y + b.h / 2
-  const m = (x1 + x2) / 2
-  return `M${x1} ${y1} C${m} ${y1} ${m} ${y2} ${x2} ${y2}`
+export function syncMessage(changes) {
+  const lines = changes.map((c, i) => {
+    const n = `${i + 1}. `
+    if (c.kind === 'add') return n + (c.parent.length ? `在${where(c.parent)}下面新增 ` : '在最外层新增 ') + describeTree(c.node)
+    if (c.kind === 'remove') return n + `删掉${where(c.path.slice(0, -1))}里的${NODE_TYPES[c.node.type]?.label || ''}「${c.node.name}」（连同它下面的）`
+    if (c.kind === 'rename') return n + `${where(c.path.slice(0, -1))}里的「${c.from}」改名为「${c.to}」（菜单、标题、按钮上的字都跟着改）`
+    if (c.kind === 'move') return n + `把「${c.node.name}」从${where(c.from)}挪到${where(c.to)}下面`
+    const bits = c.props.filter(k => k !== 'target' || !c.props.includes('action')).map(k => {
+      if (k === 'fields' || k === 'cols') return `${PROP_LABEL[k]}${fieldDelta(c.before[k], c.node[k])}`
+      if (k === 'action' || k === 'target') return `点了改成${c.node.action ? ACTIONS[c.node.action] : '（没定）'}${c.node.target ? `「${c.node.target}」` : ''}`
+      if (k === 'type') return `改成${NODE_TYPES[c.node.type]?.label}`
+      return `${PROP_LABEL[k]}改成：${Array.isArray(c.node[k]) ? c.node[k].join('、') : c.node[k] || '（去掉）'}`
+    })
+    return n + `${where(c.path)}：` + bits.join('；')
+  })
+  return '按页面树的改动改原型，只改下面这几处，别的页面和内容都不要动：\n' + lines.join('\n')
+    + '\n字段写法：* 是必填，🔒 是自动带出不用填，括号里是控件和选项（比如「报修分类*（下拉：给排水/电气照明）」）。'
 }

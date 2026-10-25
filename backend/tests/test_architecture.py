@@ -1,5 +1,4 @@
 """架构模式：收拾数据、检查对不对得上、按依赖排生成顺序、交给 AI 的文字、接口、按架构生成时放进背景"""
-import json
 import sys
 import tempfile
 import unittest
@@ -7,12 +6,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-from backend import architecture as A, arch_text as T, arch_draft as D, storage, agent   # noqa: E402
+from backend import architecture as A, arch_text as T, arch_expand as D, storage, agent   # noqa: E402
 
 try:
     from fastapi.testclient import TestClient
     from backend.server import app
-    from backend.routes import architecture as routes
 except Exception:   # 没装 fastapi 的环境跳过接口那几条
     TestClient = None
 
@@ -103,16 +101,10 @@ class 交给AI的文字(unittest.TestCase):
     def test_有树_数据_流程_规则_顺序(self):
         text = A.brief(A.normalize(device_arch()))
         for part in ("[页签] 路线配置", "关联设备（引用 设备档案）", "点数（自动算）", "外部系统", "本次不做",
-                     "电脑端统一规则", "查看用右侧抽屉", "页签：巡检计划、路线配置、巡检点", "1. 设备管理 › 设备定义"):
+                     "电脑端统一规则", "查看用右侧抽屉"):
             self.assertIn(part, text)
 
-    def test_读得出模型的回复(self):
-        self.assertEqual(D.parse('```json\n{"name": "x", "nodes": []}\n```')["name"], "x")   # 万一回了 JSON 也认
-        self.assertEqual(D.parse("设备管理 [模块]\n  设备定义 [菜单页]")["nodes"][0]["children"][0]["name"], "设备定义")
-        with self.assertRaises(ValueError):
-            D.parse("")
-
-    def test_补全时沿用原来的编号(self):
+    def test_重读时沿用原来的编号(self):
         current = A.normalize(device_arch())
         old = current["nodes"][0]["id"]
         fresh = T.keep_ids({"nodes": [{"type": "module", "name": "设备管理"}]}, current)
@@ -251,7 +243,7 @@ class 功能清单(unittest.TestCase):
 class 接口(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.old_root, self.old_chat, self.old_load = storage.DATA_ROOT, routes.chat, routes.config.load
+        self.old_root = storage.DATA_ROOT
         storage.DATA_ROOT = Path(self.tmp.name)
         self.c = TestClient(app)
         self.pid = storage.create_project('t')['id']
@@ -259,7 +251,7 @@ class 接口(unittest.TestCase):
         storage.add_page(self.pid, 'index.html')
 
     def tearDown(self):
-        storage.DATA_ROOT, routes.chat, routes.config.load = self.old_root, self.old_chat, self.old_load
+        storage.DATA_ROOT = self.old_root
         self.tmp.cleanup()
 
     def test_没有就是空的_存了能读回来(self):
@@ -272,49 +264,6 @@ class 接口(unittest.TestCase):
         self.assertEqual(body['order'][0]['name'], '设备定义')
         self.assertEqual(body['counts']['tabs'], 3)
 
-    def stream(self, body):
-        r = self.c.post(f'/api/projects/{self.pid}/architecture/draft', json=body)
-        self.assertEqual(r.status_code, 200, r.text)
-        events = [json.loads(line[5:]) for line in r.text.splitlines() if line.startswith('data:')]
-        return events
-
-    def test_AI起草_用大纲写法_边写边报进度(self):
-        routes.config.load = lambda: {'api_key': 'k', 'model': 'm', 'base_url': 'u', 'max_tokens': 65536, 'stream': True}
-        seen = []
-        outline = T.to_outline(A.normalize(device_arch()))
-        def chat(key, model, messages, tools, **k):
-            seen.append((messages, k.get('max_tokens')))
-            for i in range(0, len(outline), 50):
-                k['on_delta'](outline[i:i + 50], 'note')
-            return {'choices': [{'finish_reason': 'stop', 'message': {'content': outline}}]}
-        routes.chat = chat
-        events = self.stream({'mode': 'request', 'text': '做个设备巡检系统'})
-        self.assertEqual(events[-1]['type'], 'complete', events[-1])
-        self.assertEqual(events[-1]['result']['architecture']['status'], 'draft')
-        self.assertTrue(any(e['type'] == 'progress' and e['chars'] > 0 for e in events))
-        self.assertIn('设备巡检系统', seen[0][0][-1]['content'])
-        self.assertIn('【页面】', seen[0][0][0]['content'])       # 让模型用大纲写
-        self.assertLessEqual(seen[0][1], routes.DRAFT_MAX_TOKENS)  # 不再放开到 6 万多
-        self.assertIn('【页面】', events[-1]['result']['outline'])
-
-    def test_从原型整理不塞整份源码(self):
-        routes.config.load = lambda: {'api_key': 'k', 'model': 'm', 'base_url': 'u', 'max_tokens': 8000}
-        big = '<html><body><aside>菜单</aside>' + '<p>很长的页面内容</p>' * 50000 + '</body></html>'
-        page = storage.load_meta(self.pid)['pages'][0]['id']
-        storage.page_file(self.pid, page).write_text(big, encoding='utf-8')
-        seen = []
-        routes.chat = lambda key, model, messages, tools, **k: seen.append(messages[-1]['content']) or {'choices': [{'finish_reason': 'stop', 'message': {'content': '原型 [模块]'}}]}
-        events = self.stream({'mode': 'page'})
-        self.assertEqual(events[-1]['type'], 'complete', events[-1])
-        self.assertLess(len(seen[0]), 40_000)
-
-    def test_回复读不出来给人话(self):
-        routes.config.load = lambda: {'api_key': 'k', 'model': 'm', 'base_url': 'u', 'max_tokens': 8000}
-        routes.chat = lambda *a, **k: {'choices': [{'finish_reason': 'length', 'message': {'content': ''}}]}
-        events = self.stream({'mode': 'request', 'text': 'x'})
-        self.assertEqual(events[-1]['type'], 'error')
-        self.assertIn('截断', events[-1]['error']['message'])
-
     def test_大纲和粘贴(self):
         r = self.c.post(f'/api/projects/{self.pid}/architecture/outline', json={'text': '设备管理\n  设备定义'})
         self.assertEqual(r.json()['counts']['pages'], 1)
@@ -325,11 +274,29 @@ class 接口(unittest.TestCase):
         self.assertEqual(r.json()['counts']['pages'], 1)
         self.assertEqual(self.c.post(f'/api/projects/{self.pid}/architecture/import', json={'text': ''}).status_code, 400)
 
-    def test_没展开过不能直接整理(self):
-        r = self.c.post(f'/api/projects/{self.pid}/architecture/from-expand', json={})
-        self.assertEqual(r.status_code, 400)
-        self.assertIn('展开', r.text)
-
+    def test_从原型读_有没同步的改动就先不读(self):
+        page = storage.load_meta(self.pid)['pages'][0]['id']
+        url = f'/api/projects/{self.pid}/architecture'
+        r = self.c.post(url + '/refresh', json={})
+        self.assertEqual(r.json()['reason'], 'no_expand')               # 没展开过：什么都不动
+        storage.save_expand_routes(self.pid, page, [{'hash': '#order', 'title': '报修工单'}, {'hash': '#test', 'title': '测试'}])
+        storage.save_expand_entry(self.pid, page, '#order', 'h', {'page': '<table><tr><th>工单号</th></tr></table>', 'nodes': []})
+        r = self.c.post(url + '/refresh', json={}).json()
+        self.assertTrue(r['refreshed'])
+        self.assertEqual([n['name'] for n in r['architecture']['nodes']], ['报修工单', '测试'])   # 没分组的菜单项放最外层
+        self.assertEqual(r['synced'], r['architecture']['nodes'])
+        # 在树里写了介绍、加了一页：还没同步，重读不会冲掉
+        arch = r['architecture']
+        arch['nodes'][0]['desc'] = '接单派单'
+        arch['nodes'].append({'type': 'page', 'name': '维修工'})
+        self.c.put(url, json={'architecture': arch})
+        self.assertEqual(self.c.post(url + '/refresh', json={}).json()['reason'], 'pending')
+        # 同步完了：再读，原型里没有的那一页去掉，介绍留着
+        self.c.post(url + '/synced')
+        r = self.c.post(url + '/refresh', json={}).json()
+        self.assertEqual([n['name'] for n in r['architecture']['nodes']], ['报修工单', '测试'])
+        self.assertEqual(r['architecture']['nodes'][0]['desc'], '接单派单')
+        self.assertEqual(r['architecture']['nodes'][0]['id'], arch['nodes'][0]['id'])
 
 if __name__ == '__main__':
     unittest.main()

@@ -209,6 +209,35 @@ def load(project_id: str) -> dict[str, Any] | None:
         return None
 
 
+def _synced_path(project_id: str):
+    return storage.project_dir(project_id) / "architecture.synced.json"
+
+
+def load_synced(project_id: str) -> list[dict] | None:
+    """上一次和原型对齐时的页面树：现在的树和它比，多出来、少了、改了的就是「还没同步到原型」的改动。没有就是 None"""
+    path = _synced_path(project_id)
+    try:
+        return normalize({"nodes": json.loads(path.read_text("utf-8"))})["nodes"] if path.exists() else None
+    except (ValueError, OSError):
+        return None
+
+
+def save_synced(project_id: str, nodes: list[dict]) -> None:
+    write_atomic(_synced_path(project_id), json.dumps(nodes, ensure_ascii=False))
+
+
+def _shape(nodes: list[dict]) -> str:
+    """比较用：去掉只影响显示的（展开收起）"""
+    def strip(items):
+        return [{k: (strip(v) if k == "children" else v) for k, v in n.items() if k != "collapsed"} for n in items]
+    return json.dumps(strip(nodes), ensure_ascii=False, sort_keys=True)
+
+
+def pending(project_id: str, arch: dict | None) -> bool:
+    synced = load_synced(project_id)
+    return bool(arch) and synced is not None and _shape(arch.get("nodes") or []) != _shape(synced)
+
+
 def save(project_id: str, raw: Any) -> dict[str, Any]:
     storage.load_meta(project_id)   # 项目不存在 / 在回收站里就报错，不凭空建目录
     arch = normalize(raw)
@@ -299,11 +328,9 @@ def check(arch: dict) -> list[dict]:
         if is_screen(item) and not item.get("desc"):
             add("warn", f"「{item['name']}」还没写介绍：AI 会按名字猜", node=item["id"])
         if item["type"] == "button" and item.get("action") in ("open", "jump") and item.get("target") and item["target"] not in names_all and loose_name(item["target"]) not in loose_all:
-            add("warn", f"按钮「{item['name']}」要{ACTIONS[item['action']]}的「{item['target']}」在架构里没有", node=item["id"])
+            add("error", f"按钮「{item['name']}」要{ACTIONS[item['action']]}的「{item['target']}」在页面树里没有", node=item["id"])
         if item["type"] == "drill" and not item.get("entry"):
             add("warn", f"下钻页「{item['name']}」没写从哪进", node=item["id"])
-        if depth == 0 and item["type"] != "module":
-            add("warn", f"「{item['name']}」放在最外层，通常最外层是模块", node=item["id"])
     for e in entities.values():
         for f in e["fields"]:
             if f.get("kind") == "ref" and f.get("ref") not in entities:
@@ -362,7 +389,8 @@ def _node_line(item: dict) -> str:
 
 
 def brief(arch: dict, limit: int = 16000) -> str:
-    lines = [f"已确认的架构：{arch.get('name') or '（未命名）'}（只做电脑端）"]
+    # 架构是原型的镜子：这里给 AI 看整棵树当背景，这一轮具体改哪几处以用户的话为准，别的页面不要动
+    lines = [f"页面树（原型现在应该是这个样子，供参考；这一轮只改用户说的那几处）：{arch.get('name') or '（未命名）'}（只做电脑端）"]
     if arch.get("summary"):
         lines.append(arch["summary"])
     if arch.get("roles"):
@@ -397,12 +425,5 @@ def brief(arch: dict, limit: int = 16000) -> str:
             lines.append(f"- [{tag}] {s['name']}" + (f"：{s['desc']}" if s.get("desc") else "") + (f" → {nxt}" if nxt else ""))
     lines.append("\n电脑端统一规则（每一页都按这个来，页面之间不要各做各的）：")
     lines += [f"- {r}" for r in arch.get("rules") or PC_RULES]
-    steps = order(arch)
-    if steps:
-        lines.append("\n生成顺序（一个菜单页一步，它的页签、下钻页、弹窗在这一步里一起做）：")
-        for i, st in enumerate(steps):
-            extra = "；".join(x for x in (("页签：" + "、".join(st["tabs"])) if st["tabs"] else "",
-                                          ("下钻页：" + "、".join(st["drills"])) if st["drills"] else "") if x)
-            lines.append(f"{i + 1}. {st['module'] + ' › ' if st['module'] else ''}{st['name']}" + (f"（{extra}）" if extra else ""))
     text = "\n".join(lines)
     return text if len(text) <= limit else text[:limit] + "\n（架构太长，后面截掉了）"
