@@ -418,16 +418,25 @@ _TEMPLATE = r'''
     const out=[...pool].filter(isLayer);
     return out.filter(el=>!out.some(o=>o!==el&&o.contains(el)));
   }
+  // 弹窗的标题：先看它自己说的（aria-label / aria-labelledby），再看头部（xx-header、xx-hd），再看 h1~h4，最后才是带 title 的类名。
+  // 以前一把 querySelector 按页面顺序取第一个，抽屉头写成 .drawer-hd 认不出，取到了正文里的小节标题「现场照片 业主手机端上传，只读」
+  function firstLine(n){return ((n&&n.innerText)||'').trim().split('\n')[0].trim();}
   function titleOf(el){
-    const t=el.querySelector('[class*=title],[class*=Title],h1,h2,h3,h4,[class*=header],[class*=head]');
-    const line=((t&&t.innerText)||el.innerText||'').trim().split('\n')[0].trim();
-    return line.slice(0,40)||'弹窗';
+    const dlg=el.matches('[role=dialog],[aria-modal=true]')?el:el.querySelector('[role=dialog],[aria-modal=true]');
+    const aria=(dlg?.getAttribute('aria-label')||'').trim();
+    if(aria&&!/^(关闭|close|弹窗|dialog)$/i.test(aria))return aria.slice(0,40);
+    const by=dlg?.getAttribute('aria-labelledby'),lb=by&&document.getElementById(by);
+    if(firstLine(lb))return firstLine(lb).slice(0,40);
+    for(const sel of ['[class*=header],[class*=Header],[class*=-hd],[class*=_hd],[class$=hd],[class*=head]','h1,h2,h3,h4','[class*=title],[class*=Title]']){
+      const n=[...el.querySelectorAll(sel)].find(x=>firstLine(x));if(n)return firstLine(n).slice(0,40);
+    }
+    return firstLine(el).slice(0,40)||'弹窗';
   }
   // 一层弹窗的身份：标题 + 它有哪些字段。
   // 同一个 #modal 换了内容就是新弹窗——哪怕标题一样（「新增因子」选完类型点下一步，标题还叫新增因子，字段全换了）；
   // 字段没变、只是多了几行（弹窗里点「新增气体」）不算。
   function keyOf(el){
-    const fields=[...new Set([...el.querySelectorAll('label,th,legend,[class*=label]')].map(n=>(n.innerText||'').trim().split('\n')[0].slice(0,16)).filter(Boolean))].sort().slice(0,40);
+    const fields=[...new Set([...el.querySelectorAll('label,th,legend,dt,[class*=label]')].map(n=>(n.innerText||'').trim().split('\n')[0].slice(0,16)).filter(Boolean))].sort().slice(0,40);
     return titleOf(el)+'#'+fields.join(',');
   }
   function snapshot(){return new Map(layers().map(el=>[el,keyOf(el)]));}
@@ -471,6 +480,12 @@ _TEMPLATE = r'''
   function inTabBar(el){for(let p=el.parentElement;p&&p!==document.body;p=p.parentElement)if(TAB_BAR.test(String(p.className)))return true;return false;}
   function triggersIn(scope,inLayer,skip,skips){
     const seen=new Set(),groups={},out=[],open=inLayer?[]:layers();
+    // 表格里同一列的按钮：每行字都不一样、没有一个重复（工单号 BX-202610-011、-010……）是「数据列」，点开都是同一个详情，只试第一行；
+    // 每行都有的「详情 / 派单」这种操作列，同字的本来就只试一次
+    const tables=new Map(),cols={};
+    const colOf=el=>{const tr=el.closest('tr'),cell=el.closest('td,th');if(!tr||!cell)return '';const tb=tr.closest('table');if(!tables.has(tb))tables.set(tb,tables.size);return tables.get(tb)+'|'+cell.cellIndex+'|'+el.tagName;};
+    for(const el of scope.querySelectorAll(CLICKABLE)){const c=colOf(el);if(!c||!vis(el))continue;const m=cols[c]||(cols[c]=new Map());const t=bare(el);m.set(t,(m.get(t)||0)+1);}
+    const dataCol=c=>{const m=cols[c];return !!m&&m.size>=2&&Math.max(...m.values())===1;};
     const note=(reason,el,name)=>{if(!skips)return;const r=skips[reason]||(skips[reason]={n:0,labels:[]});r.n++;const t=(name||bare(el)||labelOf(el)).slice(0,16);if(t&&r.labels.length<12&&!r.labels.includes(t))r.labels.push(t)};
     for(const el of scope.querySelectorAll(CLICKABLE)){
       if(!vis(el)||el.disabled||el.closest('[data-pa-overlay]'))continue;
@@ -491,6 +506,7 @@ _TEMPLATE = r'''
       const href=el.getAttribute('href')||'';
       if(el.tagName==='A'&&!el.matches('[data-action],[data-cx],[onclick]')&&(href.startsWith('#')||/\.html?(?:[?#].*)?$/i.test(href)||/^(?:https?:)?\/\//i.test(href)))continue;
       const t=targetOf(el);if(!t.text)continue;
+      const col=colOf(el);if(col&&dataCol(col)){if(groups['col|'+col]){note('repeat',el);continue;}groups['col|'+col]=1;}
       const group=t.attr?t.attr+'='+t.value.replace(/\d+/g,'#'):t.tag+'|'+t.text,key=group+'|'+t.text;
       // 同一个动作挂在一排按钮上（行业列表、每一行的编辑）只试两个，试多了全是重复
       if(seen.has(key)||(groups[group]||0)>=2){note('repeat',el);continue;}
@@ -821,7 +837,7 @@ _TEMPLATE = r'''
     }
     if(L){
       const wizard=wizardOf(L);
-      out.opened={layerSel:selectorFor(L),title:titleOf(L),sig:titleOf(L)+'|'+(L.innerText||'').replace(/\s+/g,' ').slice(0,160),html:freeze(L),box:boxOf(L),
+      out.opened={layerSel:selectorFor(L),title:titleOf(L),shape:keyOf(L),sig:titleOf(L)+'|'+(L.innerText||'').replace(/\s+/g,' ').slice(0,160),html:freeze(L),box:boxOf(L),
         triggers:triggersIn(L,true,wizard.next?[wizard.next]:[]),branches:wizard.branches};
     }
     const closed=await closeAll(probeBase);

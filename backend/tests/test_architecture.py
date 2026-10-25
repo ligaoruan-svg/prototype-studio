@@ -197,6 +197,28 @@ class 分到弹什么(unittest.TestCase):
         self.assertTrue(any(c["type"] == "button" and c["name"] == "新增子类别" for c in drill["children"]))
 
 
+    def test_每一行点开的同一个详情只记一次(self):
+        page = {"type": "page", "name": "报修工单", "children": []}
+        html = ("<table><tr><th>工单号</th><th>状态</th><th>操作</th></tr>"
+                "<tr><td><a>BX-011</a></td><td><span>待派单</span></td><td><button>详情</button><button>派单</button></td></tr>"
+                "<tr><td><a>BX-010</a></td><td><span>待派单</span></td><td><button>详情</button><button>派单</button></td></tr></table>")
+        drawer = ('<div class="drawer-mask" id="activeDrawer"><section role="dialog" aria-label="工单详情"><div class="drawer-hd"><b>工单详情</b></div>'
+                  '<dl><dt>工单号</dt><dd>BX-011</dd><dt>报修人</dt><dd>李四</dd></dl><div class="sec-title">现场照片</div></section></div>')
+        nodes = [
+            {"id": 1, "parent": None, "label": "表格行 · BX-011", "title": "现场照片", "layerSel": "#activeDrawer", "html": drawer, "also": ["表格行 · 详情"]},
+            {"id": 2, "parent": None, "label": "表格行 · BX-010", "title": "现场照片", "layerSel": "#activeDrawer", "html": drawer.replace("011", "010")},
+            {"id": 3, "parent": None, "label": "表格行 · 派单", "title": "派单", "layerSel": "#activeModal",
+             "html": '<section role="dialog" aria-label="派单"><dt>工单号</dt><label>指派给<span class="req">*</span></label></section>'},
+        ]
+        D._fill(page, html, nodes, None)
+        layers = [(c["type"], c["name"]) for c in page["children"] if c["type"] in ("drawer", "modal")]
+        self.assertEqual(layers, [("drawer", "工单详情"), ("modal", "派单")])     # 标题取抽屉头，不取正文小节；只一张
+        table = next(c for c in page["children"] if c["type"] == "table")
+        self.assertEqual([b["name"] for b in table["children"]], ["工单号", "详情", "派单"])   # 编号按钮叫那一列的名字；「派单」不会认成「待派单」那一列
+        self.assertEqual(page["children"][-2]["fields"], ["工单号", "报修人"])
+        self.assertEqual(page["children"][-1]["fields"], ["工单号🔒", "指派给*"])
+
+
 class 功能清单(unittest.TestCase):
     def test_有表头_合并单元格沿用上一行(self):
         text = "编号\t模块\t菜单\t功能\t功能描述\n85\t设备管理\t设备定义\t新增定义\t定义参数模板\n86\t\t设备录入\t新增录入\t4 步向导\n87\t\t\t批量导入\t下载模板\n88\t巡检\t巡检计划\t新增计划\t"

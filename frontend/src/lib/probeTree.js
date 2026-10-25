@@ -86,7 +86,9 @@ export function crumbOf(nodes = [], node) {
   let root = node
   for (let guard = 0; root.parent != null && byId.has(root.parent) && guard < 10; guard++) root = byId.get(root.parent)
   const head = /^表格行 · /.test(root.label || '') ? '列表行' : '页面按钮'
-  return [head, ...trailOf(nodes, node).split(' › ').map(s => s.replace(/^表格行 · /, ''))].join(' → ')
+  const also = (node.also || []).map(s => String(s).replace(/^表格行 · /, '')).filter(Boolean)
+  // 同一层换个按钮也能打开（「工单号」「详情」都打开工单详情），只记一张卡，这里说一声
+  return [head, ...trailOf(nodes, node).split(' › ').map(s => s.replace(/^表格行 · /, ''))].join(' → ') + (also.length ? '（' + also.join('、') + ' 也能打开）' : '')
 }
 
 export function buildTree(nodes = []) {

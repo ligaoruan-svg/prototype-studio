@@ -111,7 +111,7 @@ export async function probePage({ doc, width = 1150, height = 800, routes = [], 
     for (const target of init.tabs || []) queue.push({ path: [], step: withFix('页签 · ' + target.text, { target, tab: true }), label: '页签 · ' + target.text, parent: null, depth: 1 })
     result.total = queue.length
     report(queue[0]?.label || '')
-    const seen = new Set()
+    const seen = new Set(), shapes = new Map()
     while (queue.length && result.tried < MAX_TRIES && Date.now() - started - waited < BUDGET_MS) {
       await hold()
       if (cancelled()) { result.cancelled = true; break }
@@ -163,11 +163,17 @@ export async function probePage({ doc, width = 1150, height = 800, routes = [], 
       }
       const opened = reply.opened
       if (!opened) { note(coverage.none, job.label); continue }
-      if (seen.has(opened.sig)) { coverage.dup++; continue }
+      // 同一个按钮位置打开的同一种弹窗（标题、字段都一样，只是里面的数据不同，比如每一行的工单详情）算一个
+      const shape = opened.shape ? `shape|${job.parent}|${opened.layerSel || ''}|${opened.shape}` : ''
+      // 换个按钮打开的同一层（「工单号」和「详情」都打开工单详情）：不再记一张卡，只在那张卡上记一笔「也能从这里打开」
+      const twin = shape && shapes.get(shape)
+      if (twin && twin.label !== job.label && !(twin.also ||= []).includes(job.label)) twin.also.push(job.label)
+      if (seen.has(opened.sig) || twin) { coverage.dup++; continue }
       seen.add(opened.sig)
       coverage.views++
       const node = { id: result.nodes.length + 1, parent: job.parent, label: job.label, title: opened.title, html: opened.html, box: opened.box, layerSel: opened.layerSel || '', path: [...job.path, job.step] }
       result.nodes.push(node)
+      if (shape) shapes.set(shape, node)
       if (job.depth < MAX_DEPTH) {
         const all = [
           ...(opened.triggers || []).map(target => ({ step: { target, inLayer: true }, label: target.text })),

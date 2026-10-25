@@ -114,16 +114,27 @@ def expand_brief(project_id: str, page_id: str) -> str:
             lines.append("  筛选 / 表单：" + "、".join(labels))
         nodes = result.get("nodes") or []
         by_id = {n.get("id"): n for n in nodes}
+        listed, dropped = set(), set()
         for n in nodes:
+            if n.get("parent") in dropped:
+                dropped.add(n.get("id"))
+                continue
             depth, p = 0, n.get("parent")
             while p in by_id and depth < 6:
                 depth, p = depth + 1, by_id[p].get("parent")
-            kind = "子页面" if n.get("kind") == "subpage" else "抽屉" if "drawer" in str(n.get("layerSel", "")) else "弹窗"
+            kind = "子页面" if n.get("kind") == "subpage" else "抽屉" if "drawer" in str(n.get("layerSel", "")).lower() else "弹窗"
             label = re.sub(r"^表格行\s*·\s*", "", str(n.get("label") or ""))
-            text = f"{'  ' * (depth + 1)}- [{kind}] {n.get('title') or label}（点「{label}」打开）"
-            fields = _texts(n.get("html") or "", r"<th[^>]*>(.*?)</th>", 12) + _texts(n.get("html") or "", r"<label[^>]*>(.*?)</label>", 12)
+            title = n.get("title") or label if kind == "子页面" else _layer_title(n.get("html") or "", n.get("title") or label)
+            # 每一行点开的同一个详情（工单号 BX-…-011、-010……）只列一次
+            if (n.get("parent"), kind, title) in listed:
+                dropped.add(n.get("id"))
+                continue
+            listed.add((n.get("parent"), kind, title))
+            text = f"{'  ' * (depth + 1)}- [{kind}] {title}（点「{label}」打开）"
+            html = n.get("html") or ""
+            fields = _texts(html, r"<th[^>]*>(.*?)</th>", 12) + _labels(html, 12) + _dts(html, 16)
             if fields:
-                text += "：" + "、".join(fields[:16])
+                text += "：" + "、".join(dict.fromkeys(fields[:20]))
             lines.append(text)
     return "\n".join(lines)
 
@@ -156,10 +167,11 @@ SKIP_COLS = {"操作", "序号", "#", "选择", ""}
 def _labels(html: str, limit: int = 20) -> list[str]:
     """表单项：<label> 开头那段文字（后面跟着的下拉选项不要）"""
     out = []
-    for m in re.finditer(r"<label[^>]*>\s*([^<]{1,24})", html or ""):
+    # 必填的红星常常单独包一层：<label>指派给<span class="req">*</span></label>
+    for m in re.finditer(r"<label[^>]*>\s*([^<]{1,24})((?:<[^>]+>)*\s*\*)?", html or ""):
         text = re.sub(r"\s+", " ", m.group(1)).strip(" ：:*")
         if text and text not in out:
-            out.append(text + ("*" if "*" in m.group(1) else ""))
+            out.append(text + ("*" if "*" in m.group(1) or m.group(2) else ""))
         if len(out) >= limit:
             break
     return out
@@ -169,30 +181,69 @@ def _cols(html: str) -> list[str]:
     return [c for c in _texts(html, r"<th[^>]*>(.*?)</th>", 30) if c not in SKIP_COLS]
 
 
+def _dts(html: str, limit: int = 20) -> list[str]:
+    """只读的「字段：值」（<dt>工单号</dt><dd>BX-…</dd>）里的字段名"""
+    return [t.strip(" ：:") for t in _texts(html, r"<dt[^>]*>(.*?)</dt>", limit)]
+
+
+def _layer_title(html: str, fallback: str) -> str:
+    """弹窗自己的标题：aria-label，没有就取 xx-hd / xx-header 头部的字。旧的展开结果标题可能取成了正文小节"""
+    m = re.search(r'role="dialog"[^>]*aria-label="([^"]{1,40})"|aria-label="([^"]{1,40})"[^>]*role="dialog"', html or "")
+    if m and (m.group(1) or m.group(2)).strip() not in ("关闭", "弹窗"):
+        return (m.group(1) or m.group(2)).strip()
+    m = re.search(r'class="[^"]*(?:-hd|_hd|header|Header)[^"]*"[^>]*>\s*(?:<(?!button)[^>]+>\s*)*([^<]{1,40})', html or "")
+    return m.group(1).strip() if m and m.group(1).strip() else fallback
+
+
+def _col_of(html: str, text: str) -> str:
+    """表格里这个字在哪一列，返回那一列的表头（工单号）"""
+    heads = [re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", h)).strip() for h in re.findall(r"<th[^>]*>(.*?)</th>", html or "", re.S)]
+    for row in re.findall(r"<tr[^>]*>(.*?)</tr>", html or "", re.S):
+        if text not in row:
+            continue
+        cells = re.findall(r"<t[dh][^>]*>(.*?)</t[dh]>", row, re.S)
+        # 认点的那个按钮 / 链接本身的字，不能光看包含：「派单」按钮会被认到「待派单」那一列
+        clean = lambda h: re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", h)).strip()
+        for i, cell in enumerate(cells):
+            hit = clean(cell) == text or any(clean(b) == text for _, b in re.findall(r"<(a|button)\b[^>]*>(.*?)</\1>", cell, re.S))
+            if hit and i < len(heads):
+                return heads[i]
+    return ""
+
+
 def _fill(container: dict, html: str, nodes: list[dict], parent_id) -> None:
     """一个页面（或下钻页、页签、弹窗）里面有什么：筛选、表格、按钮，按钮点了打开哪个弹窗 / 跳到哪个子页面，弹窗里有哪些字段"""
     kids = container["children"]
-    labels, cols = _labels(html), _cols(html)
-    if labels and container["type"] not in ("modal", "drawer", "wizard"):
-        kids.append({"type": "block", "name": "筛选 / 表单", "fields": labels, "children": []})
+    labels, cols, shows = _labels(html), _cols(html), _dts(html)
+    if container["type"] == "drawer" and (labels or shows):
+        container["fields"] = labels + [d for d in shows if d not in labels]
+    elif container["type"] in ("modal", "wizard") and (labels or shows):
+        # 弹窗上面带出来给你看的（工单号、报修事项）是只读的，加 🔒；下面要填的照 <label>
+        container["fields"] = [d + "🔒" for d in shows if d not in labels] + labels
     elif labels:
-        container["fields"] = labels
+        kids.append({"type": "block", "name": "筛选 / 表单", "fields": labels, "children": []})
     table = None
     if cols:
         table = {"type": "table", "name": "列表" if container["type"] not in ("modal", "drawer", "wizard") else "明细表", "cols": cols, "children": []}
         kids.append(table)
-    seen_buttons = set()
+    seen_buttons, seen_targets = set(), set()
     for n in [n for n in nodes if n.get("parent") == parent_id]:
         raw = str(n.get("label") or "")
         row = raw.startswith("表格行")
         label = re.sub(r"^(表格行|页签)\s*·\s*", "", raw).strip()[:30] or "操作"
         title = str(n.get("title") or label)[:40]
+        if n.get("kind") != "subpage" and not raw.startswith("页签"):
+            title = _layer_title(n.get("html") or "", title)
+        # 表格里点的是一条数据（工单号 BX-202610-011）：按钮叫那一列的名字，每一行点开的都是同一个详情，只记一次
+        col = _col_of(html, label) if row else ""
+        if row and col and col not in SKIP_COLS and col != label:
+            label = col
         if raw.startswith("页签"):
             target = {"type": "tab", "name": label, "children": []}
             kids.append(target)
             _fill(target, n.get("html") or "", nodes, n.get("id"))
             continue
-        kind = "drill" if n.get("kind") == "subpage" else "drawer" if "drawer" in str(n.get("layerSel", "")) else "modal"
+        kind = "drill" if n.get("kind") == "subpage" else "drawer" if "drawer" in str(n.get("layerSel", "")).lower() else "modal"
         # 点表格里的编号进去的详情页，标题就是那条数据的编号（TMP-BUILD-2026-V2）：换成「xx详情」，编号放进入口
         shown = label
         if kind == "drill" and not re.search(r"[一-鿿]", title):
@@ -203,6 +254,15 @@ def _fill(container: dict, html: str, nodes: list[dict], parent_id) -> None:
         if (label, title) not in seen_buttons:
             seen_buttons.add((label, title))
             holder.append(button)
+        # 别的按钮也打开这一层（「工单号」和「详情」都打开工单详情）
+        for extra in n.get("also") or []:
+            name = re.sub(r"^表格行\s*·\s*", "", str(extra)).strip()[:30]
+            if name and (name, title) not in seen_buttons:
+                seen_buttons.add((name, title))
+                (table["children"] if (str(extra).startswith("表格行") and table) else kids).append({**button, "name": name, "children": []})
+        if (kind, title) in seen_targets:
+            continue
+        seen_targets.add((kind, title))
         target = {"type": kind, "name": title, "children": []}
         if kind == "drill":
             target.update(entry=f"点「{shown}」" if shown == label else f"点列表里的编号（如 {shown}）", back="返回" + container["name"])
