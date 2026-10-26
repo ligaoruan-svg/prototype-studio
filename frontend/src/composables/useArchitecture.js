@@ -3,7 +3,7 @@
 // - 没有原型的：画布是空的，自己加，或者在「架构」模式里跟 AI 说
 // - 「架构」模式里 AI 只改画布，不碰原型代码；切回「自动」「直接改」时 AI 拿画布当背景做页面
 import { computed, ref, watch } from 'vue'
-import { CHILD_TYPES, NODE_TYPES, addChild, addSibling, clone, diffNodes, emptyArchitecture, findNode, impactOf, moveNode, pendingChanges, removeNode, syncMessage } from '../lib/architecture.js'
+import { CHILD_TYPES, addChild, addSibling, changesUnder, clone, diffNodes, emptyArchitecture, findNode, impactOf, moveNode, pendingChanges, removeNode, syncMessage } from '../lib/architecture.js'
 import { expand, expandAll, isFresh } from '../lib/expandStore.js'
 
 export function useArchitecture(s) {
@@ -175,20 +175,15 @@ export function useArchitecture(s) {
   // 还没同步到原型的改动。有原型但还没读过（base 还没有）时先不算，免得一打开就满屏都是
   const archChanges = computed(() => !arch.value || (!archBase.value && hasPrototype()) ? [] : pendingChanges(archBase.value, arch.value.nodes))
   // 同步到原型：把这几处写成一段话填进输入框、切到「自动」，你看一眼（可以补一句）再发。AI 改完，原型一变画布自动再读，对上的就不算了
-  function syncToPrototype() {
-    if (!archChanges.value.length) return
+  // 传了 id 就只同步那一块（卡片工具条上的「同步」）
+  function syncToPrototype(id = '') {
+    const list = id ? changesUnder(arch.value, archChanges.value, id) : archChanges.value
+    if (!list.length) return
     composerIntent.value = 'auto'
-    input.value = syncMessage(archChanges.value)
+    input.value = syncMessage(list)
     s.composer?.value?.focus()
   }
-  // 画布上规划了、原型里还没有的：一键把话填进输入框，切到「自动」，你看一眼再发
-  function makeInPrototype(node) {
-    const hit = findNode(arch.value, node.id)
-    const path = hit ? [...hit.parents.map(p => p.name), node.name].join(' / ') : node.name
-    composerIntent.value = 'auto'
-    input.value = `按架构画布做出「${path}」这一${node.type === 'module' ? '页' : NODE_TYPES[node.type]?.label || '页'}：里面的页签、弹窗、按钮、字段都照画布上的来，别的页面不动。`
-    s.composer?.value?.focus()
-  }
+
 
   // 键盘：选中页面树的节点后，回车加同级、Tab 加子项、Delete 删除、F2 改名；⌘Z 撤销架构里的改动
   function archKey(event) {
@@ -219,6 +214,6 @@ export function useArchitecture(s) {
     archRemoved, archHistory: history, loadArch, showArch, hideArch, saveArch: saveNow, archSnapshot: snapshot, archDirty: dirty, archChange: change,
     archLevel, archExpand, nodeOpen, openNode, setLevel, archReading, archFlash, archBase, archChanges, syncToPrototype,
     undoArch, archSelect: select, archSelectedItem: selectedItem, archAdd, archSibling, archMove, archToggle, archRemove,
-    readPrototype, afterArchChat, makeInPrototype, archRenaming, archKey, renameNode,
+    readPrototype, afterArchChat, archRenaming, archKey, renameNode,
     cloneArch: () => clone(arch.value) }
 }

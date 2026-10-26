@@ -703,6 +703,9 @@ input[type=color]::-webkit-color-swatch { border: none; border-radius: 2px; }
 .an-tools button, .an-add { position: relative; white-space: nowrap; display: inline-flex; align-items: center; gap: 3px; height: 24px; padding: 0 7px; border-radius: 6px; color: #fff; font-size: 11.5px; font-weight: 500; }
 .an-tools button:hover, .an-add:hover { background: #ffffff1f; }
 .an-tools .danger { color: #ffb59a; }
+.an-tools .sync { margin-left: 4px; background: #b8532f; color: #fff; }
+.an-tools .sync:hover { background: #a2461f; }
+.an-tools .sync b { margin-left: 2px; padding: 0 4px; border-radius: 6px; background: #ffffff33; font-size: 10.5px; }
 .an-add select { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .an-folded { margin-left: 12px; height: 22px; padding: 0 9px; border-radius: 11px; background: #efe9e3; color: #6b625c; font-size: 11.5px; }
 .arch-legend { display: flex; flex-wrap: wrap; gap: 6px; }

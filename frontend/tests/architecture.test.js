@@ -75,7 +75,7 @@ test('界面接上了：顶栏有「架构」、打开画布才有「架构」�
   assert.match(logic, /composerIntent\.value = 'architecture'/)
   assert.match(appSource(), /intent !== 'architecture'/)                 // 画布开着时，别的模式把画布当背景
   assert.match(appSource(), /result\.intent === 'architecture'[\s\S]*afterArchChat/)
-  assert.match(node, /s\.makeInPrototype\(node\)/)
+  assert.match(node, /s\.syncToPrototype\(node\.id\)/)                         // 卡片工具条上只同步这一块
   assert.doesNotMatch(board, /业务流程|数据关系|统一规则|arch-sub/)
   assert.match(board, /label: '全部'/)                                    // 一下全展开，不用一个个点
   assert.match(board, /s\.syncToPrototype\(\)/)
@@ -137,4 +137,16 @@ test('还没同步到原型的：只看原型里看得出来的，原型里删�
   const fresh = emptyArchitecture('x'); fresh.nodes[0].name = '设备管理'
   assert.ok(pendingChanges(null, fresh.nodes).length === 1)                  // 从零编的：整棵都算
   assert.deepEqual(pendingChanges(null, emptyArchitecture('x').nodes), [])  // 还没起名的「新模块」不算
+})
+
+test('卡片上的同步：只同步这一块（连同下面的）', async () => {
+  const { changesUnder } = await import('../src/lib/architecture.js')
+  const { a, tab1, tab2 } = sample()
+  const base = clone(a.nodes)
+  const modal = addChild(a, tab2.id, 'modal', '新增巡检点')
+  tab1.name = '路线'
+  removeNode(a, tab1.children[0].id)
+  const all = diffNodes(base, a.nodes)
+  assert.deepEqual(changesUnder(a, all, tab2.id).map(c => c.id), [modal.id])
+  assert.deepEqual(changesUnder(a, all, tab1.id).map(c => c.kind).sort(), ['remove', 'rename'])   // 删掉的子项也算这一块
 })

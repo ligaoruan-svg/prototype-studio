@@ -1,9 +1,9 @@
 <script setup>
 // 页面树里的一个节点和它下面的全部：卡片 + 往右长出去的子节点。选中时卡片上方出现工具条（加子项、加同级、上移下移、删除）
 import { computed, inject, nextTick, ref, watch } from 'vue'
-import { ChevronDown, ChevronRight, ChevronUp, Plus, Sparkles, Trash2 } from 'lucide-vue-next'
+import { ArrowUpRight, ChevronDown, ChevronRight, ChevronUp, Plus, Trash2 } from 'lucide-vue-next'
 import ArchNode from './ArchNode.vue'
-import { ACTIONS, CHILD_TYPES, LAYER_TYPES, NODE_TYPES, countBelow, protoState, unnamed } from '../../lib/architecture.js'
+import { ACTIONS, CHILD_TYPES, LAYER_TYPES, NODE_TYPES, changesUnder, countBelow, protoState, unnamed } from '../../lib/architecture.js'
 import ArchFields from './ArchFields.vue'
 
 const props = defineProps({ node: Object, depth: { type: Number, default: 0 }, siblings: { type: Array, default: () => [] }, parentState: { type: String, default: 'in' } })
@@ -14,6 +14,8 @@ const state = computed(() => protoState(props.node))
 const tagged = computed(() => state.value !== 'in' && state.value !== props.parentState)
 // 改过、还没同步到原型的（改名、改字段、挪了位置）：卡片右上角一个小点
 const changed = computed(() => s.archChanges.value.some(c => c.id === props.node.id && c.kind !== 'add'))
+// 这一块（连同下面的）还有几处没同步：工具条上「同步」只同步这几处
+const mine = computed(() => selected.value ? changesUnder(s.arch.value, s.archChanges.value, props.node.id) : [])
 // 弹窗、抽屉、向导、区块、表格：卡片里带上字段 / 列
 const hasForm = computed(() => [...LAYER_TYPES, 'block', 'table'].includes(props.node.type))
 // 搜索时，命中的节点上面几层自动展开
@@ -58,8 +60,7 @@ function addChild(event) {
       <div class="an-head"><span class="an-type">{{ $t(NODE_TYPES[node.type].short) }}</span><input v-if="renaming" ref="nameInput" class="an-rename" :value="node.name" :aria-label="$t('名称')" @click.stop @keydown.enter.prevent="commitName" @keydown.esc.stop.prevent="cancelName" @blur="commitName"><b v-else>{{ node.name }}</b>
         <button v-if="kids.length" class="an-fold" :title="open ? $t('收起') : $t('展开')" :aria-label="open ? $t('收起') : $t('展开')" @click.stop="s.openNode(node, depth, siblings)"><ChevronDown v-if="open" :size="13" /><ChevronRight v-else :size="13" /></button></div>
       <p v-if="tagged && unnamed(node)" class="an-proto"><span>{{ $t('还没起名，不会同步（双击改名）') }}</span></p>
-      <p v-else-if="tagged" class="an-proto" @click.stop><span>{{ state === 'planned' ? $t('原型里还没有') : $t('原型里已经没有') }}</span>
-        <button v-if="state === 'planned'" class="quiet" :title="$t('把话填进输入框、切到「自动」，你看一眼再发')" @click="s.makeInPrototype(node)"><Sparkles :size="11" />{{ $t('让 AI 做出来') }}</button></p>
+      <p v-else-if="tagged" class="an-proto"><span>{{ state === 'planned' ? $t('原型里还没有 · 选中后点「同步」') : $t('原型里已经没有') }}</span></p>
       <p v-if="archShowDesc && node.desc" class="an-desc">{{ node.desc }}</p>
       <p v-if="node.type === 'drill' && archShowDesc && node.entry" class="an-entry">{{ $t('从哪进：{0}', [node.entry]) }}</p>
       <p v-if="node.action" class="an-act" :class="node.action">↳ {{ $t(ACTIONS[node.action]) }}<template v-if="node.target">「{{ node.target }}」</template></p>
@@ -74,6 +75,7 @@ function addChild(event) {
         <button :title="$t('上移')" :aria-label="$t('上移')" @click="s.archMove(node.id, -1)"><ChevronUp :size="13" /></button>
         <button :title="$t('下移')" :aria-label="$t('下移')" @click="s.archMove(node.id, 1)"><ChevronDown :size="13" /></button>
         <button class="danger" @click="s.archRemove(node.id)"><Trash2 :size="12" />{{ $t('删除') }}</button>
+        <button v-if="mine.length" class="sync" :title="$t('只把这一块的改动（{0} 处）填进输入框、切到「自动」，你看一眼再发', [mine.length])" @click="s.syncToPrototype(node.id)"><ArrowUpRight :size="12" />{{ $t('同步') }}<b v-if="mine.length > 1">{{ mine.length }}</b></button>
       </div>
     </div>
     <div v-if="kids.length && open" class="an-kids"><div v-for="child in kids" :key="child.id" class="an-kid"><ArchNode :node="child" :depth="depth + 1" :siblings="kids" :parent-state="state" /></div></div>

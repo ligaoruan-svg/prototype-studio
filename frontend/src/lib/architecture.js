@@ -186,7 +186,7 @@ export function diffNodes(before = [], after = [], props = COMPARE) {
     if (changed.length) out.push({ kind: 'edit', id, node: cur.node, path: cur.path, props: changed, before: prev.node })
   }
   // 删掉的：上面几层用现在的名字（上面那层刚改过名也对得上）
-  for (const [id, prev] of old) if (!now.has(id) && (!prev.parentId || now.has(prev.parentId))) out.push({ kind: 'remove', id, node: prev.node, path: [...(prev.parentId ? now.get(prev.parentId).path : []), prev.node.name] })
+  for (const [id, prev] of old) if (!now.has(id) && (!prev.parentId || now.has(prev.parentId))) out.push({ kind: 'remove', id, parentId: prev.parentId, node: prev.node, path: [...(prev.parentId ? now.get(prev.parentId).path : []), prev.node.name] })
   return out
 }
 // 和原型对不对得上（从原型读的时候后台标的）：in 原型里有；planned 你规划了、原型里还没有；gone 原型里已经没有
@@ -199,6 +199,13 @@ export function protoState(node) {
 export const unnamed = node => node?.name === '新' + (NODE_TYPES[node?.type]?.label || '') && !(node.children || []).length && !(node.fields || []).length
 export function pendingChanges(base, nodes) {
   return diffNodes(base || [], nodes || [], VISIBLE).filter(c => !(c.kind === 'add' && (protoState(c.node) === 'gone' || unnamed(c.node))))
+}
+// 只看某一个节点（连同它下面的）的改动：卡片工具条上的「同步」只同步这一块
+export function changesUnder(arch, changes, id) {
+  const hit = findNode(arch, id)
+  if (!hit) return []
+  const ids = new Set([id, ...[...walk(hit.node.children)].map(x => x.node.id)])
+  return changes.filter(c => ids.has(c.id) || (c.kind === 'remove' && ids.has(c.parentId)))
 }
 // 给人看的一行：「新增菜单页「测试」」「改了「派单」的字段」
 export function changeLabel(c) {

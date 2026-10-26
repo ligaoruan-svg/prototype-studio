@@ -1410,4 +1410,7 @@ export default {
   "从原型读一遍：原型改过、画布没跟上时点。画布上没同步的改动不会丢": "Read the prototype again — use it if the canvas fell behind. Unsynced canvas changes are kept",
   "从原型读一遍": "Read the prototype again",
   "和原型一致": "Matches the prototype",
+  "原型里还没有 · 选中后点「同步」": "Not in the prototype yet · select it and click Sync",
+  "只把这一块的改动（{0} 处）填进输入框、切到「自动」，你看一眼再发": "Fills just this block's changes ({0}) into the message box and switches to Auto — review before sending",
+  "同步": "Sync",
 }
