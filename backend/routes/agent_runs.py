@@ -35,6 +35,7 @@ class AgentIn(BaseModel):
     repair_pending: str = ''   # 运行检查没过的那一版：在它的基础上修报错，不从头再做
     lang: str = Field(default='zh', pattern='^[a-z]{2}(-[A-Za-z]{2,4})?$')   # 界面语言：用户这句话看不出语言时，AI 按它回复
     architecture: bool = False   # 架构画布开着：把画布上的页面树放进背景，做页面时照它来
+    display: dict | None = None   # 对话里怎么显示这条：界面拼出来的长话只显示成一张小卡片
 
 
 @router.post("/api/projects/{project_id}/agent/chat")
@@ -107,7 +108,7 @@ def agent_stream(project_id: str, body: AgentIn):
                                on_event=events.put, intent=body.intent, include_annotations=body.include_annotations, scene=body.scene,
                                stream=settings.get('stream', True), should_stop=stop.is_set,
                                start_source=(draft or {}).get('after'), lang=body.lang, live_checks=True,
-                               architecture=body.architecture)
+                               architecture=body.architecture, display=body.display)
             events.put({'type':'complete','result':result})
             synthesize_later(project_id)
         except Exception as exc:

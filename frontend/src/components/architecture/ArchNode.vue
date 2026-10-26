@@ -75,7 +75,7 @@ function addChild(event) {
         <button :title="$t('上移')" :aria-label="$t('上移')" @click="s.archMove(node.id, -1)"><ChevronUp :size="13" /></button>
         <button :title="$t('下移')" :aria-label="$t('下移')" @click="s.archMove(node.id, 1)"><ChevronDown :size="13" /></button>
         <button class="danger" @click="s.archRemove(node.id)"><Trash2 :size="12" />{{ $t('删除') }}</button>
-        <button class="sync" :title="mine.length ? $t('把这一块的改动（{0} 处）填进输入框、切到「自动」，你看一眼再发', [mine.length]) : $t('让 AI 照画布核对原型里的这一块，对不上的照画布改：填进输入框、切到「自动」，你看一眼再发')" @click="s.syncToPrototype(node.id)"><ArrowUpRight :size="12" />{{ $t('同步') }}<b v-if="mine.length">{{ mine.length }}</b></button>
+        <button class="sync" :title="mine.length ? $t('把这一块的 {0} 处改动附到对话里', [mine.length]) : $t('让 AI 照画布核对原型里的这一块，对不上的照画布改')" @click="s.syncToPrototype(node.id)"><ArrowUpRight :size="12" />{{ $t('同步') }}<b v-if="mine.length">{{ mine.length }}</b></button>
       </div>
     </div>
     <div v-if="kids.length && open" class="an-kids"><div v-for="child in kids" :key="child.id" class="an-kid"><ArchNode :node="child" :depth="depth + 1" :siblings="kids" :parent-state="state" /></div></div>

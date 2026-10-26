@@ -42,6 +42,8 @@ const showGuide = ref(stored('pf-hide-guide') !== 'true')
 const selected = ref(null), inspection = ref(null), textValue = ref(''), note = ref(''), input = ref('')
 const busy = ref(false), saving = ref(false), loading = ref(false), status = ref('本地工作区')
 const error = ref(''), notice = ref(''), pendingUser = ref(''), pendingRef = ref(null), lastResult = ref(null)
+// 「同步到原型」拼出来的那一大段：像附件一样挂在输入框上面（一张小卡片），发出去后对话里也只显示这张卡片
+const syncAttach = ref(null), pendingDisplay = ref(null)
 const previewFrame = ref(null), previewDoc = ref(''), composer = ref(null), chatBox = ref(null), fileInput = ref(null)
 const dialog = ref(null), dialogType = ref(''), dialogBusy = ref(false), dialogError = ref('')
 const codeRegion = ref('all'), codeCopied = ref(false), runtimeErrors = ref([]), recentClicks = ref([]), previewRoute = ref('')
@@ -275,7 +277,7 @@ function keydown(event) {
 // ---------- 拼起来 ----------
 const s = {
   projects, project, pageId, sourceInfo, model, mode, view, device, keepInspector, leftOpen, rightOpen, showGuide, selected, inspection,
-  textValue, note, input, busy, saving, loading, status, error, notice, pendingUser, pendingRef, lastResult, previewFrame, previewDoc,
+  textValue, note, input, busy, saving, loading, status, error, notice, pendingUser, pendingRef, syncAttach, pendingDisplay, lastResult, previewFrame, previewDoc,
   composer, chatBox, fileInput, dialog, dialogType, dialogBusy, dialogError, codeRegion, runtimeErrors, recentClicks, previewRoute,
   imageInput, reference, runs, canvasWidth, previewScroll, pendingHighlights, savedAt, validationDetails, composerIntent, previewHash,
   previewOwner, moreMenu, cardPatch, boardMounted, archOpen, boardOpen, boardFocus, boardRoute, pendingReplay, openedModal, commentDraft,

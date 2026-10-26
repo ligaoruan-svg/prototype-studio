@@ -3,11 +3,11 @@
 // - 没有原型的：画布是空的，自己加，或者在「架构」模式里跟 AI 说
 // - 「架构」模式里 AI 只改画布，不碰原型代码；切回「自动」「直接改」时 AI 拿画布当背景做页面
 import { computed, ref, watch } from 'vue'
-import { CHILD_TYPES, addChild, addSibling, changesUnder, checkMessage, clone, diffNodes, emptyArchitecture, findNode, impactOf, moveNode, pendingChanges, removeNode, syncMessage } from '../lib/architecture.js'
+import { CHILD_TYPES, addChild, addSibling, changeLabel, changesUnder, checkMessage, clone, diffNodes, emptyArchitecture, findNode, impactOf, moveNode, pendingChanges, removeNode, syncMessage } from '../lib/architecture.js'
 import { expand, expandAll, isFresh } from '../lib/expandStore.js'
 
 export function useArchitecture(s) {
-  const { project, archOpen, boardOpen, boardFocus, view, api, sourceInfo, previewRoute, composerIntent, input } = s
+  const { project, archOpen, boardOpen, boardFocus, view, api, sourceInfo, previewRoute, composerIntent } = s
   const arch = ref(null), archIssues = ref([]), archCounts = ref({})
   const archBase = ref(null)       // 上次从原型读出来的样子；画布和它比，多做的就是还没同步到原型的
   const archMounted = ref(false), archLoaded = ref(''), archBusy = ref(''), archError = ref('')
@@ -174,14 +174,20 @@ export function useArchitecture(s) {
   }
   // 还没同步到原型的改动。有原型但还没读过（base 还没有）时先不算，免得一打开就满屏都是
   const archChanges = computed(() => !arch.value || (!archBase.value && hasPrototype()) ? [] : pendingChanges(archBase.value, arch.value.nodes))
-  // 同步到原型：写成一段话填进输入框、切到「自动」，你看一眼（可以补一句）再发。AI 改完，原型一变画布自动再读，对上的就不算了
+  // 同步到原型：挂在输入框上面一张卡片、切到「自动」，你看一眼（可以补一句）再发。AI 改完，原型一变画布自动再读，对上的就不算了
   // 传了 id 就只同步那一块（卡片工具条上的「同步」）
   // 有没有记下的改动都能点：有改动就交代这几处；没有就让 AI 照画布核对这一块（或整个原型），对不上的照画布改
   function syncToPrototype(id = '') {
     if (!arch.value) return
     const list = id ? changesUnder(arch.value, archChanges.value, id) : archChanges.value
+    const node = id ? findNode(arch.value, id)?.node : null
     composerIntent.value = 'auto'
-    input.value = list.length ? syncMessage(list) : checkMessage(arch.value, id ? findNode(arch.value, id)?.node : null)
+    // 不往输入框里塞一大段：像附件一样挂一张小卡片（标题 + 几处改动），输入框留给你写补充
+    s.syncAttach.value = {
+      title: node ? `同步「${node.name}」到原型` : '同步到原型',
+      items: list.length ? list.map(changeLabel) : [node ? '照画布核对这一块，对不上的照画布改' : '照画布核对整个原型，对不上的照画布改'],
+      message: list.length ? syncMessage(list) : checkMessage(arch.value, node),
+    }
     s.composer?.value?.focus()
   }
 

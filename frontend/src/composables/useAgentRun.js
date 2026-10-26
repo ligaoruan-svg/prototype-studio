@@ -6,7 +6,7 @@ import { locale } from '../lib/i18n.js'
 
 export function useAgentRun(s) {
   const { input, annotations, locked, pageId, model, reference, dialogError, selected, composerIntent, runs, project, busy, error,
-    pendingUser, pendingRef, lastResult, status, leftOpen, previewRoute, recentClicks, runtimeErrors, canvasWidth, previewDoc,
+    pendingUser, pendingRef, syncAttach, pendingDisplay, lastResult, status, leftOpen, previewRoute, recentClicks, runtimeErrors, canvasWidth, previewDoc,
     projects, chatBox, composer, commentDraft, api, post, toast } = s
   // 每次修改的自检结果（按 change_id 挂到对应的结果卡片上；只在这次打开期间有）
   const selftests = ref({})
@@ -16,7 +16,12 @@ export function useAgentRun(s) {
     return { route: previewRoute.value || '', clicks: recentClicks.value.filter(c => c.at >= since).map(({ at, ...c }) => c), errors: runtimeErrors.value.slice(-5) }
   }
   async function runAgent(text = '', runtimeFeedback = '', options = {}) {
-    const message = (typeof text === 'string' && text ? text : input.value).trim() || (annotations.value.length ? '请逐条处理已记下的修改意见，保留其他区域。' : '')
+    // 输入框上挂着「同步到原型」的卡片：发的是卡片里那一大段，输入框里写的当补充；对话里只显示成卡片
+    const attach = !(typeof text === 'string' && text) ? syncAttach.value : null
+    const note = attach ? input.value.trim() : ''
+    const message = attach ? attach.message + (note ? '\n\n补充：' + note : '')
+      : (typeof text === 'string' && text ? text : input.value).trim() || (annotations.value.length ? '请逐条处理已记下的修改意见，保留其他区域。' : '')
+    const display = attach ? { title: attach.title, items: attach.items, note } : null
     if (locked.value || !message || !pageId.value) return
     if (!model.value.has_key || (reference.value && !model.value.supports_vision)) { s.openDialog('settings'); dialogError.value = reference.value ? '这张截图需要支持图片输入和工具调用的模型。' : '请先配置模型密钥。'; return }
     const activeSelection = options.selection === undefined ? selected.value : options.selection
@@ -25,7 +30,10 @@ export function useAgentRun(s) {
     const run = { intent, options: { ...options, intent }, id: Date.now(), projectId: project.value.id, pageId: pageId.value, request: message, started: Date.now(), status: 'running', label: '理解需求中', steps: [], error: null, streamText: '', plan: [] }
     runs.value.push(run)
     const current = runs.value[runs.value.length - 1]
-    busy.value = true; error.value = ''; pendingUser.value = message
+    busy.value = true; error.value = ''; pendingUser.value = message; pendingDisplay.value = display
+    // 没发成（停了、失败了）要把卡片和补充放回去，不能把那一大段塞回输入框
+    const putBack = () => { if (attach) { if (!syncAttach.value) syncAttach.value = attach; if (!input.value.trim()) input.value = note } else if (!input.value.trim()) input.value = message }
+    if (attach) syncAttach.value = null
     // 截图跟着这一条发出去就算用过了：从输入框上方拿掉，挂到这条消息上；停止或失败再放回来
     const sentRef = reference.value
     // 自检发现问题：这次结束后自动再修一轮；修完再查，如果修出了新的报错，再修第二轮，之后不再自动修
@@ -36,7 +44,7 @@ export function useAgentRun(s) {
     reference.value = null
     lastResult.value = null; status.value = intent === 'edit' ? '正在读页面' : intent === 'architecture' ? '正在改页面树' : '思考中'; leftOpen.value = true
     try {
-      const response = await fetch('/api/projects/' + project.value.id + '/agent/stream', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ page_id: pageId.value, message, selection: target, runtime_feedback: runtimeFeedback, reference: sentRef, scene: previewScene(), intent, include_annotations: options.includeAnnotations !== false, repair_pending: options.repairPending || '', lang: locale.value, architecture: !!options.architecture || (s.archOpen.value && intent !== 'architecture' && !!s.arch.value?.nodes?.length) }) })
+      const response = await fetch('/api/projects/' + project.value.id + '/agent/stream', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ page_id: pageId.value, message, selection: target, runtime_feedback: runtimeFeedback, reference: sentRef, scene: previewScene(), intent, include_annotations: options.includeAnnotations !== false, repair_pending: options.repairPending || '', lang: locale.value, architecture: !!options.architecture || (s.archOpen.value && intent !== 'architecture' && !!s.arch.value?.nodes?.length), display }) })
       const result = await consumeAgentStream(response, event => {
         if (event.type === 'started' && event.run_id) current.runId = event.run_id
         if (event.type === 'page_check') s.runPageCheck(event)   // AI 要真跑一下页面：不等它跑完，接着收别的事件
@@ -96,7 +104,7 @@ export function useAgentRun(s) {
       if (e.code === 'stopped') {   // 自己点的停止、而且还没改动：不是失败，原需求放回输入框
         current.status = 'stopped'; current.error = { code: 'stopped', message: '已停止，当前文件没有改动' }
         current.steps.filter(st => st.state === 'running').forEach(st => { st.state = 'done' })
-        if (!input.value.trim()) input.value = message
+        putBack()
         if (!reference.value && sentRef) reference.value = sentRef
         status.value = '已停止 · 页面没有改动'; return
       }
@@ -115,12 +123,12 @@ export function useAgentRun(s) {
         followOptions = { intent: 'edit', includeAnnotations: false, selection: null, repairPending: e.pending }
         current.error.message = '改完运行检查报错，正在自动修复'
       }
-      if (!input.value.trim()) input.value = message
+      putBack()
       if (!reference.value && sentRef) reference.value = sentRef
       status.value = current.intent === 'discuss' ? '本次回复未完成 · 可以重试' : '本次修改未保存'
       await s.refresh(false).catch(() => {})
     } finally {
-      current.finished = Date.now(); busy.value = false; pendingUser.value = ''; pendingRef.value = null
+      current.finished = Date.now(); busy.value = false; pendingUser.value = ''; pendingDisplay.value = null; pendingRef.value = null
       await nextTick(); if (chatBox.value) chatBox.value.scrollTop = chatBox.value.scrollHeight
       if (followUp) setTimeout(() => runAgent(followUp, followFeedback, followOptions || { intent: 'edit', includeAnnotations: false, selection: null, selfReview: followRound }), 0)
     }
