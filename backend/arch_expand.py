@@ -94,8 +94,9 @@ def _col_of(html: str, text: str) -> str:
     return ""
 
 
-def _fill(container: dict, html: str, nodes: list[dict], parent_id) -> None:
-    """一个页面（或下钻页、页签、弹窗）里面有什么：筛选、表格、按钮，按钮点了打开哪个弹窗 / 跳到哪个子页面，弹窗里有哪些字段"""
+def _fill(container: dict, html: str, nodes: list[dict], parent_id, extras: dict | None = None) -> None:
+    """一个页面（或下钻页、页签、弹窗）里面有什么：筛选、表格、按钮，按钮点了打开哪个弹窗 / 跳到哪个子页面，弹窗里有哪些字段。
+    extras：这一层上点了没弹出东西的按钮（导出、停用、只弹提示、跳到别的页），也记成按钮"""
     kids = container["children"]
     labels, cols, shows = form_fields(html), _cols(html), _dts(html)
     names = {parse_field(f)["name"] for f in labels}
@@ -118,6 +119,9 @@ def _fill(container: dict, html: str, nodes: list[dict], parent_id) -> None:
         title = str(n.get("title") or label)[:40]
         if n.get("kind") != "subpage" and not raw.startswith("页签"):
             title = _layer_title(n.get("html") or "", title)
+        # 每一行点开的详情标题带着那一行的名字（「1#光伏逆变器 · 设备详情」）：只留后半截
+        if row and " · " in title:
+            title = title.rsplit(" · ", 1)[-1].strip() or title
         # 表格里点的是一条数据（工单号 BX-202610-011）：按钮叫那一列的名字，每一行点开的都是同一个详情，只记一次
         col = _col_of(html, label) if row else ""
         if row and col and col not in SKIP_COLS and col != label:
@@ -125,7 +129,7 @@ def _fill(container: dict, html: str, nodes: list[dict], parent_id) -> None:
         if raw.startswith("页签"):
             target = {"type": "tab", "name": label, "children": []}
             kids.append(target)
-            _fill(target, n.get("html") or "", nodes, n.get("id"))
+            _fill(target, n.get("html") or "", nodes, n.get("id"), extras)
             continue
         kind = "drill" if n.get("kind") == "subpage" else "drawer" if "drawer" in str(n.get("layerSel", "")).lower() else "modal"
         # 点表格里的编号进去的详情页，标题就是那条数据的编号（TMP-BUILD-2026-V2）：换成「xx详情」，编号放进入口
@@ -151,7 +155,45 @@ def _fill(container: dict, html: str, nodes: list[dict], parent_id) -> None:
         if kind == "drill":
             target.update(entry=f"点「{shown}」" if shown == label else f"点列表里的编号（如 {shown}）", back="返回" + container["name"])
         kids.append(target)
-        _fill(target, n.get("html") or "", nodes, n.get("id"))
+        _fill(target, n.get("html") or "", nodes, n.get("id"), extras)
+    for raw, action, target_name in (extras or {}).get(parent_id, []):
+        row = raw.startswith("表格行")
+        label = re.sub(r"^(表格行|页签)\s*·\s*", "", raw).strip()[:30]
+        if not label or any(b[0] == label for b in seen_buttons):
+            continue
+        seen_buttons.add((label, target_name))
+        button = {"type": "button", "name": label, "action": action, "children": []}
+        if target_name:
+            button["target"] = target_name
+        (table["children"] if (row and table) else kids).append(button)
+
+
+# 点了没弹出东西的按钮：展开时没点（导出、停用这类有风险的）、点了只弹提示、点了跳到别的页面
+SKIP_ACTION = {"commit": ("confirm", "二次确认后执行"), "noise": ("run", "")}
+NOISE_SKIP = re.compile(r"^(查询|重置|搜索|刷新|清空|翻页|上一页|下一页)$")
+
+
+def _extras(result: dict, titles: dict) -> dict:
+    """{parent: [(按钮文字, 点了怎样, 目标)]}。只知道名字、不知道在哪一层的，看它的字出现在哪个弹窗里，都不在就算页面上的"""
+    out: dict = {}
+    nodes = result.get("nodes") or []
+
+    def where(label: str):
+        text = re.sub(r"^表格行\s*·\s*", "", label)
+        hit = next((n for n in nodes if text and text in (n.get("html") or "")), None)
+        return hit.get("id") if hit else None
+    for j in result.get("jumps") or []:
+        out.setdefault(j.get("parent"), []).append((j.get("label", ""), "jump", titles.get(j.get("hash"), j.get("title") or "")))
+    for d in result.get("dead") or []:
+        out.setdefault(d.get("parent"), []).append((d.get("label", ""), "run", "点了还没反应"))
+    cov = result.get("coverage") or {}
+    for label in (cov.get("none") or {}).get("labels") or []:
+        out.setdefault(where(label), []).append((label, "run", ""))
+    for reason, (action, target) in SKIP_ACTION.items():
+        for label in ((cov.get("skipped") or {}).get(reason) or {}).get("labels") or []:
+            if not NOISE_SKIP.match(label):
+                out.setdefault(None, []).append((label, action, target))
+    return out
 
 
 def expand_tree(project_id: str, page_id: str) -> list[dict]:
@@ -168,12 +210,13 @@ def expand_tree(project_id: str, page_id: str) -> list[dict]:
     first = next((e.get("result") or {} for e in entries.values() if (e.get("result") or {}).get("page")), {})
     groups = _nav_groups(first.get("page") or "", titles)
     pages, tabs_of = {}, {}
+    by_hash = {r.get("hash"): r.get("title") or r.get("hash") for r in routes}
     for r in routes:
         result = (entries.get(r.get("hash")) or {}).get("result") or {}
         node = {"type": "page", "name": r.get("title") or r.get("hash"), "route": str(r.get("hash", "")).lstrip("#"), "children": []}
         html = _main(result.get("page") or "")
         tabs_of[node["name"]] = _texts(html, r'class="[^"]*(?:tab|hub-tab)[^"]*"[^>]*>(.*?)</', 12)
-        _fill(node, html, result.get("nodes") or [], None)
+        _fill(node, html, result.get("nodes") or [], None, _extras(result, by_hash))
         pages[node["name"]] = node
     # 页签：A 页上的页签里有 B 页的名字 → B 是 A 的一个页签。A 自己的内容放进它当前那个页签
     nested = set()
@@ -306,9 +349,14 @@ def replay(tree: list[dict], ops: list[dict]) -> list[dict]:
     return tree
 
 
+def _key(name: str) -> str:
+    """比名字用：「1#光伏逆变器 · 设备详情」这种带着那一行名字的只看后半截，括号补充、末尾的弹窗 / 抽屉不算"""
+    return loose_name(str(name).rsplit(" · ", 1)[-1])
+
+
 def _match(items: list[dict], node: dict, alias: dict | None = None) -> dict | None:
     names = lambda o: {o["name"], (alias or {}).get(o.get("id"), o["name"])}   # noqa: E731
-    same = [o for o in items if node["name"] in names(o)] or [o for o in items if loose_name(node["name"]) in {loose_name(x) for x in names(o)}]
+    same = [o for o in items if node["name"] in names(o)] or [o for o in items if _key(node["name"]) in {_key(x) for x in names(o)}]
     return next((o for o in same if o["type"] == node["type"]), same[0] if same else None)
 
 

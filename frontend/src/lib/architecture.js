@@ -195,8 +195,10 @@ export function protoState(node) {
   return node?.seen ? 'gone' : 'planned'
 }
 // 还有哪些没同步到原型：画布和上次从原型读的样子（base）比，只看原型里看得出来的；原型里已经没有的那些不算（那是原型那边删的）
+// 加出来还没起名、下面也是空的（「新模块」「新菜单页」）也不算：多半是手滑按回车多加的，同步过去只会让 AI 犯糊涂
+export const unnamed = node => node?.name === '新' + (NODE_TYPES[node?.type]?.label || '') && !(node.children || []).length && !(node.fields || []).length
 export function pendingChanges(base, nodes) {
-  return diffNodes(base || [], nodes || [], VISIBLE).filter(c => !(c.kind === 'add' && protoState(c.node) === 'gone'))
+  return diffNodes(base || [], nodes || [], VISIBLE).filter(c => !(c.kind === 'add' && (protoState(c.node) === 'gone' || unnamed(c.node))))
 }
 // 给人看的一行：「新增菜单页「测试」」「改了「派单」的字段」
 export function changeLabel(c) {

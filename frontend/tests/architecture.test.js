@@ -133,5 +133,7 @@ test('还没同步到原型的：只看原型里看得出来的，原型里删�
   assert.deepEqual(again, [])
   const base2 = clone(a.nodes); modal.fields = ['点位名称*']
   assert.match(syncMessage(pendingChanges(base2, a.nodes)), /字段去掉 备注/)
-  assert.ok(pendingChanges(null, emptyArchitecture('x').nodes).length === 1)   // 从零编的：整棵都算
+  const fresh = emptyArchitecture('x'); fresh.nodes[0].name = '设备管理'
+  assert.ok(pendingChanges(null, fresh.nodes).length === 1)                  // 从零编的：整棵都算
+  assert.deepEqual(pendingChanges(null, emptyArchitecture('x').nodes), [])  // 还没起名的「新模块」不算
 })

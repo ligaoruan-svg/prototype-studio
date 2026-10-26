@@ -12,6 +12,7 @@ from . import architecture, storage
 from .arch_text import from_outline, keep_ids, to_outline
 from .deepseek_client import DeepSeekError, chat
 from .errors import WorkError
+from .source_map import code_map
 
 MAX_TOKENS = 24_000
 
@@ -40,7 +41,43 @@ SYSTEM = """你是产品架构师，帮产品经理改原型的页面树（只�
 
 类型只能用：模块 菜单页 页签 下钻页 区块 表格 按钮 弹窗 抽屉 向导 功能。
 字段：必填加 *；自动带出、不用填的加 🔒；控件写在最后的括号里，选项用 / 分开。控件有：文本、多行、下拉、多选、单选、勾选、日期、日期时间、日期范围、时间、数字、金额、手机号、上传、图片、开关、选人、级联、提示文字。普通文本框不用写。
-查看用抽屉，新增 / 编辑用弹窗，多步用向导；行里的按钮缩进在表格下面；按状态出现的按钮写「出现：」。"""
+查看用抽屉，新增 / 编辑用弹窗，多步用向导；行里的按钮缩进在表格下面；按状态出现的按钮写「出现：」。
+
+后面可能附上「原型代码里的线索」（代码地图 + 每一页代码里出现的文字）。用户让你「同步 / 补全 / 对照原型」时，照原型里实际有的菜单、按钮、弹窗、抽屉、字段把页面树补全；
+原型里没有的不要编。别的时候它只是参考。"""
+
+DIGEST_MAX = 14_000
+
+
+def _phrases(text: str, limit: int = 80) -> list[str]:
+    """一段代码里引号中的中文短语（按钮文字、弹窗标题、字段名、提示），去重按出现顺序"""
+    out: list[str] = []
+    for m in re.finditer(r"['\"`]([^'\"`\n<>{}]{1,30})['\"`]", text):
+        t = m.group(1).strip()
+        if re.search(r"[一-鿿]", t) and t not in out:
+            out.append(t)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def prototype_digest(source: str) -> str:
+    """原型代码的线索：代码地图，加上每一页（Pages{…} 里的每一项）代码里的中文短语。不塞整份源码"""
+    if len(source or "") < 400:
+        return ""
+    cmap = code_map(source)
+    lines = source.split("\n")
+    parts = ["代码地图：\n" + cmap[:6000]]
+    m = re.search(r"L(\d+)-(\d+) Pages\{([^}]*)\}", cmap)
+    marks = sorted((int(n), name) for name, n in re.findall(r"(\w+) L(\d+)", m.group(3))) if m else []
+    if marks:
+        ends = [n for n, _ in marks[1:]] + [int(m.group(2)) + 1]
+        parts.append("每一页代码里的文字：")
+        for (start, name), end in zip(marks, ends):
+            parts.append(f"- {name}：" + "、".join(_phrases("\n".join(lines[start - 1:end - 1]))))
+    else:
+        parts.append("代码里的文字：" + "、".join(_phrases(source, 400)))
+    return "\n".join(parts)[:DIGEST_MAX]
 
 
 def _split(reply: str) -> tuple[str, str]:
@@ -57,8 +94,14 @@ def run(project_id: str, page_id: str, message: str, key: str, model: str, base_
     current = architecture.load(project_id) or architecture.empty()
     current["name"] = current.get("name") or storage.load_meta(project_id).get("name", "")
     outline = to_outline({"name": current["name"], "nodes": current["nodes"]})
+    try:
+        digest = prototype_digest(storage.read_page(project_id, page_id)) if page_id else ""
+    except (OSError, ValueError, KeyError):
+        digest = ""
+    # 原型线索放前面：同一个原型来回问几次，这一段不变，模型那边能走缓存
+    clue = f"原型代码里的线索：\n<<<\n{digest}\n>>>\n\n" if digest else ""
     messages = [{"role": "system", "content": SYSTEM},
-                {"role": "user", "content": f"现在的页面树：\n<<<\n{outline}\n>>>\n\n这次要改的：{message}"}]
+                {"role": "user", "content": f"{clue}现在的页面树：\n<<<\n{outline}\n>>>\n\n这次要改的：{message}"}]
     on_event({"type": "progress", "label": "AI 正在改页面树"})
     written = [0, 0]
 

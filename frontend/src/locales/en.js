@@ -1406,4 +1406,7 @@ export default {
   "画布上改了，原型里还没有：": "Changed on the canvas, not in the prototype yet:",
   "{0} 处没同步": "{0} not synced",
   "把这几处填进输入框、切到「自动」，你看一眼再发": "Fills these into the message box and switches to Auto — review before sending",
+  "还没起名，不会同步（双击改名）": "Not named yet, won't sync (double-click to rename)",
+  "从原型读一遍：原型改过、画布没跟上时点。画布上没同步的改动不会丢": "Read the prototype again — use it if the canvas fell behind. Unsynced canvas changes are kept",
+  "从原型读一遍": "Read the prototype again",
 }

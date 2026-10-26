@@ -365,3 +365,33 @@ class 架构模式对话(unittest.TestCase):
         with self.assertRaises(Exception):
             self.mod.chat = lambda *a, **k: {'choices': [{'finish_reason': 'length', 'message': {'content': ''}}]}
             self.mod.run(self.pid, 'p', 'x', 'k', 'm', 'u', 8000, events.append, lambda: False)
+
+
+class 从原型读得更全(unittest.TestCase):
+    def test_没弹出东西的按钮也记下(self):
+        result = {"page": "<table><tr><th>设备编号</th><th>状态</th></tr></table>",
+                  "nodes": [{"id": 1, "parent": None, "label": "表格行 · 查看", "title": "1#光伏逆变器 · 设备详情", "layerSel": "#activeDrawer",
+                             "html": '<section role="dialog" aria-label="1#光伏逆变器 · 设备详情"><dt>设备编号</dt></section>'},
+                            {"id": 2, "parent": None, "label": "派单处理", "title": "派单", "layerSel": "#activeModal",
+                             "html": '<section role="dialog" aria-label="派单"><label>处理人</label><button>确认派单</button></section>'}],
+                  "jumps": [{"parent": None, "label": "查看全部告警", "hash": "#live"}],
+                  "dead": [{"parent": None, "label": "导出日报"}],
+                  "coverage": {"none": {"n": 1, "labels": ["确认派单"]}, "skipped": {"commit": {"n": 1, "labels": ["停用"]}, "noise": {"n": 2, "labels": ["查询", "导出清单"]}}}}
+        page = {"type": "page", "name": "设备运行状态", "children": []}
+        D._fill(page, result["page"], result["nodes"], None, D._extras(result, {"#live": "实时告警"}))
+        flat = {n["name"]: n for n, _, _ in D._walk([page])}
+        self.assertIn("设备详情", flat)                                           # 标题只留后半截
+        self.assertEqual((flat["查看全部告警"]["action"], flat["查看全部告警"]["target"]), ("jump", "实时告警"))
+        self.assertEqual(flat["停用"]["action"], "confirm")
+        self.assertEqual(flat["导出清单"]["action"], "run")
+        self.assertNotIn("查询", flat)
+        self.assertIn("确认派单", [c["name"] for c in flat["派单"]["children"]])   # 弹窗里的按钮挂在弹窗下面
+        self.assertEqual(flat["导出日报"]["target"], "点了还没反应")
+
+    def test_架构模式的AI看得到原型代码里的线索(self):
+        from backend.arch_chat import prototype_digest
+        src = "<script>\n" + "\n".join(["const Pages={", "user:()=>Btn({label:'新增账号'})+'角色权限',", "param:()=>'修改参数'+'变更原因',", "};"]) + "\n" + "//" * 300 + "\n</script>"
+        text = prototype_digest(src)
+        self.assertIn("代码地图", text)
+        self.assertIn("新增账号", text)
+        self.assertLess(len(text), 15_000)

@@ -4,7 +4,7 @@
 // - 「架构」模式里 AI 只改画布，不碰原型代码；切回「自动」「直接改」时 AI 拿画布当背景做页面
 import { computed, ref, watch } from 'vue'
 import { CHILD_TYPES, NODE_TYPES, addChild, addSibling, clone, diffNodes, emptyArchitecture, findNode, impactOf, moveNode, pendingChanges, removeNode, syncMessage } from '../lib/architecture.js'
-import { expand, expandAll } from '../lib/expandStore.js'
+import { expand, expandAll, isFresh } from '../lib/expandStore.js'
 
 export function useArchitecture(s) {
   const { project, archOpen, boardOpen, boardFocus, view, api, sourceInfo, previewRoute, composerIntent, input } = s
@@ -140,7 +140,8 @@ export function useArchitecture(s) {
     try {
       const bundle = await s.post(`${url()}/refresh`, { page_id: s.pageId.value })
       if (bundle.refreshed) { apply(bundle); if (archSelected.value && !selectedItem()) archSelected.value = null }
-      else if (bundle.reason === 'no_expand' && !expand.batch) expandAll(previewRoute.value || '')
+      // 原型改过、还有页面没跟着展开（或者从来没展开过）：把它们点一遍，展开完这里自动再读。不花 token
+      if (!expand.batch && (bundle.reason === 'no_expand' || expand.routes.some(r => !isFresh(r.hash)))) expandAll(previewRoute.value || '')
     } catch (e) { archError.value = e.message } finally { if (archBusy.value === 'read') archBusy.value = '' }
   }
   // AI 在原型里改完，展开图在后台同步；它一变就再读一遍（停手 1.5 秒后，免得一页一页地闪）

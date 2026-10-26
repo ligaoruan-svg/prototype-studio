@@ -3,7 +3,7 @@
 import { computed, inject, nextTick, ref, watch } from 'vue'
 import { ChevronDown, ChevronRight, ChevronUp, Plus, Sparkles, Trash2 } from 'lucide-vue-next'
 import ArchNode from './ArchNode.vue'
-import { ACTIONS, CHILD_TYPES, LAYER_TYPES, NODE_TYPES, countBelow, protoState } from '../../lib/architecture.js'
+import { ACTIONS, CHILD_TYPES, LAYER_TYPES, NODE_TYPES, countBelow, protoState, unnamed } from '../../lib/architecture.js'
 import ArchFields from './ArchFields.vue'
 
 const props = defineProps({ node: Object, depth: { type: Number, default: 0 }, siblings: { type: Array, default: () => [] }, parentState: { type: String, default: 'in' } })
@@ -53,7 +53,8 @@ function addChild(event) {
     <div class="an-card" :class="[node.type, state, { selected, hit, leaf: !kids.length, form: hasForm, flash: archFlash.has(node.id), changed, warn: warn.some(w => w.level === 'error') }]" @click.stop="pick" @dblclick.stop="archRenaming = node.id">
       <div class="an-head"><span class="an-type">{{ $t(NODE_TYPES[node.type].short) }}</span><input v-if="renaming" ref="nameInput" class="an-rename" :value="node.name" :aria-label="$t('名称')" @click.stop @keydown.enter.prevent="commitName" @keydown.esc.stop.prevent="cancelName" @blur="commitName"><b v-else>{{ node.name }}</b>
         <button v-if="kids.length" class="an-fold" :title="open ? $t('收起') : $t('展开')" :aria-label="open ? $t('收起') : $t('展开')" @click.stop="s.openNode(node, depth, siblings)"><ChevronDown v-if="open" :size="13" /><ChevronRight v-else :size="13" /></button></div>
-      <p v-if="tagged" class="an-proto" @click.stop><span>{{ state === 'planned' ? $t('原型里还没有') : $t('原型里已经没有') }}</span>
+      <p v-if="tagged && unnamed(node)" class="an-proto"><span>{{ $t('还没起名，不会同步（双击改名）') }}</span></p>
+      <p v-else-if="tagged" class="an-proto" @click.stop><span>{{ state === 'planned' ? $t('原型里还没有') : $t('原型里已经没有') }}</span>
         <button v-if="state === 'planned'" class="quiet" :title="$t('把话填进输入框、切到「自动」，你看一眼再发')" @click="s.makeInPrototype(node)"><Sparkles :size="11" />{{ $t('让 AI 做出来') }}</button></p>
       <p v-if="archShowDesc && node.desc" class="an-desc">{{ node.desc }}</p>
       <p v-if="node.type === 'drill' && archShowDesc && node.entry" class="an-entry">{{ $t('从哪进：{0}', [node.entry]) }}</p>

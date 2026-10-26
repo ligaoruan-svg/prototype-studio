@@ -4,7 +4,7 @@
 // 画布上规划了、原型里还没有的卡片是虚线，点「让 AI 做出来」把话填进输入框；
 // 画布上改了的（加、删、改名、改字段）右下角记着几处，点「同步到原型」把这几处填进输入框交给 AI
 import { computed, inject, ref } from 'vue'
-import { ArrowUpRight, ChevronDown, ChevronUp, LoaderCircle, Undo2, X } from 'lucide-vue-next'
+import { ArrowUpRight, ChevronDown, ChevronUp, LoaderCircle, RefreshCw, Undo2, X } from 'lucide-vue-next'
 import ArchNode from './ArchNode.vue'
 import ArchDetail from './ArchDetail.vue'
 import { NODE_TYPES, changeLabel } from '../../lib/architecture.js'
@@ -22,6 +22,7 @@ function root() { s.archSelect('root', 'root') }
   <section class="arch-board" :aria-label="$t('架构')" @click="s.archSelect(null)">
     <div class="arch-float" @click.stop>
       <span v-if="reading" class="arch-reading"><LoaderCircle :size="13" class="spin" />{{ $t('正在从原型读页面…') }}</span>
+      <button v-else class="icon-button" :title="$t('从原型读一遍：原型改过、画布没跟上时点。画布上没同步的改动不会丢')" :aria-label="$t('从原型读一遍')" @click="s.readPrototype()"><RefreshCw :size="14" /></button>
       <button class="icon-button" :disabled="!archHistory.length" :title="$t('撤销')" :aria-label="$t('撤销')" @click="s.undoArch()"><Undo2 :size="15" /></button>
       <button class="icon-button" :title="$t('回到预览 · Esc')" :aria-label="$t('回到预览')" @click="s.showPreview()"><X :size="16" /></button>
     </div>
