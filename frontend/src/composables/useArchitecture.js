@@ -69,7 +69,9 @@ export function useArchitecture(s) {
       .finally(() => { if (archBusy.value === 'saving') archBusy.value = '' })
     return saving
   }
-  function scheduleSave() { clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 500) }
+  // localRev：画布上每改一下就加一。从原型读回来时要是这期间你又改过，就不拿读回来的盖掉（不然刚改的会丢），过一会儿再读
+  let localRev = 0
+  function scheduleSave() { localRev++; clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 500) }
   // 改之前留一份底：同样的内容不重复留（打字时只在开始改这一格时留一次）
   function snapshot() {
     if (!arch.value) return
@@ -135,10 +137,15 @@ export function useArchitecture(s) {
   async function readPrototype() {
     if (!project.value || archBusy.value === 'read') return
     if (!hasPrototype()) { if (!arch.value) arch.value = { ...emptyArchitecture(project.value.name || ''), nodes: [] }; return }
+    // 正在改名：等你改完再读
+    if (archRenaming.value) { clearTimeout(readTimer); readTimer = setTimeout(readPrototype, 1500); return }
     await saveNow()
+    const rev = localRev
     archBusy.value ||= 'read'
     try {
       const bundle = await s.post(`${url()}/refresh`, { page_id: s.pageId.value })
+      // 读的这一会儿你又改了：这份读回来的不算（它没有你刚改的），存好再读一次
+      if (rev !== localRev) { clearTimeout(readTimer); readTimer = setTimeout(readPrototype, 1500); return }
       if (bundle.refreshed) { apply(bundle); if (archSelected.value && !selectedItem()) archSelected.value = null }
       // 原型改过、还有页面没跟着展开（或者从来没展开过）：把它们点一遍，展开完这里自动再读。不花 token
       if (!expand.batch && (bundle.reason === 'no_expand' || expand.routes.some(r => !isFresh(r.hash)))) expandAll(previewRoute.value || '')

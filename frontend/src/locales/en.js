@@ -1409,4 +1409,5 @@ export default {
   "还没起名，不会同步（双击改名）": "Not named yet, won't sync (double-click to rename)",
   "从原型读一遍：原型改过、画布没跟上时点。画布上没同步的改动不会丢": "Read the prototype again — use it if the canvas fell behind. Unsynced canvas changes are kept",
   "从原型读一遍": "Read the prototype again",
+  "和原型一致": "Matches the prototype",
 }

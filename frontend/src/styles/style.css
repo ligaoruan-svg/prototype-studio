@@ -614,7 +614,7 @@ input[type=color]::-webkit-color-swatch { border: none; border-radius: 2px; }
 /* 大纲 */
 @media (max-width: 1200px) { .ao-wrap { grid-template-columns: 1fr; } }
 .arch-body { flex: 1; min-height: 0; display: flex; }
-.arch-main { flex: 1; min-width: 0; overflow: auto; padding: 52px 20px 80px; }   /* 上面留出浮着的撤销 / 关闭，下面留出「同步到原型」 */
+.arch-main { flex: 1; min-width: 0; overflow: auto; padding: 18px 20px 28px; }
 .arch-side { width: 330px; flex-shrink: 0; border-left: 1px solid var(--line); background: #fff; overflow: auto; }
 .arch-reading { display: flex; align-items: center; gap: 8px; color: var(--ink); }
 .arch-undo { position: absolute; left: 50%; bottom: 76px; transform: translateX(-50%); z-index: 15; display: flex; align-items: center; gap: 16px; padding: 9px 14px; border-radius: 10px; background: #2b2420; color: #fff; font-size: 12.5px; box-shadow: 0 8px 24px #0003; }
@@ -624,22 +624,22 @@ input[type=color]::-webkit-color-swatch { border: none; border-radius: 2px; }
 .arch-add-first button:hover { border-color: var(--primary); color: var(--primary); }
 .arch-add-first span { flex-basis: 100%; font-size: 12px; color: var(--muted); }
 /* 只有一块画布：右上角浮着撤销、关闭，读原型时多一行进度 */
-.arch-float { position: absolute; top: 10px; right: 12px; z-index: 12; display: flex; align-items: center; gap: 4px; padding: 3px; border: 1px solid var(--line); border-radius: 10px; background: #fffffff0; box-shadow: 0 2px 8px #3b2a2112; }
-.arch-board:has(.arch-side) .arch-float { right: 352px; }
-.arch-float .arch-reading { display: inline-flex; align-items: center; gap: 5px; padding: 0 8px; font-size: 12px; color: var(--muted); }
-.arch-view { position: absolute; top: 10px; left: 12px; z-index: 12; display: flex; align-items: center; gap: 10px; padding: 3px 10px 3px 3px; border: 1px solid var(--line); border-radius: 10px; background: #fffffff0; box-shadow: 0 2px 8px #3b2a2112; }
+.arch-head { flex: none; display: flex; align-items: center; gap: 12px; min-height: 46px; padding: 6px 10px 6px 12px; border-bottom: 1px solid var(--line); background: #fff; }
+.arch-head-tools { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+.arch-head .arch-reading { display: inline-flex; align-items: center; gap: 5px; padding: 0 8px; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.arch-foot { position: relative; flex: none; display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 6px 12px; border-top: 1px solid var(--line); background: #fff; }
+.arch-foot .arch-legend { flex: 1; min-width: 0; margin: 0; overflow: hidden; flex-wrap: nowrap; }
+.arch-sync { display: flex; align-items: center; gap: 6px; flex: none; }
+.arch-sync > .quiet { gap: 3px; height: 30px; padding: 0 8px; font-size: 12.5px; color: #9c4325; }
+.arch-sync > .primary { gap: 4px; height: 32px; padding: 0 14px; }
+.arch-synced { display: inline-flex; align-items: center; gap: 4px; flex: none; font-size: 12px; color: #246e48; }
+.arch-sync-list { position: absolute; right: 12px; bottom: calc(100% + 6px); z-index: 15; display: flex; flex-direction: column; align-items: stretch; gap: 3px; width: 320px; max-height: 40vh; overflow: auto; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: #fff; box-shadow: 0 4px 16px #3b2a211f; }
 .arch-level { display: flex; align-items: center; gap: 2px; padding: 2px; border-radius: 8px; background: #efede6; font-size: 12px; }
 .arch-level span { padding: 0 6px; color: var(--muted); white-space: nowrap; }
 .arch-level button { height: 24px; padding: 0 8px; border-radius: 6px; color: #7d776a; font-size: 12px; }
 .arch-level button.active { background: #fff; color: var(--primary); font-weight: 600; box-shadow: 0 1px 2px #3b2a2118; }
 .arch-check { display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
-@container (max-width: 700px) { .arch-level > span, .arch-check { display: none; } }
-.arch-sync { position: absolute; right: 14px; bottom: 14px; z-index: 12; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
-.arch-board:has(.arch-side) .arch-sync { right: 344px; }
-.arch-sync-bar { display: flex; align-items: center; gap: 6px; padding: 4px; border: 1px solid var(--line); border-radius: 12px; background: #fff; box-shadow: 0 4px 16px #3b2a211f; }
-.arch-sync-bar .quiet { gap: 3px; height: 30px; padding: 0 8px; font-size: 12.5px; color: #9c4325; }
-.arch-sync-bar .primary { gap: 4px; height: 32px; padding: 0 14px; }
-.arch-sync-list { display: flex; flex-direction: column; align-items: stretch; gap: 3px; width: 300px; max-height: 40vh; overflow: auto; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: #fff; box-shadow: 0 4px 16px #3b2a211f; }
+@container (max-width: 760px) { .arch-level > span, .arch-check, .arch-foot .arch-legend { display: none; } .arch-foot { justify-content: flex-end; } }
 .arch-sync-list b { font-size: 12px; color: var(--muted); font-weight: 600; margin-bottom: 2px; }
 .arch-sync-list button { justify-content: flex-start; min-height: 26px; padding: 2px 8px; border-radius: 7px; font-size: 12px; text-align: left; white-space: normal; background: #fdf2ea; color: #9c4325; }
 .arch-sync-list button.add { background: #eaf6ef; color: #246e48; }

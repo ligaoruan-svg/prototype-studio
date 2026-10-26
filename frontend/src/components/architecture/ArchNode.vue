@@ -28,7 +28,11 @@ function pick() {
 const renaming = computed(() => archRenaming.value === props.node.id)
 const nameInput = ref(null)
 watch(renaming, on => { if (on) nextTick(() => { nameInput.value?.focus(); nameInput.value?.select() }) }, { immediate: true })
-function commitName(event) { if (renaming.value) s.renameNode(props.node.id, event.target.value) }
+// 失焦就算改完了；但焦点是被后台展开的副本（iframe）抢走的不算，拉回来接着改
+function commitName(event) {
+  if (event.type === 'blur' && document.activeElement?.tagName === 'IFRAME') { nextTick(() => nameInput.value?.focus()); return }
+  if (renaming.value) s.renameNode(props.node.id, event.target.value)
+}
 function cancelName() { archRenaming.value = '' }
 const selected = computed(() => archSelected.value?.kind === 'node' && archSelected.value.id === props.node.id)
 const kids = computed(() => props.node.children || [])

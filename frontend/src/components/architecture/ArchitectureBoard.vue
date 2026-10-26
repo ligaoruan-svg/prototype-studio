@@ -4,7 +4,7 @@
 // 画布上规划了、原型里还没有的卡片是虚线，点「让 AI 做出来」把话填进输入框；
 // 画布上改了的（加、删、改名、改字段）右下角记着几处，点「同步到原型」把这几处填进输入框交给 AI
 import { computed, inject, ref } from 'vue'
-import { ArrowUpRight, ChevronDown, ChevronUp, LoaderCircle, RefreshCw, Undo2, X } from 'lucide-vue-next'
+import { ArrowUpRight, Check, ChevronDown, ChevronUp, LoaderCircle, RefreshCw, Undo2, X } from 'lucide-vue-next'
 import ArchNode from './ArchNode.vue'
 import ArchDetail from './ArchDetail.vue'
 import { NODE_TYPES, changeLabel } from '../../lib/architecture.js'
@@ -22,17 +22,18 @@ function root() { s.archSelect('root', 'root') }
 
 <template>
   <section class="arch-board" :aria-label="$t('架构')" @click="s.archSelect(null)">
-    <div class="arch-view" @click.stop>
+    <!-- 上面一条固定的：展开到哪一层、显示介绍 / 字段；右边从原型读、撤销、关闭 -->
+    <header class="arch-head" @click.stop>
       <div class="arch-level" role="group" :aria-label="$t('展开到')"><span>{{ $t('展开到') }}</span><button v-for="l in levels" :key="l.v" :class="{ active: s.archLevel.value === l.v }" @click="s.setLevel(l.v)">{{ $t(l.label) }}</button></div>
       <label class="arch-check"><input v-model="archShowDesc" type="checkbox">{{ $t('显示介绍') }}</label>
       <label class="arch-check"><input v-model="s.archShowFields.value" type="checkbox">{{ $t('展开字段') }}</label>
-    </div>
-    <div class="arch-float" @click.stop>
-      <span v-if="reading" class="arch-reading"><LoaderCircle :size="13" class="spin" />{{ $t('正在从原型读页面…') }}</span>
-      <button v-else class="icon-button" :title="$t('从原型读一遍：原型改过、画布没跟上时点。画布上没同步的改动不会丢')" :aria-label="$t('从原型读一遍')" @click="s.readPrototype()"><RefreshCw :size="14" /></button>
-      <button class="icon-button" :disabled="!archHistory.length" :title="$t('撤销')" :aria-label="$t('撤销')" @click="s.undoArch()"><Undo2 :size="15" /></button>
-      <button class="icon-button" :title="$t('回到预览 · Esc')" :aria-label="$t('回到预览')" @click="s.showPreview()"><X :size="16" /></button>
-    </div>
+      <div class="arch-head-tools">
+        <span v-if="reading" class="arch-reading"><LoaderCircle :size="13" class="spin" />{{ $t('正在从原型读页面…') }}</span>
+        <button v-else class="icon-button" :title="$t('从原型读一遍：原型改过、画布没跟上时点。画布上没同步的改动不会丢')" :aria-label="$t('从原型读一遍')" @click="s.readPrototype()"><RefreshCw :size="14" /></button>
+        <button class="icon-button" :disabled="!archHistory.length" :title="$t('撤销')" :aria-label="$t('撤销')" @click="s.undoArch()"><Undo2 :size="15" /></button>
+        <button class="icon-button" :title="$t('回到预览 · Esc')" :aria-label="$t('回到预览')" @click="s.showPreview()"><X :size="16" /></button>
+      </div>
+    </header>
     <div v-if="archError" class="arch-error" role="alert" @click.stop><span>{{ $t(archError) }}</span><button class="icon-button" :aria-label="$t('关闭')" @click="archError = ''"><X :size="13" /></button></div>
 
     <div class="arch-body">
@@ -49,18 +50,21 @@ function root() { s.archSelect('root', 'root') }
             <div v-else class="arch-add-first" @click.stop><button @click="s.archAdd('', 'module')">{{ $t('+ 加一个模块') }}</button><button @click="s.archAdd('', 'page')">{{ $t('+ 加一个菜单页') }}</button>
               <span>{{ $t('或者在左边「架构」模式里说要做什么，AI 帮你把页面树画出来') }}</span></div>
           </div>
-          <p class="arch-legend"><span v-for="(v, k) in NODE_TYPES" :key="k" class="an-legend" :class="k">{{ $t(v.label) }}</span><span class="an-legend planned">{{ $t('虚线：原型里还没有') }}</span></p>
         </div>
       </div>
       <ArchDetail v-if="archSelected" class="arch-side" @click.stop />
     </div>
 
-    <!-- 还没同步到原型的：右下角记着，点开看是哪几处 -->
-    <div v-if="changes.length" class="arch-sync" @click.stop>
-      <div v-if="listOpen" class="arch-sync-list"><b>{{ $t('画布上改了，原型里还没有：') }}</b><button v-for="c in changes" :key="c.kind + c.id" :class="c.kind" @click="pick(c)">{{ c.label }}</button></div>
-      <div class="arch-sync-bar"><button class="quiet" :aria-expanded="listOpen" @click="listOpen = !listOpen"><ChevronDown v-if="listOpen" :size="13" /><ChevronUp v-else :size="13" />{{ $t('{0} 处没同步', [changes.length]) }}</button>
-        <button class="primary" :disabled="s.locked.value" :title="$t('把这几处填进输入框、切到「自动」，你看一眼再发')" @click="listOpen = false; s.syncToPrototype()"><ArrowUpRight :size="14" />{{ $t('同步到原型') }}</button></div>
-    </div>
+    <!-- 下面一条固定的：图例；右边还没同步到原型的几处，点开看清单 -->
+    <footer class="arch-foot" @click.stop>
+      <p class="arch-legend"><span v-for="(v, k) in NODE_TYPES" :key="k" class="an-legend" :class="k">{{ $t(v.label) }}</span><span class="an-legend planned">{{ $t('虚线：原型里还没有') }}</span></p>
+      <div v-if="changes.length" class="arch-sync">
+        <div v-if="listOpen" class="arch-sync-list"><b>{{ $t('画布上改了，原型里还没有：') }}</b><button v-for="c in changes" :key="c.kind + c.id" :class="c.kind" @click="pick(c)">{{ c.label }}</button></div>
+        <button class="quiet" :aria-expanded="listOpen" @click="listOpen = !listOpen"><ChevronDown v-if="listOpen" :size="13" /><ChevronUp v-else :size="13" />{{ $t('{0} 处没同步', [changes.length]) }}</button>
+        <button class="primary" :disabled="s.locked.value" :title="$t('把这几处填进输入框、切到「自动」，你看一眼再发')" @click="listOpen = false; s.syncToPrototype()"><ArrowUpRight :size="14" />{{ $t('同步到原型') }}</button>
+      </div>
+      <span v-else class="arch-synced"><Check :size="13" />{{ $t('和原型一致') }}</span>
+    </footer>
     <div v-if="archRemoved" class="arch-undo" @click.stop><span>{{ archRemoved.impact ? $t('已删除「{0}」（{1}）', [archRemoved.name, archRemoved.impact]) : $t('已删除「{0}」', [archRemoved.name]) }}</span><button @click="s.undoArch()">{{ $t('撤销') }}</button></div>
   </section>
 </template>
