@@ -1,7 +1,7 @@
 <script setup>
 // 页面树里的一个节点和它下面的全部：卡片 + 往右长出去的子节点。选中时卡片上方出现工具条（加子项、加同级、上移下移、删除）
 import { computed, inject, nextTick, ref, watch } from 'vue'
-import { ArrowUpRight, ChevronDown, ChevronRight, ChevronUp, Plus, Trash2 } from 'lucide-vue-next'
+import { ArrowUpRight, Check, ChevronDown, ChevronRight, ChevronUp, Plus, Trash2 } from 'lucide-vue-next'
 import ArchNode from './ArchNode.vue'
 import { ACTIONS, CHILD_TYPES, LAYER_TYPES, NODE_TYPES, changesUnder, countBelow, protoState, unnamed } from '../../lib/architecture.js'
 import ArchFields from './ArchFields.vue'
@@ -75,7 +75,7 @@ function addChild(event) {
         <button :title="$t('上移')" :aria-label="$t('上移')" @click="s.archMove(node.id, -1)"><ChevronUp :size="13" /></button>
         <button :title="$t('下移')" :aria-label="$t('下移')" @click="s.archMove(node.id, 1)"><ChevronDown :size="13" /></button>
         <button class="danger" @click="s.archRemove(node.id)"><Trash2 :size="12" />{{ $t('删除') }}</button>
-        <button class="sync" :title="mine.length ? $t('把这一块的 {0} 处改动附到对话里', [mine.length]) : $t('让 AI 照画布核对原型里的这一块，对不上的照画布改')" @click="s.syncToPrototype(node.id)"><ArrowUpRight :size="12" />{{ $t('同步') }}<b v-if="mine.length">{{ mine.length }}</b></button>
+        <button class="sync" :class="{ attached: s.archAttached(node.id) }" :title="s.archAttached(node.id) ? $t('已经附到对话里了；可以再点别的卡片一起同步') : mine.length ? $t('把这一块的 {0} 处改动附到对话里', [mine.length]) : $t('让 AI 照画布核对原型里的这一块，对不上的照画布改')" @click="s.syncToPrototype(node.id)"><Check v-if="s.archAttached(node.id)" :size="12" /><ArrowUpRight v-else :size="12" />{{ s.archAttached(node.id) ? $t('已附上') : $t('同步') }}<b v-if="mine.length && !s.archAttached(node.id)">{{ mine.length }}</b></button>
       </div>
     </div>
     <div v-if="kids.length && open" class="an-kids"><div v-for="child in kids" :key="child.id" class="an-kid"><ArchNode :node="child" :depth="depth + 1" :siblings="kids" :parent-state="state" /></div></div>

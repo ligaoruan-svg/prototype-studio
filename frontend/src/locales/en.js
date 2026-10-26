@@ -1396,6 +1396,8 @@ export default {
   "让 AI 照画布核对整个原型，对不上的照画布改": "Ask AI to check the whole prototype against the canvas and fix differences",
   "把这一块的 {0} 处改动附到对话里": "Attach this block's {0} changes to the chat",
   "让 AI 照画布核对原型里的这一块，对不上的照画布改": "Ask AI to check this block of the prototype against the canvas and fix differences",
+  "已经附到对话里了；可以再点别的卡片一起同步": "Already attached to the chat — click other cards to sync them together",
+  "已附上": "Attached",
   "把话填进输入框、切到「自动」，你看一眼再发": "Fills the message box and switches to Auto — review it before sending",
   "让 AI 做出来": "Have AI build it",
   "正在从原型读页面…": "Reading the prototype…",

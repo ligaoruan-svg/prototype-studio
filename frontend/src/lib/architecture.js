@@ -266,3 +266,36 @@ export function checkMessage(arch, node = null) {
   const label = node.type === 'module' && !(node.children || []).length ? '页' : NODE_TYPES[node.type]?.label || '页'
   return `按架构画布核对原型里的「${path}」这一${label}，让它和画布一致，别的页面不要动。画布上是这样：\n` + describeTree(node) + tail
 }
+
+// ---------- 同步卡片：可以点好几块，合成一张 ----------
+// ids 里是点过「同步」的节点；'' 是底部「同步到原型」（整个）。已经被上层包含的不重复算
+export function syncIds(arch, ids, id = '') {
+  if (!id) return ['']
+  if (ids.includes('')) return ['']
+  const under = (a, b) => { const hit = findNode(arch, b); return !!hit && (a === b || [...walk(hit.node.children)].some(x => x.node.id === a)) }
+  if (ids.some(x => under(id, x))) return ids
+  return [...ids.filter(x => !under(x, id)), id]
+}
+export function syncAttachFor(arch, changes, ids) {
+  if (!arch || !ids.length) return null
+  if (ids.includes('')) return {
+    ids: [''], title: '同步到原型',
+    items: changes.length ? changes.map(changeLabel) : ['照画布核对整个原型，对不上的照画布改'],
+    message: changes.length ? syncMessage(changes) : checkMessage(arch),
+  }
+  const nodes = ids.map(x => findNode(arch, x)?.node).filter(Boolean)
+  if (!nodes.length) return null
+  const seen = new Set(), list = [], quiet = []
+  for (const node of nodes) {
+    const mine = changesUnder(arch, changes, node.id)
+    if (!mine.length) quiet.push(node)
+    for (const c of mine) { const k = c.kind + c.id; if (!seen.has(k)) { seen.add(k); list.push(c) } }
+  }
+  const names = nodes.map(n => `「${n.name}」`)
+  return {
+    ids: nodes.map(n => n.id),
+    title: `同步${names.length > 3 ? names[0] + `等 ${names.length} 块` : names.join('')}到原型`,
+    items: [...list.map(changeLabel), ...quiet.map(n => `核对「${n.name}」，对不上的照画布改`)],
+    message: [list.length ? syncMessage(list) : '', ...quiet.map(n => checkMessage(arch, n))].filter(Boolean).join('\n\n另外：\n'),
+  }
+}

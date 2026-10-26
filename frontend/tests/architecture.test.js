@@ -159,3 +159,25 @@ test('没有记下的改动也能同步：照画布核对这一块 / 整个原�
   assert.match(msg, /页签「路线配置」\n {2}- 抽屉「路线详情」/)
   assert.match(checkMessage(a), /核对整个原型/)
 })
+
+test('同步卡片：点好几块合成一张，上下级不重复', async () => {
+  const { syncIds, syncAttachFor } = await import('../src/lib/architecture.js')
+  const a = emptyArchitecture()
+  const m = addChild(a, '', 'module'); m.name = '报修管理'
+  const p1 = addChild(a, m.id, 'page'); p1.name = '工单列表'
+  const p2 = addChild(a, '', 'page'); p2.name = '维修工'
+  const base = clone(a.nodes)
+  p1.fields = ['备注']
+  const changes = pendingChanges(base, a.nodes)
+  let ids = syncIds(a, [], p1.id)
+  ids = syncIds(a, ids, p2.id)
+  assert.deepEqual(ids, [p1.id, p2.id])
+  const card = syncAttachFor(a, changes, ids)
+  assert.equal(card.title, '同步「工单列表」「维修工」到原型')
+  assert.equal(card.items.length, 2)
+  assert.match(card.message, /另外：/)
+  assert.deepEqual(syncIds(a, ids, m.id), [p2.id, m.id])   // 点上层：下面的并进去
+  assert.deepEqual(syncIds(a, [m.id], p1.id), [m.id])      // 上层已经在：不重复
+  assert.deepEqual(syncIds(a, ids, ''), [''])              // 底部按钮：整个
+  assert.equal(syncAttachFor(a, changes, ['']).title, '同步到原型')
+})

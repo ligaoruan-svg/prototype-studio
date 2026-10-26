@@ -718,6 +718,7 @@ input[type=color]::-webkit-color-swatch { border: none; border-radius: 2px; }
 .an-tools .danger { color: #ffb59a; }
 .an-tools .sync { margin-left: 4px; background: #b8532f; color: #fff; }
 .an-tools .sync:hover { background: #a2461f; }
+.an-tools .sync.attached { background: #f6e7de; color: #9c4325; }
 .an-tools .sync b { margin-left: 2px; padding: 0 4px; border-radius: 6px; background: #ffffff33; font-size: 10.5px; }
 .an-add select { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .an-folded { margin-left: 12px; height: 22px; padding: 0 9px; border-radius: 11px; background: #efe9e3; color: #6b625c; font-size: 11.5px; }

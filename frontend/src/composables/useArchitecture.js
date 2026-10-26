@@ -3,7 +3,7 @@
 // - 没有原型的：画布是空的，自己加，或者在「架构」模式里跟 AI 说
 // - 「架构」模式里 AI 只改画布，不碰原型代码；切回「自动」「直接改」时 AI 拿画布当背景做页面
 import { computed, ref, watch } from 'vue'
-import { CHILD_TYPES, addChild, addSibling, changeLabel, changesUnder, checkMessage, clone, diffNodes, emptyArchitecture, findNode, impactOf, moveNode, pendingChanges, removeNode, syncMessage } from '../lib/architecture.js'
+import { CHILD_TYPES, addChild, addSibling, clone, diffNodes, emptyArchitecture, findNode, impactOf, moveNode, pendingChanges, removeNode, syncAttachFor, syncIds } from '../lib/architecture.js'
 import { expand, expandAll, isFresh } from '../lib/expandStore.js'
 
 export function useArchitecture(s) {
@@ -177,20 +177,16 @@ export function useArchitecture(s) {
   // 同步到原型：挂在输入框上面一张卡片、切到「自动」，你看一眼（可以补一句）再发。AI 改完，原型一变画布自动再读，对上的就不算了
   // 传了 id 就只同步那一块（卡片工具条上的「同步」）
   // 有没有记下的改动都能点：有改动就交代这几处；没有就让 AI 照画布核对这一块（或整个原型），对不上的照画布改
+  // 点了好几块的「同步」就合成一张卡片；画布接着改，卡片里的内容跟着变
   function syncToPrototype(id = '') {
     if (!arch.value) return
-    const list = id ? changesUnder(arch.value, archChanges.value, id) : archChanges.value
-    const node = id ? findNode(arch.value, id)?.node : null
+    const ids = syncIds(arch.value, s.syncAttach.value?.ids || [], id)
     composerIntent.value = 'auto'
-    // 不往输入框里塞一大段：像附件一样挂一张小卡片（标题 + 几处改动），输入框留给你写补充
-    s.syncAttach.value = {
-      title: node ? `同步「${node.name}」到原型` : '同步到原型',
-      items: list.length ? list.map(changeLabel) : [node ? '照画布核对这一块，对不上的照画布改' : '照画布核对整个原型，对不上的照画布改'],
-      message: list.length ? syncMessage(list) : checkMessage(arch.value, node),
-    }
+    s.syncAttach.value = syncAttachFor(arch.value, archChanges.value, ids)
     s.composer?.value?.focus()
   }
-
+  watch(archChanges, () => { const ids = s.syncAttach.value?.ids; if (ids && arch.value) s.syncAttach.value = syncAttachFor(arch.value, archChanges.value, ids) })
+  const archAttached = id => !!s.syncAttach.value?.ids?.includes(id)
 
   // 键盘：选中页面树的节点后，回车加同级、Tab 加子项、Delete 删除、F2 改名；⌘Z 撤销架构里的改动
   function archKey(event) {
@@ -219,7 +215,7 @@ export function useArchitecture(s) {
 
   return { arch, archIssues, archCounts, archMounted, archBusy, archError, archSelected, archShowDesc, archShowFields, archQuery,
     archRemoved, archHistory: history, loadArch, showArch, hideArch, saveArch: saveNow, archSnapshot: snapshot, archDirty: dirty, archChange: change,
-    archLevel, archExpand, nodeOpen, openNode, setLevel, archReading, archFlash, archBase, archChanges, syncToPrototype,
+    archLevel, archExpand, nodeOpen, openNode, setLevel, archReading, archFlash, archBase, archChanges, syncToPrototype, archAttached,
     undoArch, archSelect: select, archSelectedItem: selectedItem, archAdd, archSibling, archMove, archToggle, archRemove,
     readPrototype, afterArchChat, archRenaming, archKey, renameNode,
     cloneArch: () => clone(arch.value) }
