@@ -1,8 +1,8 @@
 <script setup>
 // 架构：只有一块画布，上面是这个原型的页面树。可以手动加、改、删、挪；选中时右边出详情改字段。
 // 改结构也可以在对话的「架构」模式里跟 AI 说（只改画布，不碰原型）。
-// 画布上规划了、原型里还没有的卡片是虚线，点「让 AI 做出来」把话填进输入框；
-// 画布上改了的（加、删、改名、改字段）右下角记着几处，点「同步到原型」把这几处填进输入框交给 AI
+// 画布上规划了、原型里还没有的卡片是虚线；画布上改了的（加、删、改名、改字段）右下角记着几处。
+// 「同步到原型」（底部，整个）和卡片工具条上的「同步」（这一块）一直都能点：有改动交代改动，没有就让 AI 照画布核对
 import { computed, inject, ref } from 'vue'
 import { ArrowUpRight, Check, ChevronDown, ChevronUp, LoaderCircle, RefreshCw, Undo2, X } from 'lucide-vue-next'
 import ArchNode from './ArchNode.vue'
@@ -58,12 +58,12 @@ function root() { s.archSelect('root', 'root') }
     <!-- 下面一条固定的：图例；右边还没同步到原型的几处，点开看清单 -->
     <footer class="arch-foot" @click.stop>
       <p class="arch-legend"><span v-for="(v, k) in NODE_TYPES" :key="k" class="an-legend" :class="k">{{ $t(v.label) }}</span><span class="an-legend planned">{{ $t('虚线：原型里还没有') }}</span></p>
-      <div v-if="changes.length" class="arch-sync">
-        <div v-if="listOpen" class="arch-sync-list"><b>{{ $t('画布上改了，原型里还没有：') }}</b><button v-for="c in changes" :key="c.kind + c.id" :class="c.kind" @click="pick(c)">{{ c.label }}</button></div>
-        <button class="quiet" :aria-expanded="listOpen" @click="listOpen = !listOpen"><ChevronDown v-if="listOpen" :size="13" /><ChevronUp v-else :size="13" />{{ $t('{0} 处没同步', [changes.length]) }}</button>
-        <button class="primary" :disabled="s.locked.value" :title="$t('把这几处填进输入框、切到「自动」，你看一眼再发')" @click="listOpen = false; s.syncToPrototype()"><ArrowUpRight :size="14" />{{ $t('同步到原型') }}</button>
+      <div class="arch-sync">
+        <div v-if="listOpen && changes.length" class="arch-sync-list"><b>{{ $t('画布上改了，原型里还没有：') }}</b><button v-for="c in changes" :key="c.kind + c.id" :class="c.kind" @click="pick(c)">{{ c.label }}</button></div>
+        <button v-if="changes.length" class="quiet" :aria-expanded="listOpen" @click="listOpen = !listOpen"><ChevronDown v-if="listOpen" :size="13" /><ChevronUp v-else :size="13" />{{ $t('{0} 处没同步', [changes.length]) }}</button>
+        <span v-else class="arch-synced"><Check :size="13" />{{ $t('没有记下的改动') }}</span>
+        <button class="primary" :disabled="s.locked.value" :title="changes.length ? $t('把这几处填进输入框、切到「自动」，你看一眼再发') : $t('让 AI 照画布核对整个原型，对不上的照画布改：填进输入框、切到「自动」，你看一眼再发')" @click="listOpen = false; s.syncToPrototype()"><ArrowUpRight :size="14" />{{ $t('同步到原型') }}</button>
       </div>
-      <span v-else class="arch-synced"><Check :size="13" />{{ $t('和原型一致') }}</span>
     </footer>
     <div v-if="archRemoved" class="arch-undo" @click.stop><span>{{ archRemoved.impact ? $t('已删除「{0}」（{1}）', [archRemoved.name, archRemoved.impact]) : $t('已删除「{0}」', [archRemoved.name]) }}</span><button @click="s.undoArch()">{{ $t('撤销') }}</button></div>
   </section>

@@ -14,7 +14,7 @@ const state = computed(() => protoState(props.node))
 const tagged = computed(() => state.value !== 'in' && state.value !== props.parentState)
 // 改过、还没同步到原型的（改名、改字段、挪了位置）：卡片右上角一个小点
 const changed = computed(() => s.archChanges.value.some(c => c.id === props.node.id && c.kind !== 'add'))
-// 这一块（连同下面的）还有几处没同步：工具条上「同步」只同步这几处
+// 这一块（连同下面的）还有几处没同步：工具条上「同步」一直都在，有改动交代改动，没有就照画布核对这一块
 const mine = computed(() => selected.value ? changesUnder(s.arch.value, s.archChanges.value, props.node.id) : [])
 // 弹窗、抽屉、向导、区块、表格：卡片里带上字段 / 列
 const hasForm = computed(() => [...LAYER_TYPES, 'block', 'table'].includes(props.node.type))
@@ -75,7 +75,7 @@ function addChild(event) {
         <button :title="$t('上移')" :aria-label="$t('上移')" @click="s.archMove(node.id, -1)"><ChevronUp :size="13" /></button>
         <button :title="$t('下移')" :aria-label="$t('下移')" @click="s.archMove(node.id, 1)"><ChevronDown :size="13" /></button>
         <button class="danger" @click="s.archRemove(node.id)"><Trash2 :size="12" />{{ $t('删除') }}</button>
-        <button v-if="mine.length" class="sync" :title="$t('只把这一块的改动（{0} 处）填进输入框、切到「自动」，你看一眼再发', [mine.length])" @click="s.syncToPrototype(node.id)"><ArrowUpRight :size="12" />{{ $t('同步') }}<b v-if="mine.length > 1">{{ mine.length }}</b></button>
+        <button class="sync" :title="mine.length ? $t('把这一块的改动（{0} 处）填进输入框、切到「自动」，你看一眼再发', [mine.length]) : $t('让 AI 照画布核对原型里的这一块，对不上的照画布改：填进输入框、切到「自动」，你看一眼再发')" @click="s.syncToPrototype(node.id)"><ArrowUpRight :size="12" />{{ $t('同步') }}<b v-if="mine.length">{{ mine.length }}</b></button>
       </div>
     </div>
     <div v-if="kids.length && open" class="an-kids"><div v-for="child in kids" :key="child.id" class="an-kid"><ArchNode :node="child" :depth="depth + 1" :siblings="kids" :parent-state="state" /></div></div>

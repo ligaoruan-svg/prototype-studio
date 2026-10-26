@@ -1413,4 +1413,8 @@ export default {
   "原型里还没有 · 选中后点「同步」": "Not in the prototype yet · select it and click Sync",
   "只把这一块的改动（{0} 处）填进输入框、切到「自动」，你看一眼再发": "Fills just this block's changes ({0}) into the message box and switches to Auto — review before sending",
   "同步": "Sync",
+  "把这一块的改动（{0} 处）填进输入框、切到「自动」，你看一眼再发": "Fills this block's changes ({0}) into the message box and switches to Auto — review before sending",
+  "让 AI 照画布核对原型里的这一块，对不上的照画布改：填进输入框、切到「自动」，你看一眼再发": "Ask AI to check this block of the prototype against the canvas and fix differences — fills the message box and switches to Auto",
+  "没有记下的改动": "No recorded changes",
+  "让 AI 照画布核对整个原型，对不上的照画布改：填进输入框、切到「自动」，你看一眼再发": "Ask AI to check the whole prototype against the canvas and fix differences — fills the message box and switches to Auto",
 }

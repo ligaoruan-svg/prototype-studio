@@ -257,3 +257,12 @@ export function syncMessage(changes) {
   return '按架构画布的改动改原型，只改下面这几处，别的页面和内容都不要动：\n' + lines.join('\n')
     + '\n字段写法：* 是必填，🔒 是自动带出不用填，括号里是控件和选项（比如「报修分类*（下拉：给排水/电气照明）」）。'
 }
+// 没有记下的改动也能同步：照画布核对原型里这一块（或者整个原型），对不上的照画布改。画布上写得出来的都带上
+export function checkMessage(arch, node = null) {
+  const tail = '\n原型里没有的照画布补上，和画布不一样的照画布改；画布上没写的地方别动。字段写法：* 是必填，🔒 是自动带出不用填，括号里是控件和选项。'
+  if (!node) return '按架构画布核对整个原型：菜单、页面、页签、弹窗、按钮、字段都照背景里的页面树来，对不上的地方照画布改，别的不要动。' + tail
+  const hit = findNode(arch, node.id)
+  const path = hit ? [...hit.parents.map(p => p.name), node.name].join(' / ') : node.name
+  const label = node.type === 'module' && !(node.children || []).length ? '页' : NODE_TYPES[node.type]?.label || '页'
+  return `按架构画布核对原型里的「${path}」这一${label}，让它和画布一致，别的页面不要动。画布上是这样：\n` + describeTree(node) + tail
+}

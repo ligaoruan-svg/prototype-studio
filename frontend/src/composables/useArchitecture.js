@@ -3,7 +3,7 @@
 // - 没有原型的：画布是空的，自己加，或者在「架构」模式里跟 AI 说
 // - 「架构」模式里 AI 只改画布，不碰原型代码；切回「自动」「直接改」时 AI 拿画布当背景做页面
 import { computed, ref, watch } from 'vue'
-import { CHILD_TYPES, addChild, addSibling, changesUnder, clone, diffNodes, emptyArchitecture, findNode, impactOf, moveNode, pendingChanges, removeNode, syncMessage } from '../lib/architecture.js'
+import { CHILD_TYPES, addChild, addSibling, changesUnder, checkMessage, clone, diffNodes, emptyArchitecture, findNode, impactOf, moveNode, pendingChanges, removeNode, syncMessage } from '../lib/architecture.js'
 import { expand, expandAll, isFresh } from '../lib/expandStore.js'
 
 export function useArchitecture(s) {
@@ -174,13 +174,14 @@ export function useArchitecture(s) {
   }
   // 还没同步到原型的改动。有原型但还没读过（base 还没有）时先不算，免得一打开就满屏都是
   const archChanges = computed(() => !arch.value || (!archBase.value && hasPrototype()) ? [] : pendingChanges(archBase.value, arch.value.nodes))
-  // 同步到原型：把这几处写成一段话填进输入框、切到「自动」，你看一眼（可以补一句）再发。AI 改完，原型一变画布自动再读，对上的就不算了
+  // 同步到原型：写成一段话填进输入框、切到「自动」，你看一眼（可以补一句）再发。AI 改完，原型一变画布自动再读，对上的就不算了
   // 传了 id 就只同步那一块（卡片工具条上的「同步」）
+  // 有没有记下的改动都能点：有改动就交代这几处；没有就让 AI 照画布核对这一块（或整个原型），对不上的照画布改
   function syncToPrototype(id = '') {
+    if (!arch.value) return
     const list = id ? changesUnder(arch.value, archChanges.value, id) : archChanges.value
-    if (!list.length) return
     composerIntent.value = 'auto'
-    input.value = syncMessage(list)
+    input.value = list.length ? syncMessage(list) : checkMessage(arch.value, id ? findNode(arch.value, id)?.node : null)
     s.composer?.value?.focus()
   }
 

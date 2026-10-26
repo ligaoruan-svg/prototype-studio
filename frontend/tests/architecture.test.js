@@ -150,3 +150,12 @@ test('卡片上的同步：只同步这一块（连同下面的）', async () =>
   assert.deepEqual(changesUnder(a, all, tab2.id).map(c => c.id), [modal.id])
   assert.deepEqual(changesUnder(a, all, tab1.id).map(c => c.kind).sort(), ['remove', 'rename'])   // 删掉的子项也算这一块
 })
+
+test('没有记下的改动也能同步：照画布核对这一块 / 整个原型', async () => {
+  const { checkMessage } = await import('../src/lib/architecture.js')
+  const { a, tab1 } = sample()
+  const msg = checkMessage(a, tab1)
+  assert.match(msg, /核对原型里的「新模块 \/ 设备巡检计划 \/ 路线配置」这一页签/)
+  assert.match(msg, /页签「路线配置」\n {2}- 抽屉「路线详情」/)
+  assert.match(checkMessage(a), /核对整个原型/)
+})
