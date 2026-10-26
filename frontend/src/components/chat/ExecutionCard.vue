@@ -15,6 +15,9 @@ const busy = computed(() => ['running', 'checking'].includes(props.run.status))
 const opened = ref(new Set())
 function toggle(id) { opened.value.has(id) ? opened.value.delete(id) : opened.value.add(id); opened.value = new Set(opened.value) }
 const discussing = computed(() => props.run.intent === 'discuss')
+// 参照 Claude：AI 边做边说的话（旁白）照常铺开；读代码、查找这些工具步骤收成「N 步」，只露正在跑的那一步
+const showSteps = ref(false)
+const toolCount = computed(() => props.run.steps.filter(s => s.kind !== 'note').length)
 // 以前不管干什么都写"修改中"：问一句"这里美观吗"也是修改中，还在读代码也是修改中。
 // 标题按当下实际在做的事说话——讨论就说在看，动过文件才叫修改。
 const heading = computed(() => {
@@ -27,10 +30,10 @@ const heading = computed(() => {
 </script>
 <template>
   <section class="execution-card" :class="{ failed: run.status === 'failed' }" :aria-label="discussing ? $t('本次回复进度') : $t('本次修改进度')">
-    <header><LoaderCircle v-if="busy" :size="14" class="spin" /><AlertCircle v-else :size="14" /><strong>{{ $t(heading) }}</strong><button v-if="run.status === 'running' && run.runId" type="button" class="stop-mini" :disabled="run.stopping" :title="$t('停在下一步之前；已经改好的部分会保留并检查')" @click="$emit('stop')">{{ run.stopping ? $t('停止中…') : $t('停止') }}</button><time>{{ $t(clock) }}</time></header>
+    <header><LoaderCircle v-if="busy" :size="14" class="spin" /><AlertCircle v-else :size="14" /><strong>{{ $t(heading) }}</strong><span class="grow"></span><button v-if="toolCount" type="button" class="steps-toggle" :aria-expanded="showSteps" @click="showSteps = !showSteps">{{ $t('{0} 步', [toolCount]) }}<ChevronDown :size="12" :class="{ open: showSteps }" /></button><time>{{ $t(clock) }}</time></header>
     <div v-if="run.brief" class="plan-brief"><b>{{ $t('业务梳理') }}</b><p>{{ run.brief }}</p></div>
     <ol v-if="run.plan?.length" class="plan-list" :aria-label="discussing ? $t('分析步骤') : $t('修改计划')"><li v-for="(step, i) in run.plan" :key="i" :class="step.status"><Check v-if="step.status === 'done'" :size="12" /><LoaderCircle v-else-if="step.status === 'active'" :size="12" class="spin" /><i v-else></i>{{ step.title }}</li></ol>
-    <ol aria-live="polite"><li v-for="step in run.steps" :key="step.id" :class="[step.kind === 'note' ? 'note' : step.state, { foldable: step.kind !== 'note' && step.detail }]"><template v-if="step.kind !== 'note'"><Check v-if="step.state === 'done'" :size="13" /><AlertCircle v-else-if="step.state === 'error'" :size="13" /><LoaderCircle v-else :size="13" class="spin" /></template><div><button v-if="step.kind !== 'note' && step.detail" type="button" class="step-head" :aria-expanded="opened.has(step.id)" @click="toggle(step.id)">{{ $t(step.label) }}<ChevronDown :size="12" :class="{ open: opened.has(step.id) }" /></button><span v-else>{{ $t(step.label) }}</span><small v-if="step.error">{{ $t(step.error) }}</small><small v-else-if="step.detail && opened.has(step.id)" class="step-detail">{{ $t(step.detail) }}</small></div></li></ol>
+    <ol aria-live="polite"><li v-for="step in run.steps" v-show="step.kind === 'note' || showSteps || step.state === 'running' || step.state === 'error'" :key="step.id" :class="[step.kind === 'note' ? 'note' : step.state, { foldable: step.kind !== 'note' && step.detail }]"><template v-if="step.kind !== 'note'"><Check v-if="step.state === 'done'" :size="13" /><AlertCircle v-else-if="step.state === 'error'" :size="13" /><LoaderCircle v-else :size="13" class="spin" /></template><div><button v-if="step.kind !== 'note' && step.detail" type="button" class="step-head" :aria-expanded="opened.has(step.id)" @click="toggle(step.id)">{{ $t(step.label) }}<ChevronDown :size="12" :class="{ open: opened.has(step.id) }" /></button><span v-else>{{ $t(step.label) }}</span><small v-if="step.error">{{ $t(step.error) }}</small><small v-else-if="step.detail && opened.has(step.id)" class="step-detail">{{ $t(step.detail) }}</small></div></li></ol>
     <p v-if="run.streamText && !run.result" class="stream-text">{{ run.streamText }}<span class="caret"></span></p>
     <p v-else-if="busy && !run.steps.some(s => s.state === 'running')" class="model-wait">{{ $t(run.label || '理解需求中') }}</p>
     <ResultCard v-if="run.status === 'checking' && run.result" :result="run.result" checking />
@@ -38,23 +41,33 @@ const heading = computed(() => {
   </section>
 </template>
 <style scoped>
-.stop-mini{margin-left:auto;margin-right:6px;padding:1px 8px;border:1px solid var(--line);border-radius:7px;background:#fff;font-size:11px;color:var(--ink)}.stop-mini:hover:not(:disabled){border-color:#c9c1b4}.stop-mini+time{margin-left:0}
-.execution-card{border:1px solid var(--line);background:transparent;padding:12px 13px;border-radius:12px;margin:12px 0 18px;font-size:12px;line-height:1.65}.execution-card.failed{border-color:#e8cfc6;background:#fffcfb}.execution-card header{display:flex;gap:7px;align-items:center;color:var(--primary)}.execution-card.failed header{color:#a24b37}.execution-card strong{font-size:12px;font-weight:600}.execution-card time{margin-left:auto;color:var(--muted);font-variant-numeric:tabular-nums}
-.execution-card ol{list-style:none;margin:11px 0 0;padding:0;display:flex;flex-direction:column;gap:7px}.execution-card li{display:flex;gap:7px;color:#706159}.execution-card li svg{margin-top:3px}.execution-card li small{display:block;font-size:11px;color:#a24b37;overflow-wrap:anywhere}
+.execution-card{margin:4px 0 22px;font-size:12.5px;line-height:1.65}
+.execution-card header{display:flex;gap:7px;align-items:center;color:var(--muted)}.execution-card header>svg{color:var(--primary)}
+.execution-card.failed header>svg{color:#a24b37}
+.execution-card strong{font-size:12.5px;font-weight:500;color:var(--ink)}
+.execution-card time{color:var(--subtle);font-size:11.5px;font-variant-numeric:tabular-nums}
+.steps-toggle{gap:3px;padding:1px 6px 1px 8px;border-radius:8px;font-size:11.5px;color:var(--muted)}.steps-toggle:hover{background:var(--quiet);color:var(--ink)}
+.steps-toggle svg{transition:transform .15s}.steps-toggle svg.open{transform:rotate(180deg)}
+.execution-card .grow{flex:1}
+.execution-card ol{list-style:none;margin:8px 0 0 6px;padding:0 0 0 13px;border-left:1.5px solid var(--line);display:flex;flex-direction:column;gap:6px}
+.execution-card ol:empty{display:none}
+.execution-card li{display:flex;gap:7px;color:var(--muted)}.execution-card li svg{margin-top:3px;flex-shrink:0}.execution-card li small{display:block;font-size:11.5px;color:#a24b37;overflow-wrap:anywhere}
 .execution-card li small.step-detail{color:var(--muted);margin-top:3px;line-height:1.7}
 .step-head{display:flex;align-items:center;gap:4px;padding:0;min-height:0;background:none;border:0;color:inherit;font:inherit;text-align:left;cursor:pointer}
 .step-head svg{color:#bcaea8;flex-shrink:0;transition:transform .15s}
 .step-head svg.open{transform:rotate(180deg)}
-.execution-card li.foldable:hover .step-head{color:var(--ink)}.execution-card li.error{color:#a24b37}.execution-card li.running{color:var(--primary)}
-.execution-card li>div{min-width:0;flex:1}.execution-card li.note{color:var(--ink);padding-left:1px;line-height:1.75;margin:3px 0}.plan-list{list-style:none;margin:10px 0 0;padding:9px 10px;border:1px solid var(--line);border-radius:9px;display:flex;flex-direction:column;gap:6px}
-.plan-brief{margin-top:10px;padding:8px 10px;border-radius:9px;background:var(--quiet);font-size:11.5px;line-height:1.7;color:#5f5a52}.plan-brief b{display:block;font-size:11px;color:var(--ink);margin-bottom:2px}.plan-brief p{margin:0;white-space:pre-wrap}
+.execution-card li.foldable:hover .step-head{color:var(--ink)}.execution-card li.error{color:#a24b37}.execution-card li.running{color:var(--ink)}.execution-card li.running svg{color:var(--primary)}
+.execution-card li>div{min-width:0;flex:1}.execution-card li.note{color:var(--ink);font-size:13px;line-height:1.75;margin:2px 0}
+.plan-list{margin-top:10px!important}
+.plan-brief{margin-top:10px;padding:8px 11px;border-radius:10px;background:var(--quiet);font-size:12px;line-height:1.7;color:#5f5a52}.plan-brief b{display:block;font-size:11.5px;color:var(--ink);margin-bottom:2px}.plan-brief p{margin:0;white-space:pre-wrap}
 .plan-list li{display:flex;align-items:center;gap:7px;color:var(--muted)}
-.plan-list li>i{width:12px;height:12px;border:1.5px solid var(--line);border-radius:50%;flex-shrink:0}
+.plan-list li>i{width:12px;height:12px;border:1.5px solid #d6d1c4;border-radius:50%;flex-shrink:0}
 .plan-list li.active{color:var(--ink);font-weight:500}
-.plan-list li.done{color:var(--success);text-decoration:line-through;text-decoration-color:#4c7a5255}
-.stream-text{margin-top:11px;font-size:13px;line-height:1.85;color:var(--ink);white-space:pre-wrap;overflow-wrap:anywhere}
-.caret{display:inline-block;width:2px;height:1em;margin-left:2px;vertical-align:-2px;background:var(--primary);animation:blink 1.1s step-end infinite}
-@keyframes blink{50%{opacity:0}}
+.plan-list li.done{color:var(--subtle);text-decoration:line-through;text-decoration-color:#a3a29c66}.plan-list li.done svg{color:var(--success)}
+.stream-text{margin-top:10px;font-size:13.5px;line-height:1.8;color:var(--ink);white-space:pre-wrap;overflow-wrap:anywhere}
+.caret{display:inline-block;width:7px;height:7px;margin-left:4px;border-radius:50%;vertical-align:1px;background:var(--primary);animation:blink 1.1s ease-in-out infinite}
+@keyframes blink{50%{opacity:.25}}
 @media (prefers-reduced-motion: reduce){.caret{animation:none}}
-.model-wait{font-size:11px;color:var(--muted);margin-top:9px}.run-error{margin-top:10px;overflow-wrap:anywhere}.run-error details{font-size:11px;color:var(--muted);margin-top:6px}.run-error summary{cursor:pointer}.run-error-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.run-error-actions button{font-size:11px;padding:6px 8px;min-height:30px}
+.model-wait{font-size:12px;color:var(--subtle);margin:6px 0 0 21px}
+.run-error{margin-top:8px;padding:10px 12px;border-radius:12px;background:#fbf1ee;overflow-wrap:anywhere;color:#7d3526}.run-error details{font-size:11.5px;color:var(--muted);margin-top:6px}.run-error summary{cursor:pointer}.run-error-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.run-error-actions button{font-size:12px;padding:5px 10px;min-height:30px;border-radius:9px}
 </style>

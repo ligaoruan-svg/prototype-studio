@@ -71,7 +71,7 @@ test('界面接上了：顶栏有「架构」、打开画布才有「架构」�
   const logic = readFileSync(new URL('../src/composables/useArchitecture.js', import.meta.url), 'utf8')
   const panel = readFileSync(new URL('../src/components/layout/ConversationPanel.vue', import.meta.url), 'utf8')
   assert.match(header, /@click="showArch"/)
-  assert.match(panel, /\.\.\.\(archOpen \? \[\{ value: 'architecture', label: '架构'/)
+  assert.match(panel, /\.\.\.\(archOpen(\.value)? \? \[\{ value: 'architecture', label: '架构'/)
   assert.match(logic, /composerIntent\.value = 'architecture'/)
   assert.match(appSource(), /intent !== 'architecture'/)                 // 画布开着时，别的模式把画布当背景
   assert.match(appSource(), /result\.intent === 'architecture'[\s\S]*afterArchChat/)

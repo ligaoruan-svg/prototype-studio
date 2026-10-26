@@ -28,10 +28,14 @@ function toggleOpen(i) { const next = new Set(opened.value); next.has(i) ? next.
 const applyLabel = computed(() => {
   const n = chosen.value.length, all = suggestions.value.filter((_, i) => !isDone(i)).length
   if (all === 1 && suggestions.value.length === 1) return '按这个改'
-  if (!n) return '先勾选要改的'
-  return n === all ? `全部修改（${n} 条）` : `修改选中的 ${n} 条`
+  if (!n) return '先勾选'
+  return n === 1 ? '改这 1 条' : n === all ? `全部改（${n}）` : `改这 ${n} 条`
 })
 function applyChosen() { if (chosen.value.length) emit('apply', { suggestions: chosen.value, discussion: discussion.value }) }
+// 底下一个按钮：写了自己的想法就是「发送」，没写就是照勾的改
+function primaryAction() { other.value.trim() ? sendOther() : applyChosen() }
+// 改动明细默认收起：一行「已保存 · 改了 N 处 +x −y」，点开看
+const showDiff = ref(false)
 // 「其他」：都不想要，直接写自己的想法
 const other = ref('')
 function sendOther() { const text = other.value.trim(); if (!text || props.locked) return; other.value = ''; emit('custom', { text, discussion: discussion.value }) }
@@ -42,7 +46,7 @@ const statuses = { completed: '已完成', partial: '部分完成', unprocessed:
     <p v-if="headline" class="result-summary">{{ $t(headline) }}</p>
     <div v-if="result.clarification" class="clarification"><p>{{ result.clarification.question }}</p><button v-for="option in result.clarification.options" :key="option" class="outline" :disabled="locked" @click="$emit('choose', { option, clarification: result.clarification })">{{ option }}</button></div>
     <div v-if="suggestions.length" class="suggest-box">
-      <div class="suggest-head"><Sparkles :size="13" /><span>{{ $t('可以这样改') }}</span><small v-if="suggestions.length > 1">{{ $t('勾选要做的，一次交给 AI') }}</small></div>
+      <div class="suggest-head"><Sparkles :size="13" /><span>{{ $t('可以这样改') }}</span><small v-if="suggestions.length > 1">{{ $t('可以多选') }}</small></div>
       <ul class="suggest-list">
         <li v-for="(s, i) in suggestions" :key="i" :class="{ off: !isPicked(i) && !isDone(i), done: isDone(i) }">
           <label class="suggest-row"><Check v-if="isDone(i)" :size="15" class="suggest-check" /><input v-else-if="suggestions.length > 1" type="checkbox" :checked="isPicked(i)" :disabled="locked" @change="togglePick(i)"><span class="suggest-text"><span class="suggest-title">{{ $t(s.label) }}<em v-if="isDone(i)" class="done-tag">{{ $t('已改好') }}</em><em v-else-if="s.recommended && suggestions.length > 1">{{ $t('推荐') }}</em></span><small v-if="s.summary">{{ s.summary }}</small></span></label>
@@ -52,38 +56,43 @@ const statuses = { completed: '已完成', partial: '部分完成', unprocessed:
         </li>
       </ul>
       <p v-if="allDone" class="suggest-done"><Check :size="13" />{{ $t('已经按这些建议改好了，要再调整直接在下面说') }}</p>
-      <div v-else class="suggest-other"><input v-model="other" maxlength="500" :disabled="locked" :placeholder="$t('都不想要？直接说你的想法')" :aria-label="$t('其他想法')" @keydown.enter.prevent="sendOther"><button type="button" class="text-button" :disabled="locked || !other.trim()" @click="sendOther">{{ $t('发送') }}</button></div>
-      <button v-if="!allDone" class="primary suggest-apply" :disabled="locked || !chosen.length" @click="applyChosen">{{ $t(applyLabel) }}</button>
+      <div v-else class="suggest-foot"><input v-model="other" class="suggest-other" maxlength="500" :disabled="locked" :placeholder="$t('或者说说你的想法…')" :aria-label="$t('其他想法')" @keydown.enter.prevent="sendOther">
+        <button v-if="!allDone" class="primary suggest-apply" :disabled="locked || (!other.trim() && !chosen.length)" @click="primaryAction">{{ other.trim() ? $t('发送') : $t(applyLabel) }}</button></div>
     </div>
     <ol v-if="report?.annotations?.length" class="opinion-results"><li v-for="item in report.annotations" :key="item.id" :class="item.status"><span>{{ $t(item.number) }}</span><div><b>{{ item.note || item.name }}</b><small>{{ $t(statuses[item.status]) }}{{ item.reason ? $t('：') + item.reason : '' }}</small></div></li></ol>
     <div v-for="item in remembered" :key="item.id" class="remembered" :class="{ gone: forgotten.has(item.id) }"><BookmarkCheck :size="13" /><span v-if="!forgotten.has(item.id)">{{ $t('记住了：{0}', [item.text]) }}<small>{{ item.scope === 'global' ? $t('记在你的习惯里，以后所有项目都照这个来') : $t('以后这个项目的所有页面都照这个来') }}</small></span><span v-else>{{ $t('已忘掉：{0}', [item.text]) }}</span><button v-if="!forgotten.has(item.id)" type="button" class="text-button" :disabled="locked" @click="forget(item)">{{ $t('不用记') }}</button></div>
     <p v-for="assumption in report?.assumptions || []" :key="assumption" class="result-assumption">{{ $t('需要确认：{0}', [assumption]) }}</p>
     <p v-if="report?.out_of_scope" class="scope-note"><AlertCircle :size="12" />{{ $t('还改到了你圈定范围之外的 {0} 行（{1}{2}）。已经保存，请检查这些地方，不对就撤销这次修改', [$t(report.out_of_scope.lines), report.out_of_scope.places.join($t('、')), report.out_of_scope.more ? $t(' 等') : '']) }}</p>
     <div v-if="report?.retry_hint" class="retry-hint"><span>{{ $t('换种说法试试') }}</span><button class="outline" :disabled="locked" @click="$emit('rephrase', report.retry_hint)">{{ $t(report.retry_hint) }}</button></div>
-    <div v-if="result.changed" class="change-summary"><Check :size="14" /><strong>{{ $t('{0} · 改了 {1} 处', [checking ? $t('检查中') : $t('已保存'), result.change_count || result.diff?.hunks?.length || 1]) }}</strong><span v-if="result.diff">+{{ $t(result.diff.additions) }} / −{{ $t(result.diff.deletions) }}</span></div>
+    <div v-if="result.changed" class="change-row"><button type="button" class="change-chip" :disabled="!result.diff?.hunks?.length" :aria-expanded="showDiff" :title="$t('查看改动')" @click="showDiff = !showDiff"><span class="change-icon"><Check :size="11" /></span><span>{{ $t('{0} · 改了 {1} 处', [checking ? $t('检查中') : $t('已保存'), result.change_count || result.diff?.hunks?.length || 1]) }}</span><em v-if="result.diff"><i class="add">+{{ $t(result.diff.additions) }}</i><i class="del">−{{ $t(result.diff.deletions) }}</i></em><ChevronDown v-if="result.diff?.hunks?.length" :size="13" class="fold" :class="{ open: showDiff }" /></button><button v-if="!checking" class="text-button undo-mini" :disabled="locked || !canUndo" :title="canUndo ? $t('撤销这次修改') : $t('先撤销后续修改，才能撤销这一项')" @click="$emit('undo', result.change_id)"><Undo2 :size="13" />{{ $t('撤销') }}</button></div>
     <div v-if="selftest && !selftest.skipped" class="selftest" :class="{ ok: !selftest.issues.length }"><b>{{ !selftest.issues.length ? $t('自检通过：{0} 个页面、{1} 个按钮都点过，没发现问题', [$t(selftest.routes), $t(selftest.clicked)]) : selftest.final ? $t('自检还剩 {0} 个问题，需要你看一下', [$t(selftest.issues.length)]) : $t('自检发现 {0} 个问题，已自动交回去修', [$t(selftest.issues.length)]) }}</b><ul v-if="selftest.issues.length"><li v-for="it in selftest.issues" :key="it.text"><em>{{ $t(it.kind) }}</em>{{ it.text }}</li></ul></div>
-    <div v-if="result.changed" class="result-actions"><details v-if="result.diff"><summary>{{ $t('查看改动') }}<ChevronDown :size="13" /></summary><div class="diff-view"><div v-for="(hunk, i) in result.diff.hunks" :key="i" class="diff-hunk"><small>{{ $t('原 {0} 行 / 新 {1} 行', [$t(hunk.old_start), $t(hunk.new_start)]) }}</small><pre><span v-for="(line, j) in hunk.lines" :key="j" :class="line.kind">{{ line.kind === 'added' ? '+' : line.kind === 'removed' ? '−' : ' ' }} {{ line.text }}{{ '\n' }}</span></pre></div><p v-if="result.diff.truncated" class="field-hint">{{ $t('改动较多，这里只展示前面一部分。') }}</p></div></details><button v-if="!checking" class="text-button" :disabled="locked || !canUndo" :title="canUndo ? $t('撤销这次修改') : $t('先撤销后续修改，才能撤销这一项')" @click="$emit('undo', result.change_id)"><Undo2 :size="13" />{{ $t('撤销这次修改') }}</button></div>
+    <div v-if="result.changed && showDiff && result.diff" class="result-actions"><div class="diff-view"><div v-for="(hunk, i) in result.diff.hunks" :key="i" class="diff-hunk"><small>{{ $t('原 {0} 行 / 新 {1} 行', [$t(hunk.old_start), $t(hunk.new_start)]) }}</small><pre><span v-for="(line, j) in hunk.lines" :key="j" :class="line.kind">{{ line.kind === 'added' ? '+' : line.kind === 'removed' ? '−' : ' ' }} {{ line.text }}{{ '\n' }}</span></pre></div><p v-if="result.diff.truncated" class="field-hint">{{ $t('改动较多，这里只展示前面一部分。') }}</p></div></div>
     <p v-for="target in (result.targets || []).filter(t => t.deleted)" :key="target.selector" class="deleted-note"><AlertCircle :size="12" />{{ $t('已删除{0}', [target.name || $t('选中元素')]) }}</p>
   </div>
 </template>
 <style scoped>
-.remembered{display:flex;align-items:flex-start;gap:7px;margin-top:10px;padding:8px 10px;border:1px solid #e6d8c6;border-radius:9px;background:#fbf7f0;font-size:12px;color:var(--ink)}
+.remembered{display:flex;align-items:flex-start;gap:7px;margin-top:10px;padding:7px 10px;border-radius:10px;background:var(--quiet);font-size:12px;color:var(--ink)}
 .remembered svg{flex-shrink:0;margin-top:3px;color:var(--primary)}
 .remembered span{flex:1;min-width:0;overflow-wrap:anywhere}.remembered small{display:block;font-size:11px;color:var(--muted)}
 .remembered button{flex-shrink:0;font-size:11.5px}.remembered.gone{opacity:.6}
-.selftest{margin-top:10px;padding:8px 10px;border:1px solid #ecd9b8;border-radius:9px;background:#fdf8ee;font-size:12px}.selftest.ok{border-color:#cfe3d2;background:#f3f9f4}.selftest b{font-weight:500}.selftest ul{margin:6px 0 0;padding-left:0;list-style:none;display:grid;gap:4px}.selftest li{color:var(--muted);font-size:11.5px;line-height:1.6}.selftest em{font-style:normal;font-size:10px;padding:1px 6px;margin-right:6px;border-radius:8px;background:#f3e6cc;color:#8a5a12}
+.selftest{margin-top:8px;padding:7px 10px;border-radius:10px;background:#fbf4e6;font-size:12px}.selftest.ok{background:transparent;padding:0 2px;color:var(--success)}.selftest b{font-weight:500}.selftest ul{margin:6px 0 0;padding-left:0;list-style:none;display:grid;gap:4px}.selftest li{color:var(--muted);font-size:11.5px;line-height:1.6}.selftest em{font-style:normal;font-size:10px;padding:1px 6px;margin-right:6px;border-radius:8px;background:#f3e6cc;color:#8a5a12}
 /* 回复正文直接流在背景上；只有 diff、建议这类块才有自己的容器。 */
-.result-card{font-size:12px;line-height:1.7}
-.result-summary{font-size:13px;line-height:1.85;color:var(--ink);white-space:pre-wrap;overflow-wrap:anywhere}
-.change-summary{display:flex;align-items:center;gap:6px;color:var(--success);font-size:11px;margin-top:10px}.change-summary strong{font-weight:500}.change-summary>span{margin-left:auto;color:var(--muted);font-variant-numeric:tabular-nums}
-.result-actions{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-top:9px;flex-wrap:wrap}.result-actions>details{min-width:0;width:100%}.result-actions summary{list-style:none;display:flex;gap:5px;align-items:center;color:var(--muted);cursor:pointer;font-size:12px}.result-actions summary::-webkit-details-marker{display:none}
-.diff-view{overflow:auto;max-height:320px;margin-top:9px;border:1px solid var(--line);border-radius:5px;background:#fbfafa}.diff-hunk small{display:block;padding:5px 8px;background:#f1eeed;color:var(--muted);font-size:10px}.diff-hunk pre{font:11px/1.7 ui-monospace,SFMono-Regular,monospace;margin:0;min-width:100%;width:max-content}.diff-hunk pre span{display:block;padding:0 8px;white-space:pre}.diff-hunk .added{background:#e3efe1;color:#2f6b3d}.diff-hunk .removed{background:#f7e4e0;color:#9c4034}.diff-hunk .context{color:#837a76}
+.result-card{font-size:12.5px;line-height:1.7}
+.result-summary{font-size:13.5px;line-height:1.8;color:var(--ink);white-space:pre-wrap;overflow-wrap:anywhere}
+.change-row{display:flex;align-items:center;gap:4px;margin-top:10px}
+.change-chip{min-width:0;gap:7px;padding:5px 10px 5px 6px;border:1px solid var(--line);border-radius:10px;background:#fff;font-size:12px;color:var(--ink);font-weight:500}.change-chip:hover:not(:disabled){border-color:#d6d1c4;background:#fdfcf9}.change-chip:disabled{opacity:1;cursor:default}
+.change-icon{display:grid;place-items:center;width:18px;height:18px;border-radius:6px;background:#e6f1e7;color:var(--success)}
+.change-chip em{font-style:normal;display:flex;gap:5px;font-size:11.5px;font-weight:400;font-variant-numeric:tabular-nums}.change-chip .add{font-style:normal;color:#2f7a45}.change-chip .del{font-style:normal;color:#b24a36}
+.change-chip .fold{color:var(--subtle);transition:transform .15s}.change-chip .fold.open{transform:rotate(180deg)}
+.undo-mini{gap:4px;padding:5px 8px;border-radius:9px;font-size:12px;color:var(--muted)}.undo-mini:hover:not(:disabled){background:var(--quiet);color:var(--ink)}
+.result-actions{margin-top:6px}.result-actions>details{min-width:0;width:100%}.result-actions summary{list-style:none;display:flex;gap:5px;align-items:center;color:var(--muted);cursor:pointer;font-size:12px}.result-actions summary::-webkit-details-marker{display:none}
+.diff-view{overflow:auto;max-height:320px;border:1px solid var(--line);border-radius:10px;background:#fff}.diff-hunk small{display:block;padding:5px 8px;background:#f1eeed;color:var(--muted);font-size:10px}.diff-hunk pre{font:11px/1.7 ui-monospace,SFMono-Regular,monospace;margin:0;min-width:100%;width:max-content}.diff-hunk pre span{display:block;padding:0 8px;white-space:pre}.diff-hunk .added{background:#e3efe1;color:#2f6b3d}.diff-hunk .removed{background:#f7e4e0;color:#9c4034}.diff-hunk .context{color:#837a76}
 .opinion-results{list-style:none;padding:0;display:flex;flex-direction:column;gap:9px;margin:12px 0}.opinion-results li{display:flex;gap:7px}.opinion-results li>span{border-radius:50%;background:var(--quiet);font-size:10px;width:18px;height:18px;text-align:center;flex-shrink:0}.opinion-results b{font-weight:500}.opinion-results small{display:block;color:var(--muted);font-size:11px}.opinion-results .completed small{color:var(--success)}.opinion-results .partial small,.opinion-results .unprocessed small{color:#906323}
-.suggest-box{margin-top:12px;border:1px solid var(--line);border-radius:10px;background:#fff;padding:10px 10px 12px}
-.suggest-head{display:flex;align-items:center;gap:6px;padding:0 2px 6px;font-size:12px;font-weight:600;color:var(--ink)}.suggest-head svg{color:var(--primary)}.suggest-head small{margin-left:auto;font-weight:400;font-size:11px;color:var(--muted)}
+.suggest-box{margin-top:12px;border:1px solid var(--line);border-radius:14px;background:#fff;padding:8px 6px 6px;box-shadow:0 1px 2px #2b201a08}
+.suggest-head{display:flex;align-items:center;gap:6px;padding:2px 8px 6px;font-size:12px;font-weight:600;color:var(--ink)}.suggest-head svg{color:var(--primary)}.suggest-head small{margin-left:auto;font-weight:400;font-size:11px;color:var(--muted)}
 .suggest-list{list-style:none;margin:0;padding:0}
-.suggest-list li{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:2px;padding:3px 0;border-top:1px solid #f0ede4}.suggest-list li:first-child{border-top:none}
-.suggest-row{display:flex;align-items:center;gap:8px;min-width:0;padding:5px 2px;cursor:pointer;font-size:12.5px;font-weight:500;color:var(--ink)}
+.suggest-list li{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:0;padding:1px 4px 1px 2px;border-radius:10px}.suggest-list li:hover{background:var(--quiet)}
+.suggest-row{display:flex;align-items:center;gap:9px;min-width:0;padding:6px;cursor:pointer;font-size:12.5px;font-weight:500;color:var(--ink)}
 .suggest-row input{width:15px;height:15px;margin:0;flex-shrink:0;accent-color:var(--primary);cursor:pointer}
 .suggest-row{align-items:flex-start}.suggest-row input{margin-top:3px}
 .suggest-text{display:flex;flex-direction:column;min-width:0}
@@ -91,20 +100,20 @@ const statuses = { completed: '已完成', partial: '部分完成', unprocessed:
 .suggest-title em{flex-shrink:0;font-style:normal;font-size:10px;font-weight:500;line-height:1;padding:3px 6px;border-radius:9px;background:var(--primary-soft);color:var(--primary)}
 .suggest-text small{font-size:11.5px;font-weight:400;line-height:1.6;color:var(--muted);margin-top:1px}
 .suggest-detail b{display:block;font-size:10.5px;font-weight:600;color:var(--muted);margin-bottom:2px}
-.suggest-other{display:flex;align-items:center;gap:6px;margin-top:6px;padding:0 4px 0 10px;border:1px dashed #e2ddd0;border-radius:8px}
-.suggest-other input{flex:1;min-width:0;height:32px;border:none;outline:none;background:none;font-size:12px;color:var(--ink)}
-.suggest-other:focus-within{border-style:solid;border-color:var(--primary)}
-.suggest-other button{font-size:11.5px;flex-shrink:0}
+.suggest-foot{display:flex;align-items:center;gap:6px;margin-top:6px;padding:6px 2px 0;border-top:1px solid #f0ede4}
+.suggest-other{flex:1;min-width:0;height:32px;padding:0 8px;border:none;border-radius:9px;outline:none;background:none;font-size:12.5px;color:var(--ink)}
+.suggest-other:focus{background:var(--quiet)}
 .suggest-list li.off .suggest-row{color:var(--muted)}
-.suggest-icon{width:26px;height:26px;display:grid;place-items:center;border-radius:7px;color:var(--subtle)}.suggest-icon:hover:not(:disabled){background:var(--quiet);color:var(--ink)}
+.suggest-icon{width:26px;height:26px;display:grid;place-items:center;border-radius:7px;color:var(--subtle);opacity:0;transition:opacity .12s}.suggest-list li:hover .suggest-icon,.suggest-icon:focus-visible,.suggest-icon.open{opacity:1}.suggest-icon:hover:not(:disabled){background:#e9e6dc;color:var(--ink)}
+@media (hover:none){.suggest-icon{opacity:1}}
 .suggest-icon svg{transition:transform .15s}.suggest-icon.open svg{transform:rotate(180deg)}
 .suggest-detail{grid-column:1/-1;margin:0 0 6px;padding:7px 9px;border-radius:7px;background:var(--quiet);font-size:11.5px;line-height:1.7;color:#5f5a52}
-.suggest-apply{width:100%;margin-top:8px}
+.suggest-apply{flex:none;min-height:32px;padding:5px 12px;border-radius:9px;font-size:12.5px}
 .suggest-check{flex:none;color:var(--ok, #1f8a4c);margin-top:2px}
 li.done .suggest-title{color:var(--muted)}
 em.done-tag{background:#e7f6ee !important;color:#1f8a4c !important}
-.suggest-done{display:flex;align-items:center;gap:6px;margin:8px 0 0;font-size:12px;color:#1f8a4c}
+.suggest-done{display:flex;align-items:center;gap:6px;margin:4px 0 2px;padding:6px 8px 0;border-top:1px solid #f0ede4;font-size:12px;color:#1f8a4c}
 .retry-hint{margin-top:11px}.retry-hint>span{display:block;font-size:11px;color:var(--muted);margin-bottom:6px}.retry-hint button{width:100%;text-align:left;white-space:normal;line-height:1.6;font-size:12px;padding:8px 10px}
 .result-assumption,.deleted-note{margin-top:8px;font-size:11px;color:var(--muted)}
-.scope-note{display:flex;align-items:flex-start;gap:5px;margin-top:8px;font-size:11px;line-height:1.6;color:#906323}.scope-note svg{flex-shrink:0;margin-top:3px}.deleted-note{display:flex;align-items:center;gap:5px}.clarification button{margin:8px 6px 0 0;white-space:normal;text-align:left;line-height:1.5}
+.scope-note{display:flex;align-items:flex-start;gap:5px;margin-top:8px;font-size:11px;line-height:1.6;color:#906323}.scope-note svg{flex-shrink:0;margin-top:3px}.deleted-note{display:flex;align-items:center;gap:5px}.clarification{margin-top:10px}.clarification>p{font-size:13.5px;line-height:1.8;margin-bottom:4px}.clarification button{display:flex;width:100%;justify-content:flex-start;margin:6px 0 0;padding:9px 12px;border-radius:11px;white-space:normal;text-align:left;line-height:1.5;font-weight:400;font-size:12.5px}.clarification button:hover:not(:disabled){background:var(--quiet)}
 </style>
