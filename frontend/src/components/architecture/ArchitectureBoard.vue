@@ -12,6 +12,8 @@ import { NODE_TYPES, changeLabel } from '../../lib/architecture.js'
 const s = inject('studio')
 const { arch, archError, archSelected, archShowDesc, archRemoved, archHistory } = s
 const reading = computed(() => s.archReading())
+// 展开到哪一层：一个个点开太麻烦，一下全展开
+const levels = [{ v: 1, label: '模块' }, { v: 2, label: '菜单页' }, { v: 3, label: '页签' }, { v: 99, label: '全部' }]
 const changes = computed(() => s.archChanges.value.map(c => ({ ...c, label: changeLabel(c) })))
 const listOpen = ref(false)
 function pick(c) { if (c.kind !== 'remove') s.archSelect('node', c.id) }
@@ -20,6 +22,11 @@ function root() { s.archSelect('root', 'root') }
 
 <template>
   <section class="arch-board" :aria-label="$t('架构')" @click="s.archSelect(null)">
+    <div class="arch-view" @click.stop>
+      <div class="arch-level" role="group" :aria-label="$t('展开到')"><span>{{ $t('展开到') }}</span><button v-for="l in levels" :key="l.v" :class="{ active: s.archLevel.value === l.v }" @click="s.setLevel(l.v)">{{ $t(l.label) }}</button></div>
+      <label class="arch-check"><input v-model="archShowDesc" type="checkbox">{{ $t('显示介绍') }}</label>
+      <label class="arch-check"><input v-model="s.archShowFields.value" type="checkbox">{{ $t('展开字段') }}</label>
+    </div>
     <div class="arch-float" @click.stop>
       <span v-if="reading" class="arch-reading"><LoaderCircle :size="13" class="spin" />{{ $t('正在从原型读页面…') }}</span>
       <button v-else class="icon-button" :title="$t('从原型读一遍：原型改过、画布没跟上时点。画布上没同步的改动不会丢')" :aria-label="$t('从原型读一遍')" @click="s.readPrototype()"><RefreshCw :size="14" /></button>

@@ -627,6 +627,13 @@ input[type=color]::-webkit-color-swatch { border: none; border-radius: 2px; }
 .arch-float { position: absolute; top: 10px; right: 12px; z-index: 12; display: flex; align-items: center; gap: 4px; padding: 3px; border: 1px solid var(--line); border-radius: 10px; background: #fffffff0; box-shadow: 0 2px 8px #3b2a2112; }
 .arch-board:has(.arch-side) .arch-float { right: 352px; }
 .arch-float .arch-reading { display: inline-flex; align-items: center; gap: 5px; padding: 0 8px; font-size: 12px; color: var(--muted); }
+.arch-view { position: absolute; top: 10px; left: 12px; z-index: 12; display: flex; align-items: center; gap: 10px; padding: 3px 10px 3px 3px; border: 1px solid var(--line); border-radius: 10px; background: #fffffff0; box-shadow: 0 2px 8px #3b2a2112; }
+.arch-level { display: flex; align-items: center; gap: 2px; padding: 2px; border-radius: 8px; background: #efede6; font-size: 12px; }
+.arch-level span { padding: 0 6px; color: var(--muted); white-space: nowrap; }
+.arch-level button { height: 24px; padding: 0 8px; border-radius: 6px; color: #7d776a; font-size: 12px; }
+.arch-level button.active { background: #fff; color: var(--primary); font-weight: 600; box-shadow: 0 1px 2px #3b2a2118; }
+.arch-check { display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+@container (max-width: 700px) { .arch-level > span, .arch-check { display: none; } }
 .arch-sync { position: absolute; right: 14px; bottom: 14px; z-index: 12; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 .arch-board:has(.arch-side) .arch-sync { right: 344px; }
 .arch-sync-bar { display: flex; align-items: center; gap: 6px; padding: 4px; border: 1px solid var(--line); border-radius: 12px; background: #fff; box-shadow: 0 4px 16px #3b2a211f; }

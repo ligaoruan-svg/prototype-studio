@@ -76,7 +76,8 @@ test('界面接上了：顶栏有「架构」、打开画布才有「架构」�
   assert.match(appSource(), /intent !== 'architecture'/)                 // 画布开着时，别的模式把画布当背景
   assert.match(appSource(), /result\.intent === 'architecture'[\s\S]*afterArchChat/)
   assert.match(node, /s\.makeInPrototype\(node\)/)
-  assert.doesNotMatch(board, /业务流程|数据关系|统一规则|arch-sub|展开到/)
+  assert.doesNotMatch(board, /业务流程|数据关系|统一规则|arch-sub/)
+  assert.match(board, /label: '全部'/)                                    // 一下全展开，不用一个个点
   assert.match(board, /s\.syncToPrototype\(\)/)
   assert.match(logic, /key === 'Enter'[\s\S]*archSibling/)
   assert.match(logic, /key === 'Tab'[\s\S]*archAdd/)
