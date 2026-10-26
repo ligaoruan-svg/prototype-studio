@@ -367,6 +367,33 @@ class 架构模式对话(unittest.TestCase):
             self.mod.run(self.pid, 'p', 'x', 'k', 'm', 'u', 8000, events.append, lambda: False)
 
 
+    def test_问的只回答_页面树不动_建议点了才改(self):
+        A.save(self.pid, {"nodes": [{"type": "page", "name": "报修工单", "proto": True, "seen": True}]})
+        before = A.load(self.pid)
+        seen = []
+        def ask(key, model, messages, tools, **k):
+            seen.append(messages)
+            return {'choices': [{'finish_reason': 'stop', 'message': {'content':
+                    '结构基本清楚，但少了维修工管理。\n\n- 报修工单只有一页，派单要找人时没处可看\n\n可以这样改：\n- 加维修工页｜左侧多一个维修工菜单页｜在最外层新增菜单页「维修工」：管理维修工\n- 随便写的一行'}}]}
+        self.mod.chat = ask
+        out = self.mod.run(self.pid, 'p', '分析一下架构', 'k', 'm', 'u', 8000, lambda e: None, lambda: False)
+        self.assertFalse(out['architecture_changed'])
+        self.assertEqual(A.load(self.pid)['nodes'], before['nodes'])                  # 一点没动
+        self.assertNotIn('整份', seen[0][0]['content'])                                # 用的是回答的提示词
+        self.assertEqual(out['discussion']['suggestions'][0]['label'], '加维修工页')
+        self.assertTrue(out['discussion']['arch'])
+        self.assertNotIn('可以这样改', out['discussion']['answer'])
+        # 点「按这个改」：照建议改页面树，而且看得到上一轮说了什么
+        def edit(key, model, messages, tools, **k):
+            seen.append(messages)
+            return {'choices': [{'finish_reason': 'stop', 'message': {'content': '说明：加了维修工页。\n\n【页面】\n报修工单 [菜单页]\n维修工 [菜单页]：管理维修工'}}]}
+        self.mod.chat = edit
+        out = self.mod.run(self.pid, 'p', '按已讨论的建议修改：在最外层新增菜单页「维修工」', 'k', 'm', 'u', 8000, lambda e: None, lambda: False)
+        self.assertTrue(out['architecture_changed'])
+        self.assertEqual([n['name'] for n in A.load(self.pid)['nodes']], ['报修工单', '维修工'])
+        self.assertTrue(any('少了维修工管理' in m['content'] for m in seen[1] if m['role'] == 'assistant'))
+
+
 class 从原型读得更全(unittest.TestCase):
     def test_没弹出东西的按钮也记下(self):
         result = {"page": "<table><tr><th>设备编号</th><th>状态</th></tr></table>",

@@ -43,7 +43,7 @@ export function useAgentRun(s) {
     pendingRef.value = sentRef
     if (!text || input.value.trim() === message) input.value = ''
     reference.value = null
-    lastResult.value = null; status.value = intent === 'edit' ? '正在读页面' : intent === 'architecture' ? '正在改页面树' : '思考中'; leftOpen.value = true
+    lastResult.value = null; status.value = intent === 'edit' ? '正在读页面' : intent === 'architecture' ? '正在看页面树' : '思考中'; leftOpen.value = true
     try {
       const response = await fetch('/api/projects/' + project.value.id + '/agent/stream', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ page_id: pageId.value, message, selection: target, runtime_feedback: runtimeFeedback, reference: sentRef, scene: previewScene(), intent, include_annotations: options.includeAnnotations !== false, repair_pending: options.repairPending || '', lang: locale.value, architecture: !!options.architecture || (s.archOpen.value && intent !== 'architecture' && !!s.arch.value?.nodes?.length), display }) })
       const result = await consumeAgentStream(response, event => {
@@ -94,7 +94,7 @@ export function useAgentRun(s) {
         status.value = again ? '自检发现问题 · 马上自动修一轮' : report.issues.length ? `已保存 · 自检还剩 ${report.issues.length} 个问题` : '已保存 · 自检通过'
       }
       // 「架构」模式：只改了画布上的页面树，原型没动
-      else if (result.intent === 'architecture') { status.value = '页面树已更新'; await s.afterArchChat() }
+      else if (result.intent === 'architecture') { if (result.architecture_changed) { status.value = '页面树已更新'; await s.afterArchChat() } else status.value = '已回复 · 页面树没动' }
       // 改好了、没跑自检：状态栏留着检查保存时写的「已保存 · 刚刚」。以前这里不看改没改，小改动保存了也显示「没有改动页面」
       else if (!result.changed) status.value = result.clarification ? '等待你确认' : result.discussion ? '讨论完成 · 未修改文件' : '没有改动页面'
       lastResult.value = result
@@ -156,7 +156,8 @@ export function useAgentRun(s) {
     const message = list.length === 1 ? '按已讨论的建议修改：' + list[0].instruction
       : `按已讨论的建议修改，这 ${list.length} 条都要做：\n` + list.map((sg, i) => `${i + 1}. ${sg.label}：${sg.instruction}`).join('\n')
     const display = { kind: 'apply', title: list.length === 1 ? '按这个改：' + list[0].label : `按这 ${list.length} 条改`, items: list.map(sg => sg.label) }
-    await runAgent(message, '', { intent: 'edit', includeAnnotations: false, selection: discussion?.selection || null, display })
+    // 架构模式里给的建议：照着改页面树，不去改原型
+    await runAgent(message, '', { intent: discussion?.arch ? 'architecture' : 'edit', includeAnnotations: false, selection: discussion?.selection || null, display })
   }
   // 建议清单底下的「其他」：跟着这次讨论的选区，按输入框当前的模式发出去
   async function customSuggestion({ text, discussion }) {

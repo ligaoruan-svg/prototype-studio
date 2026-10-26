@@ -44,7 +44,7 @@ function appliedFor(message) {
     if (m.role !== 'user' || !String(m.content || '').startsWith('按已讨论的建议修改')) continue
     const rest = all.slice(j + 1)
     const replyIndex = rest.findIndex(x => x.role === 'assistant'), nextUser = rest.findIndex(x => x.role === 'user')
-    if (replyIndex === -1 || (nextUser !== -1 && nextUser < replyIndex) || !rest[replyIndex].changed) continue
+    if (replyIndex === -1 || (nextUser !== -1 && nextUser < replyIndex) || !(rest[replyIndex].changed || rest[replyIndex].arch_changed)) continue
     for (const s of list) if (s.instruction && m.content.includes(s.instruction)) done.push(s.instruction)
   }
   return done

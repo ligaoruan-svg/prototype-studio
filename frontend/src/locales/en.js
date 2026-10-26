@@ -1410,6 +1410,8 @@ export default {
   "切换模型 · 上次用了 {0} tokens": "Switch model · last run used {0} tokens",
   "只聊，不改代码": "Just talk, no code changes",
   "直接动手局部修改": "Edit directly, locally",
+  "正在看页面树": "Reading the page tree",
+  "已回复 · 页面树没动": "Replied · page tree unchanged",
   "把话填进输入框、切到「自动」，你看一眼再发": "Fills the message box and switches to Auto — review it before sending",
   "让 AI 做出来": "Have AI build it",
   "正在从原型读页面…": "Reading the prototype…",
