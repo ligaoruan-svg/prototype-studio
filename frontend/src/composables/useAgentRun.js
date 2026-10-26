@@ -21,7 +21,8 @@ export function useAgentRun(s) {
     const note = attach ? input.value.trim() : ''
     const message = attach ? attach.message + (note ? '\n\n补充：' + note : '')
       : (typeof text === 'string' && text ? text : input.value).trim() || (annotations.value.length ? '请逐条处理已记下的修改意见，保留其他区域。' : '')
-    const display = attach ? { title: attach.title, items: attach.items, note } : null
+    // 程序替你发的话（按这个改、自动修、自检）也一样：options.display 是对话里给人看的那张卡片，AI 收到的还是完整的话
+    const display = attach ? { kind: 'sync', title: attach.title, items: attach.items, note } : options.display || null
     if (locked.value || !message || !pageId.value) return
     if (!model.value.has_key || (reference.value && !model.value.supports_vision)) { s.openDialog('settings'); dialogError.value = reference.value ? '这张截图需要支持图片输入和工具调用的模型。' : '请先配置模型密钥。'; return }
     const activeSelection = options.selection === undefined ? selected.value : options.selection
@@ -37,7 +38,7 @@ export function useAgentRun(s) {
     // 截图跟着这一条发出去就算用过了：从输入框上方拿掉，挂到这条消息上；停止或失败再放回来
     const sentRef = reference.value
     // 自检发现问题：这次结束后自动再修一轮；修完再查，如果修出了新的报错，再修第二轮，之后不再自动修
-    let followUp = '', followRound = 0, followFeedback = '', followOptions = null
+    let followUp = '', followRound = 0, followFeedback = '', followOptions = null, followDisplay = null
     const selfRound = options.selfReview || 0
     pendingRef.value = sentRef
     if (!text || input.value.trim() === message) input.value = ''
@@ -89,7 +90,7 @@ export function useAgentRun(s) {
         step.label = report.skipped ? '自检没跑完：' + report.skipped
           : report.issues.length ? `自检发现 ${report.issues.length} 个问题${again ? '，接着自动修一轮' : ''}`
           : `自检通过：${report.routes} 个页面、${report.clicked} 个按钮都点过`
-        if (again) { followUp = selfTestRequest(report.issues); followRound = selfRound + 1 }
+        if (again) { followUp = selfTestRequest(report.issues); followRound = selfRound + 1; followDisplay = { kind: 'check', title: `自检发现 ${report.issues.length} 个问题，自动修`, items: report.issues.map(i => i.text) } }
         status.value = again ? '自检发现问题 · 马上自动修一轮' : report.issues.length ? `已保存 · 自检还剩 ${report.issues.length} 个问题` : '已保存 · 自检通过'
       }
       // 「架构」模式：只改了画布上的页面树，原型没动
@@ -120,7 +121,7 @@ export function useAgentRun(s) {
       if (e.code === 'validation' && e.pending && !options.repairPending) {
         followUp = '【自动修复】刚才那一版运行检查报错了，在它的基础上修掉报错，别的不要动，也不要从头再做。'
         followFeedback = e.detail || e.message
-        followOptions = { intent: 'edit', includeAnnotations: false, selection: null, repairPending: e.pending }
+        followOptions = { intent: 'edit', includeAnnotations: false, selection: null, repairPending: e.pending, display: { kind: 'fix', title: '自动修掉运行报错', items: ['在刚才那一版上修，别的不动'] } }
         current.error.message = '改完运行检查报错，正在自动修复'
       }
       putBack()
@@ -130,7 +131,7 @@ export function useAgentRun(s) {
     } finally {
       current.finished = Date.now(); busy.value = false; pendingUser.value = ''; pendingDisplay.value = null; pendingRef.value = null
       await nextTick(); if (chatBox.value) chatBox.value.scrollTop = chatBox.value.scrollHeight
-      if (followUp) setTimeout(() => runAgent(followUp, followFeedback, followOptions || { intent: 'edit', includeAnnotations: false, selection: null, selfReview: followRound }), 0)
+      if (followUp) setTimeout(() => runAgent(followUp, followFeedback, followOptions || { intent: 'edit', includeAnnotations: false, selection: null, selfReview: followRound, display: followDisplay }), 0)
     }
   }
   // 停止：告诉后台在下一步之前停下。已经改好的部分照常检查、保存，可以一键撤销；还没改就什么都不动
@@ -143,18 +144,19 @@ export function useAgentRun(s) {
   }
   // 「让 AI 修复」：后台还留着那一版就在它上面修，没有了（过期、页面被改过）才按原需求重做
   function repairRun(run) {
-    if (run.error?.pending) return runAgent('【修复】刚才那一版运行检查报错了，在它的基础上修掉报错，别的不要动，也不要从头再做。', run.error.detail, { ...run.options, includeAnnotations: false, selection: null, repairPending: run.error.pending })
+    if (run.error?.pending) return runAgent('【修复】刚才那一版运行检查报错了，在它的基础上修掉报错，别的不要动，也不要从头再做。', run.error.detail, { ...run.options, includeAnnotations: false, selection: null, repairPending: run.error.pending, display: { kind: 'fix', title: '修掉刚才的报错', items: ['在刚才那一版上修，别的不动'] } })
     return runAgent(run.request, run.error?.detail || '', run.options)
   }
   async function chooseAnswer({ option, clarification }) {
-    await runAgent('原需求：' + clarification.request + '\n你的问题：' + clarification.question + '\n我的选择：' + option, '', { intent: clarification.intent || 'discuss' })
+    await runAgent('原需求：' + clarification.request + '\n你的问题：' + clarification.question + '\n我的选择：' + option, '', { intent: clarification.intent || 'discuss', display: { kind: 'choice', title: '我选：' + option, items: [clarification.question] } })
   }
   // 讨论卡片上勾了几条就一起改：一条照原样发，几条编号列出来，模型逐条做完再汇报
   async function applySuggestion({ suggestion, suggestions, discussion }) {
     const list = suggestions?.length ? suggestions : [suggestion]
     const message = list.length === 1 ? '按已讨论的建议修改：' + list[0].instruction
       : `按已讨论的建议修改，这 ${list.length} 条都要做：\n` + list.map((sg, i) => `${i + 1}. ${sg.label}：${sg.instruction}`).join('\n')
-    await runAgent(message, '', { intent: 'edit', includeAnnotations: false, selection: discussion?.selection || null })
+    const display = { kind: 'apply', title: list.length === 1 ? '按这个改：' + list[0].label : `按这 ${list.length} 条改`, items: list.map(sg => sg.label) }
+    await runAgent(message, '', { intent: 'edit', includeAnnotations: false, selection: discussion?.selection || null, display })
   }
   // 建议清单底下的「其他」：跟着这次讨论的选区，按输入框当前的模式发出去
   async function customSuggestion({ text, discussion }) {

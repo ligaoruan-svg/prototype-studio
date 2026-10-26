@@ -159,7 +159,7 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
             extra["target"] = (f"{len(picked)} 个元素" if selection.get('kind') == 'region' and picked else element_name(selection))[:60]
         # 界面上拼出来的长话（「同步到原型」那一大段）：对话里只显示成一张小卡片，点开才看清单
         if isinstance(display, dict) and display.get("title"):
-            extra["display"] = {"title": str(display["title"])[:60], "items": [str(x)[:80] for x in (display.get("items") or [])[:30]],
+            extra["display"] = {"kind": str(display.get("kind") or "")[:12], "title": str(display["title"])[:60], "items": [str(x)[:80] for x in (display.get("items") or [])[:30]],
                                 "note": str(display.get("note") or "")[:500]}
         storage.append_chat(project_id, "user", user_message, extra)
     history = history_context(meta.get('chat',[]), page_id)
