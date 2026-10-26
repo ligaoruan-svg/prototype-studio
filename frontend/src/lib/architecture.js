@@ -278,8 +278,10 @@ export function syncIds(arch, ids, id = '') {
 }
 export function syncAttachFor(arch, changes, ids) {
   if (!arch || !ids.length) return null
+  // intent：同步就是要改原型，固定走「直接改」——长长一段清单在「自动」里会被当成需求先聊，结果一处没改
+  // changeIds：做完以后这几处记成已同步（见 acceptSynced）
   if (ids.includes('')) return {
-    ids: [''], title: '同步到原型',
+    ids: [''], title: '同步到原型', intent: 'edit', changeIds: changes.map(c => c.id),
     items: changes.length ? changes.map(changeLabel) : ['照画布核对整个原型，对不上的照画布改'],
     message: changes.length ? syncMessage(changes) : checkMessage(arch),
   }
@@ -293,7 +295,7 @@ export function syncAttachFor(arch, changes, ids) {
   }
   const names = nodes.map(n => `「${n.name}」`)
   return {
-    ids: nodes.map(n => n.id),
+    ids: nodes.map(n => n.id), intent: 'edit', changeIds: list.map(c => c.id),
     title: `同步${names.length > 3 ? names[0] + `等 ${names.length} 块` : names.join('')}到原型`,
     items: [...list.map(changeLabel), ...quiet.map(n => `核对「${n.name}」，对不上的照画布改`)],
     message: [list.length ? syncMessage(list) : '', ...quiet.map(n => checkMessage(arch, n))].filter(Boolean).join('\n\n另外：\n'),

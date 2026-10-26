@@ -239,6 +239,19 @@ class 接口(unittest.TestCase):
         self.assertEqual(body['order'][0]['name'], '设备定义')
         self.assertEqual(body['counts']['tabs'], 3)
 
+    def test_同步做完_这几处记成已同步(self):
+        url = f'/api/projects/{self.pid}/architecture'
+        base = A.save(self.pid, {"nodes": [{"type": "page", "name": "报修工单", "proto": True, "seen": True}]})["nodes"]
+        A.save_base(self.pid, base)
+        arch = A.load(self.pid)
+        arch["nodes"] += [{"type": "page", "name": "维修工"}, {"type": "page", "name": "统计"}]
+        arch = self.c.put(url, json={'architecture': arch}).json()['architecture']
+        repair, stats = arch['nodes'][1], arch['nodes'][2]
+        r = self.c.post(url + '/accept', json={'ids': [repair['id']]}).json()
+        self.assertEqual([n['name'] for n in r['base']], ['报修工单', '维修工'])        # 只记同步了的那一处
+        self.assertTrue(r['architecture']['nodes'][1].get('proto'))                    # 不再是虚线
+        self.assertFalse(r['architecture']['nodes'][2].get('proto'))                   # 没同步的照旧
+
     def test_从原型读_画布上没同步的改动留着(self):
         page = storage.load_meta(self.pid)['pages'][0]['id']
         url = f'/api/projects/{self.pid}/architecture'

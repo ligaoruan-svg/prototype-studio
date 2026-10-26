@@ -27,7 +27,7 @@ export function useAgentRun(s) {
     if (!model.value.has_key || (reference.value && !model.value.supports_vision)) { s.openDialog('settings'); dialogError.value = reference.value ? '这张截图需要支持图片输入和工具调用的模型。' : '请先配置模型密钥。'; return }
     const activeSelection = options.selection === undefined ? selected.value : options.selection
     const target = activeSelection ? { selector: activeSelection.selector, text: activeSelection.text, tag: activeSelection.tag, outer_html: activeSelection.outer_html, targets: activeSelection.targets || [], ...s.modalContext(activeSelection) } : null
-    const intent = options.intent || composerIntent.value
+    const intent = options.intent || attach?.intent || composerIntent.value
     const run = { intent, options: { ...options, intent }, id: Date.now(), projectId: project.value.id, pageId: pageId.value, request: message, started: Date.now(), status: 'running', label: '理解需求中', steps: [], error: null, streamText: '', plan: [] }
     runs.value.push(run)
     const current = runs.value[runs.value.length - 1]
@@ -100,6 +100,8 @@ export function useAgentRun(s) {
       lastResult.value = result
       await s.refresh(false); projects.value = await api('/api/projects')
       current.status = 'complete'
+      // 同步到原型做完了：这几处记成已同步，不再挂在「N 处没同步」里（AI 只是聊了几句、没动手的不算）
+      if (attach?.changeIds?.length && !result.discussion && !result.clarification) await s.acceptSynced(attach.changeIds).catch(() => {})
       s.refreshMemoryCount(); setTimeout(s.refreshMemoryCount, 20_000)   // 后台整理记忆要一会儿，过一阵再看一次
     } catch (e) {
       if (e.code === 'stopped') {   // 自己点的停止、而且还没改动：不是失败，原需求放回输入框

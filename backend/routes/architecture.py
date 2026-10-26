@@ -2,6 +2,8 @@
 在画布上改结构用对话里的「架构」模式（见 arch_chat，走 agent/stream），或者直接在画布上手动改；改了的「同步到原型」在界面上拼成一段话交给 AI"""
 from __future__ import annotations
 
+import copy
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -16,6 +18,10 @@ class ArchIn(BaseModel):
 
 class RefreshIn(BaseModel):
     page_id: str = ""
+
+
+class AcceptIn(BaseModel):
+    ids: list[str] = []
 
 
 def _project(project_id: str) -> dict:
@@ -63,3 +69,23 @@ def refresh(project_id: str, body: RefreshIn):
     saved = architecture.save(project_id, arch)
     architecture.save_base(project_id, base)
     return bundle(project_id, saved, refreshed=True)
+
+
+# 同步到原型做完了（AI 改好了，或者说原型里本来就有）：这几处记成已同步——并进 base，就不再算「没同步」。
+# 加的那些算原型里有了（不再是虚线）。原型里其实没有的，下次从原型读时会标成「原型里已经没有」
+@router.post("/api/projects/{project_id}/architecture/accept")
+def accept(project_id: str, body: AcceptIn):
+    _project(project_id)
+    arch, base = architecture.load(project_id), architecture.load_base(project_id)
+    want = set(body.ids)
+    if not arch or base is None or not want:
+        return bundle(project_id, arch)
+    ops = [op for op in arch_expand.diff(base, arch.get("nodes") or []) if (op.get("id") or op.get("node", {}).get("id")) in want]
+    if not ops:
+        return bundle(project_id, arch)
+    added = {n.get("id") for op in ops if op["op"] == "add" for n, _, _ in arch_expand._walk([op["node"]])}
+    for n, _, _ in arch_expand._walk(arch.get("nodes") or []):
+        if n.get("id") in added:
+            n["proto"] = n["seen"] = True
+    architecture.save_base(project_id, arch_expand.replay(copy.deepcopy(base), copy.deepcopy(ops)))
+    return bundle(project_id, architecture.save(project_id, arch))

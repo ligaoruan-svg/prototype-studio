@@ -177,6 +177,13 @@ export function useArchitecture(s) {
   // 同步到原型：挂在输入框上面一张卡片、切到「自动」，你看一眼（可以补一句）再发。AI 改完，原型一变画布自动再读，对上的就不算了
   // 传了 id 就只同步那一块（卡片工具条上的「同步」）
   // 有没有记下的改动都能点：有改动就交代这几处；没有就让 AI 照画布核对这一块（或整个原型），对不上的照画布改
+  // 这几处已经同步到原型了（AI 做完了，或者你确认原型里本来就有）：并进 base，不再算没同步
+  async function acceptSynced(ids) {
+    if (!arch.value || !ids?.length) return
+    await saveNow()
+    const bundle = await api(url() + '/accept', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }) })
+    apply(bundle)
+  }
   // 点了好几块的「同步」就合成一张卡片；画布接着改，卡片里的内容跟着变
   function syncToPrototype(id = '') {
     if (!arch.value) return
@@ -215,7 +222,7 @@ export function useArchitecture(s) {
 
   return { arch, archIssues, archCounts, archMounted, archBusy, archError, archSelected, archShowDesc, archShowFields, archQuery,
     archRemoved, archHistory: history, loadArch, showArch, hideArch, saveArch: saveNow, archSnapshot: snapshot, archDirty: dirty, archChange: change,
-    archLevel, archExpand, nodeOpen, openNode, setLevel, archReading, archFlash, archBase, archChanges, syncToPrototype, archAttached,
+    archLevel, archExpand, nodeOpen, openNode, setLevel, archReading, archFlash, archBase, archChanges, syncToPrototype, archAttached, acceptSynced,
     undoArch, archSelect: select, archSelectedItem: selectedItem, archAdd, archSibling, archMove, archToggle, archRemove,
     readPrototype, afterArchChat, archRenaming, archKey, renameNode,
     cloneArch: () => clone(arch.value) }

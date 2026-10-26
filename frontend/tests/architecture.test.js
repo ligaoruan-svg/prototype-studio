@@ -181,3 +181,22 @@ test('同步卡片：点好几块合成一张，上下级不重复', async () =>
   assert.deepEqual(syncIds(a, ids, ''), [''])              // 底部按钮：整个
   assert.equal(syncAttachFor(a, changes, ['']).title, '同步到原型')
 })
+
+test('导出架构：Markdown 大纲和表格', async () => {
+  const { toMarkdown, toCsv } = await import('../src/lib/archExport.js')
+  const a = { name: '物业', nodes: [{ id: 'm', type: 'module', name: '报修管理', desc: '报修全流程', proto: true, children: [
+    { id: 'p', type: 'page', name: '工单列表', proto: true, children: [
+      { id: 't', type: 'table', name: '列表', cols: ['工单号', '状态'], proto: true, children: [{ id: 'b', type: 'button', name: '查看', action: 'open', target: '工单详情', proto: true }] },
+      { id: 'd', type: 'modal', name: '新增工单', fields: ['报修分类*（下拉：水电/门窗）'] }] }] }] }
+  const md = toMarkdown(a, { tracked: true })
+  assert.match(md, /^# 物业/)
+  assert.match(md, /## 模块：报修管理\n\n报修全流程/)
+  assert.match(md, /### 菜单页：工单列表/)
+  assert.match(md, /- \*\*表格\*\* 列表\n  - 列：工单号、状态\n  - \*\*按钮\*\* 查看\n    - 点了：打开「工单详情」/)
+  assert.match(md, /新增工单\n  - 字段：报修分类\*（下拉：水电\/门窗）\n  - （原型里还没有）/)
+  assert.doesNotMatch(toMarkdown(a), /原型里还没有/)                     // 没导入过原型：不标
+  const csv = toCsv(a, { tracked: true })
+  assert.ok(csv.startsWith('﻿模块,菜单页'))                           // Excel 认得出中文
+  assert.match(csv, /报修管理,工单列表,,按钮,查看,,,打开「工单详情」,,有/)
+  assert.match(csv, /弹窗,新增工单,,报修分类\*（下拉：水电\/门窗）,,,还没有/)
+})
