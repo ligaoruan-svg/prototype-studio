@@ -301,3 +301,7 @@ export function syncAttachFor(arch, changes, ids) {
     message: [list.length ? syncMessage(list) : '', ...quiet.map(n => checkMessage(arch, n))].filter(Boolean).join('\n\n另外：\n'),
   }
 }
+
+// 「出 / 生成 / 梳理 / 跑出架构」：要的是画布上的页面树，不是去改原型。后台 arch_chat.ARCH_MAKE 同一条规则
+const ARCH_MAKE = /(?:(?<![指看找说提列])出|生成|画|梳理|跑|设计|搭|整理|规划)(?:一下|一个|一份|一版|个|份|出|系统|产品|整体|完整的?|新的?|的){0,3}(?:架构|页面树|菜单结构|信息架构|功能架构|页面结构)/
+export const wantsArchitecture = text => ARCH_MAKE.test(String(text || ''))

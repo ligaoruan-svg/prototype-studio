@@ -13,7 +13,7 @@ import re
 from typing import Any, Callable
 
 from . import architecture, storage
-from .conversation import discussion_result, resolve_intent
+from .conversation import ASK_HARD, NO_WRITE, discussion_result, is_continue, looks_like_brief, resolve_intent
 from .arch_text import from_outline, keep_ids, to_outline
 from .deepseek_client import DeepSeekError, chat
 from .errors import WorkError
@@ -77,6 +77,27 @@ def _history(project_id: str, page_id: str) -> tuple[list[dict], str]:
     return out, previous
 
 
+# 「出 / 生成 / 梳理 / 跑出架构」：要画，就算句子是问句（「能帮我出个架构吗」）
+ARCH_MAKE = re.compile(r"(?:(?<![指看找说提列])出|生成|画|梳理|跑|设计|搭|整理|规划)(?:一下|一个|一份|一版|个|份|出|系统|产品|整体|完整的?|新的?|的){0,3}"
+                       r"(?:架构|页面树|菜单结构|信息架构|功能架构|页面结构)")
+
+
+def arch_mode(message: str, previous: str | None, empty: bool) -> str:
+    """架构模式里这句是在问（只回答）还是要画 / 改（改页面树）。
+    和「自动」一样的规则，再加三条：贴进来一大段需求、明说要出架构、画布还空着时说了个系统——都是要画"""
+    text = (message or "").strip()
+    if previous in ("discuss", "edit") and is_continue(text):
+        return previous
+    if NO_WRITE.search(text):
+        return "discuss"
+    # 分了好几行的就是一段需求（哪怕不到一百字），照着画
+    if ARCH_MAKE.search(text) or looks_like_brief(text) or len([x for x in text.splitlines() if x.strip()]) >= 3:
+        return "edit"
+    if empty and not ASK_HARD.search(text):
+        return "edit"
+    return resolve_intent(text, "auto", previous)
+
+
 def _answer(reply: str) -> tuple[str, list[dict]]:
     """「回答 … 可以这样改：- 标题｜一句话｜做法」拆成回答和几条建议"""
     text = re.sub(r"```\w*", "", reply or "").strip()
@@ -132,9 +153,9 @@ def _split(reply: str) -> tuple[str, str]:
 def run(project_id: str, page_id: str, message: str, key: str, model: str, base_url: str, max_tokens: int,
         on_event: Callable[[dict], None], should_stop: Callable[[], bool], stream: bool = True) -> dict[str, Any]:
     history, previous = _history(project_id, page_id)
-    mode = resolve_intent(message, "auto", previous)
-    storage.append_chat(project_id, "user", message, {"page_id": page_id, "intent": "architecture", "arch_mode": mode})
     current = architecture.load(project_id) or architecture.empty()
+    mode = arch_mode(message, previous, not current.get("nodes"))
+    storage.append_chat(project_id, "user", message, {"page_id": page_id, "intent": "architecture", "arch_mode": mode})
     current["name"] = current.get("name") or storage.load_meta(project_id).get("name", "")
     outline = to_outline({"name": current["name"], "nodes": current["nodes"]})
     try:

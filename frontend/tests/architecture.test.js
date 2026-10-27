@@ -200,3 +200,11 @@ test('导出架构：Markdown 大纲和表格', async () => {
   assert.match(csv, /报修管理,工单列表,,按钮,查看,,,打开「工单详情」,,有/)
   assert.match(csv, /弹窗,新增工单,,报修分类\*（下拉：水电\/门窗）,,,还没有/)
 })
+
+test('说「出架构」才转到画布，问架构的不转', async () => {
+  const { wantsArchitecture } = await import('../src/lib/architecture.js')
+  for (const t of ['跑出架构给我', '帮我梳理一下架构', '生成一版系统架构', '能帮我出个架构吗？', '画一下页面树']) assert.ok(wantsArchitecture(t), t)
+  for (const t of ['分析一下架构', '这个架构怎么样', '指出架构哪里不合理', '把导出按钮改成导出清单']) assert.ok(!wantsArchitecture(t), t)
+  const run = readFileSync(new URL('../src/composables/useAgentRun.js', import.meta.url), 'utf8')
+  assert.match(run, /intent === 'auto' && wantsArchitecture\(message\)[\s\S]*?await s\.showArch\(\)[\s\S]*?intent = 'architecture'/)
+})

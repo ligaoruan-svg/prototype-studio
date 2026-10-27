@@ -1420,6 +1420,7 @@ export default {
   "直接粘贴到飞书、钉钉、微信": "Paste straight into chat or docs",
   "原型里已经有了，标成已同步": "Already in the prototype — mark as synced",
   "原型里其实已经有了（比如 AI 说早就做好了）：这几处不再算没同步": "The prototype already has these (e.g. AI says they are done): stop counting them as unsynced",
+  "打开架构画布": "Opening the architecture canvas",
   "把话填进输入框、切到「自动」，你看一眼再发": "Fills the message box and switches to Auto — review it before sending",
   "让 AI 做出来": "Have AI build it",
   "正在从原型读页面…": "Reading the prototype…",

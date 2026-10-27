@@ -78,6 +78,44 @@ def _layer_title(html: str, fallback: str) -> str:
     return m.group(1).strip() if m and m.group(1).strip() else fallback
 
 
+# 表格上方的标题：卡片头（card-title / xx-hd / header）或小标题 h2-h6
+TITLE_AT = re.compile(r'<h[2-6][^>]*>(.*?)</h[2-6]>|class="[^"]*(?:title|-hd\b|_hd\b|header|heading)[^"]*"[^>]*>(.*?)</', re.S)
+TITLE_NEAR = 900          # 标题离表格太远（中间隔着指标卡、筛选栏）就不算这张表的
+# 以前读出来的通用名：老画布上的这些节点按列 / 字段对上新读出来的，不当成删了一个、又加了一个
+GENERIC = {"列表", "明细表", "筛选 / 表单", "筛选", "表单"}
+
+
+def _clean(html: str) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", html or "")).strip()
+
+
+def _tables(html: str, owner: str) -> list[dict]:
+    """这一层里的每张表，各自的列；名字取表格上方最近的标题（「日运行明细」「设备状态」），
+    没有标题就叫「页面名 + 列表」（实时告警列表）。以前一页几张表的表头全并成一张「列表」"""
+    out, start = [], 0
+    for m in re.finditer(r"<table\b.*?</table>", html or "", re.S):
+        cols = _cols(m.group(0))
+        before = (html or "")[max(start, m.start() - TITLE_NEAR):m.start()]
+        start = m.end()
+        if not cols:
+            continue
+        title = ""
+        for t in TITLE_AT.finditer(before):
+            text = _clean(t.group(1) or t.group(2))
+            if 2 <= len(text) <= 16 and re.search(r"[一-鿿]", text) and not re.match(r"共\s*\d|第\s*\d", text):
+                title = text
+        out.append({"title": title, "cols": cols, "html": m.group(0)})
+    base = re.sub(r"(管理|配置|列表|清单|查询|中心|详情)$", "", owner) or owner
+    used: set[str] = set()
+    for i, t in enumerate(out):
+        name = t["title"] if t["title"] and t["title"] != owner else base + "列表"
+        while name in used:
+            name = f"{base}列表{len(used) + 1}" if name.startswith(base) else name + "2"
+        used.add(name)
+        t["name"] = name
+    return out
+
+
 def _col_of(html: str, text: str) -> str:
     """表格里这个字在哪一列，返回那一列的表头（工单号）"""
     heads = [re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", h)).strip() for h in re.findall(r"<th[^>]*>(.*?)</th>", html or "", re.S)]
@@ -98,7 +136,8 @@ def _fill(container: dict, html: str, nodes: list[dict], parent_id, extras: dict
     """一个页面（或下钻页、页签、弹窗）里面有什么：筛选、表格、按钮，按钮点了打开哪个弹窗 / 跳到哪个子页面，弹窗里有哪些字段。
     extras：这一层上点了没弹出东西的按钮（导出、停用、只弹提示、跳到别的页），也记成按钮"""
     kids = container["children"]
-    labels, cols, shows = form_fields(html), _cols(html), _dts(html)
+    labels, shows = form_fields(html), _dts(html)
+    tables = _tables(html, container["name"]) if "<table" in (html or "") else []
     names = {parse_field(f)["name"] for f in labels}
     if container["type"] == "drawer" and (labels or shows):
         container["fields"] = labels + [d for d in shows if d not in names]
@@ -106,11 +145,16 @@ def _fill(container: dict, html: str, nodes: list[dict], parent_id, extras: dict
         # 弹窗上面带出来给你看的（工单号、报修事项）是只读的，加 🔒；下面要填的照 <label>，带上是下拉还是日期
         container["fields"] = [d + "🔒" for d in shows if d not in names] + labels
     elif labels:
-        kids.append({"type": "block", "name": "筛选 / 表单", "fields": labels, "children": []})
-    table = None
-    if cols:
-        table = {"type": "table", "name": "列表" if container["type"] not in ("modal", "drawer", "wizard") else "明细表", "cols": cols, "children": []}
-        kids.append(table)
+        # 页面上有表格：上面那排输入框是筛选；没有表格就是一张表单
+        kids.append({"type": "block", "name": "筛选" if tables else "表单", "fields": labels, "children": []})
+    for t in tables:
+        t["node"] = {"type": "table", "name": t["name"], "cols": t["cols"], "children": []}
+        kids.append(t["node"])
+    table = tables[0]["node"] if tables else None
+
+    def table_of(label: str):
+        """表格行上的按钮挂在它所在的那张表下面"""
+        return next((t["node"] for t in tables if label and label in _clean(t["html"])), table)
     seen_buttons, seen_targets = set(), set()
     for n in [n for n in nodes if n.get("parent") == parent_id]:
         raw = str(n.get("label") or "")
@@ -123,7 +167,8 @@ def _fill(container: dict, html: str, nodes: list[dict], parent_id, extras: dict
         if row and " · " in title:
             title = title.rsplit(" · ", 1)[-1].strip() or title
         # 表格里点的是一条数据（工单号 BX-202610-011）：按钮叫那一列的名字，每一行点开的都是同一个详情，只记一次
-        col = _col_of(html, label) if row else ""
+        # 哪一列：只在这个按钮所在的那张表里找（一页几张表时，表头不能混着数）
+        col = _col_of(next((tb["html"] for tb in tables if label in _clean(tb["html"])), html), label) if row else ""
         if row and col and col not in SKIP_COLS and col != label:
             label = col
         if raw.startswith("页签"):
@@ -138,7 +183,7 @@ def _fill(container: dict, html: str, nodes: list[dict], parent_id, extras: dict
             title = re.sub(r"(配置|管理|列表|清单)$", "", container["name"]) + "详情"
             label = "点编号进详情" if not re.search(r"[一-鿿]", label) else label
         button = {"type": "button", "name": label, "action": "jump" if kind == "drill" else "open", "target": title, "children": []}
-        holder = table["children"] if (row and table) else kids
+        holder = table_of(label)["children"] if (row and table) else kids
         if (label, title) not in seen_buttons:
             seen_buttons.add((label, title))
             holder.append(button)
@@ -147,7 +192,7 @@ def _fill(container: dict, html: str, nodes: list[dict], parent_id, extras: dict
             name = re.sub(r"^表格行\s*·\s*", "", str(extra)).strip()[:30]
             if name and (name, title) not in seen_buttons:
                 seen_buttons.add((name, title))
-                (table["children"] if (str(extra).startswith("表格行") and table) else kids).append({**button, "name": name, "children": []})
+                (table_of(name)["children"] if (str(extra).startswith("表格行") and table) else kids).append({**button, "name": name, "children": []})
         if (kind, title) in seen_targets:
             continue
         seen_targets.add((kind, title))
@@ -165,7 +210,7 @@ def _fill(container: dict, html: str, nodes: list[dict], parent_id, extras: dict
         button = {"type": "button", "name": label, "action": action, "children": []}
         if target_name:
             button["target"] = target_name
-        (table["children"] if (row and table) else kids).append(button)
+        (table_of(label)["children"] if (row and table) else kids).append(button)
 
 
 # 点了没弹出东西的按钮：展开时没点（导出、停用这类有风险的）、点了只弹提示、点了跳到别的页面
@@ -354,9 +399,18 @@ def _key(name: str) -> str:
     return loose_name(str(name).rsplit(" · ", 1)[-1])
 
 
+def _names_in(node: dict) -> set[str]:
+    return {parse_field(f)["name"] for f in (node.get("cols") or []) + (node.get("fields") or [])}
+
+
 def _match(items: list[dict], node: dict, alias: dict | None = None) -> dict | None:
     names = lambda o: {o["name"], (alias or {}).get(o.get("id"), o["name"])}   # noqa: E731
     same = [o for o in items if node["name"] in names(o)] or [o for o in items if _key(node["name"]) in {_key(x) for x in names(o)}]
+    if not same:
+        # 以前读成「列表」「筛选 / 表单」的那张，现在按标题起了名：同一种、列 / 字段大半一样就是它
+        mine = _names_in(node)
+        same = [o for o in items if o["type"] == node["type"] and (o["name"] in GENERIC or node["name"] in GENERIC) and mine
+                and len(mine & _names_in(o)) >= 0.6 * min(len(mine), len(_names_in(o)) or 1)]
     return next((o for o in same if o["type"] == node["type"]), same[0] if same else None)
 
 

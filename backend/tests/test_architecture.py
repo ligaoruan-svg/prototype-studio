@@ -1,6 +1,7 @@
 """架构模式：收拾数据、检查对不对得上、按依赖排生成顺序、交给 AI 的文字、接口、按架构生成时放进背景"""
 import sys
 import tempfile
+import copy
 import unittest
 from pathlib import Path
 
@@ -177,7 +178,8 @@ class 分到弹什么(unittest.TestCase):
         ]
         D._fill(page, html, nodes, None)
         kinds = [(c["type"], c["name"]) for c in page["children"]]
-        self.assertIn(("block", "筛选 / 表单"), kinds)
+        self.assertIn(("block", "筛选"), kinds)                              # 上面有表格：这排输入框是筛选
+        self.assertIn(("table", "碳排核算模板列表"), kinds)                    # 表格上面没标题：页面名 + 列表
         self.assertIn(("button", "新增模板"), kinds)
         self.assertIn(("modal", "新增核算模板"), kinds)
         self.assertIn(("drill", "碳排核算模板详情"), kinds)          # 编号当标题的详情页换成「xx详情」
@@ -405,6 +407,39 @@ class 架构模式对话(unittest.TestCase):
         self.assertTrue(out['architecture_changed'])
         self.assertEqual([n['name'] for n in A.load(self.pid)['nodes']], ['报修工单', '维修工'])
         self.assertTrue(any('少了维修工管理' in m['content'] for m in seen[1] if m['role'] == 'assistant'))
+
+
+class 表格起名(unittest.TestCase):
+    def test_一页几张表各读各的_按卡片标题起名(self):
+        html = ('<div class="metric-card"><div class="metric-title">今日用电量</div><b>1,200</b></div>'
+                '<div class="card"><div class="card-title">日运行明细</div><div class="card-desc">用电、光伏与碳排</div>'
+                '<table><tr><th>日期</th><th>用电量</th></tr><tr><td>10-26</td><td>1,200</td></tr></table></div>'
+                '<div class="card"><div class="card-title">设备状态</div><table><tr><th>设备编号</th><th>状态</th><th>操作</th></tr>'
+                '<tr><td>EQ-01</td><td>告警</td><td><button>处理</button></td></tr></table></div>')
+        nodes = [{"id": 1, "parent": None, "label": "表格行 · 处理", "title": "告警详情", "layerSel": "#drawer", "html": "<dt>告警编号</dt>"}]
+        page = {"type": "page", "name": "园区驾驶舱", "children": []}
+        D._fill(page, html, nodes, None)
+        tables = {c["name"]: c for c in page["children"] if c["type"] == "table"}
+        self.assertEqual(list(tables), ["日运行明细", "设备状态"])
+        self.assertEqual(tables["日运行明细"]["cols"], ["日期", "用电量"])               # 列不再混在一起
+        self.assertEqual([b["name"] for b in tables["设备状态"]["children"]], ["处理"])   # 行按钮挂在它那张表下面
+
+    def test_没标题的几张表_页面名加列表_不重名(self):
+        html = "<table><tr><th>告警编号</th></tr></table><table><tr><th>规则名称</th></tr></table>"
+        names = [t["name"] for t in D._tables(html, "实时告警")]
+        self.assertEqual(names[0], "实时告警列表")
+        self.assertEqual(len(set(names)), 2)
+
+    def test_老画布上的列表_按列对上新名字_不算删了又加(self):
+        canvas = [{"id": "p1", "type": "page", "name": "实时告警", "proto": True, "seen": True, "children": [
+            {"id": "t1", "type": "table", "name": "列表", "cols": ["告警编号", "等级", "状态"], "proto": True, "seen": True, "desc": "我写的介绍", "children": []}]}]
+        fresh = [{"type": "page", "name": "实时告警", "children": [
+            {"type": "table", "name": "实时告警列表", "cols": ["告警编号", "等级", "状态", "发生时间"], "children": []}]}]
+        tree, base = D.refresh_canvas(canvas, copy.deepcopy(canvas), fresh)
+        table = tree[0]["children"]
+        self.assertEqual(len(table), 1)                                  # 没有多出一张「原型里已经没有」的列表
+        self.assertEqual((table[0]["id"], table[0]["name"]), ("t1", "实时告警列表"))
+        self.assertEqual(table[0]["desc"], "我写的介绍")
 
 
 class 从原型读得更全(unittest.TestCase):

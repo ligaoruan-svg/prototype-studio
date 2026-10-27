@@ -3,6 +3,7 @@ import { computed, nextTick, ref } from 'vue'
 import { consumeAgentStream } from '../lib/streamAgent.js'
 import { selfTest, selfTestRequest } from '../lib/probe.js'
 import { locale } from '../lib/i18n.js'
+import { wantsArchitecture } from '../lib/architecture.js'
 
 export function useAgentRun(s) {
   const { input, annotations, locked, pageId, model, reference, dialogError, selected, composerIntent, runs, project, busy, error,
@@ -27,7 +28,16 @@ export function useAgentRun(s) {
     if (!model.value.has_key || (reference.value && !model.value.supports_vision)) { s.openDialog('settings'); dialogError.value = reference.value ? '这张截图需要支持图片输入和工具调用的模型。' : '请先配置模型密钥。'; return }
     const activeSelection = options.selection === undefined ? selected.value : options.selection
     const target = activeSelection ? { selector: activeSelection.selector, text: activeSelection.text, tag: activeSelection.tag, outer_html: activeSelection.outer_html, targets: activeSelection.targets || [], ...s.modalContext(activeSelection) } : null
-    const intent = options.intent || attach?.intent || composerIntent.value
+    let intent = options.intent || attach?.intent || composerIntent.value
+    // 在「自动」里说「出架构 / 梳理一下架构」：打开架构画布，等它从原型读完，再走「架构」模式——以前会去原型里做页面，跑十几分钟
+    if (!attach && !options.intent && intent === 'auto' && wantsArchitecture(message)) {
+      busy.value = true; status.value = '打开架构画布'
+      try {
+        await s.showArch()
+        for (let i = 0; i < 180 && s.archReading(); i++) await new Promise(resolve => setTimeout(resolve, 500))
+      } finally { busy.value = false }
+      intent = 'architecture'
+    }
     const run = { intent, options: { ...options, intent }, id: Date.now(), projectId: project.value.id, pageId: pageId.value, request: message, started: Date.now(), status: 'running', label: '理解需求中', steps: [], error: null, streamText: '', plan: [] }
     runs.value.push(run)
     const current = runs.value[runs.value.length - 1]
