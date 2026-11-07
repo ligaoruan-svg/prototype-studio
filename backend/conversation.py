@@ -107,3 +107,11 @@ def history_context(messages: list, page_id: str) -> list:
             content += '\n待确认选项：' + ' / '.join(question.get('options', []))
         history.append({'role': message['role'], 'content': content})
     return history[-10:]
+
+
+def chat_display(display) -> dict | None:
+    """界面上拼出来的长话（同步到原型、按这个改、按业务梳理画架构）：对话里只显示成一张小卡片，点开才看清单"""
+    if not isinstance(display, dict) or not display.get("title"):
+        return None
+    return {"kind": str(display.get("kind") or "")[:12], "title": str(display["title"])[:60],
+            "items": [str(x)[:80] for x in (display.get("items") or [])[:30]], "note": str(display.get("note") or "")[:500]}

@@ -17,7 +17,7 @@ const {
   locked, memoryCount, messages, model, modelMenu, openDialog, openMemory, page,
   pasteImage, pendingRef, pendingUser, pendingDisplay, syncAttach, pointAt, project, projects, reference, rightOpen,
   runAgent, saveNote, selected, selectionPlace, setMode, showChat, showGuide, showPanel,
-  smallerRequest, stopAgent, switchModel, switchingModel, toAI, tool, undo, useRephrase
+  smallerRequest, stopAgent, switchModel, switchingModel, toAI, tool, undo, useRephrase, drawSpec, reviseSpec
 } = inject('studio')
 // 对话方式：参照 Claude，收进输入框左下角一个小菜单，不再单独占一行
 const modes = computed(() => [{ value: 'auto', label: '自动', tip: '提问先聊，指令再改' }, { value: 'discuss', label: '只讨论', tip: '只聊，不改代码' }, { value: 'edit', label: '直接改', tip: '直接动手局部修改' },
@@ -33,6 +33,13 @@ function bubbleText(message) {
   return isLong(message.content) && !openLong.value.has(message.id) ? preview(message.content) : message.content
 }
 const modelName = computed(() => model.value.has_key ? ((model.value.profiles || []).find(p => p.active)?.name || model.value.model) : '连接模型')
+// 业务梳理卡：后面已经按它画了架构 → drawn；后面又出了新版梳理 → replaced；不然还在等你确认
+function specState(message) {
+  if (!message.spec) return 'open'
+  const later = messages.value.slice(messages.value.indexOf(message) + 1).filter(m => m.role === 'assistant' && m.intent === 'architecture')
+  if (later.some(m => m.arch_mode === 'draw' && m.arch_changed)) return 'drawn'
+  return later.some(m => m.spec) ? 'replaced' : 'open'
+}
 // 讨论卡上的建议有没有已经照着改好：后面有一条「按已讨论的建议修改」带着它的做法，
 // 而且紧跟着的回复真的改了页面（失败、停止的不算）
 function appliedFor(message) {
@@ -65,7 +72,7 @@ function appliedFor(message) {
           <p v-if="bubbleText(message)" class="bubble">{{ bubbleText(message) }}</p>
           <button v-if="!message.display && isLong(message.content)" class="text-button more-text" @click="toggleLong(message.id)">{{ openLong.has(message.id) ? $t('收起') : $t('展开全部') }}</button>
         </template>
-        <ResultCard v-else-if="message.report || message.clarification || message.discussion || message.changed" :result="message" :applied="appliedFor(message)" :selftest="selftests[message.change_id]" :locked="locked" :can-undo="page?.last_undo_id === message.change_id" @undo="undo" @choose="chooseAnswer" @apply="applySuggestion" @discuss="discussSuggestion" @custom="customSuggestion" @rephrase="useRephrase" @forget="forgetFromCard" />
+        <ResultCard v-else-if="message.report || message.clarification || message.discussion || message.changed || message.spec" :result="message" :applied="appliedFor(message)" :spec-state="specState(message)" :selftest="selftests[message.change_id]" :locked="locked" :can-undo="page?.last_undo_id === message.change_id" @undo="undo" @choose="chooseAnswer" @apply="applySuggestion" @discuss="discussSuggestion" @custom="customSuggestion" @rephrase="useRephrase" @forget="forgetFromCard" @draw-spec="drawSpec" @revise-spec="reviseSpec" />
         <p v-else class="reply">{{ message.content }}</p>
         <span v-if="message.role === 'user' && message.target" class="message-target"><SquareMousePointer :size="12" />{{ $t('指着：{0}', [$t(message.target)]) }}</span>
         <img v-if="message.role === 'user' && message.image" class="message-shot" loading="lazy" :src="`/api/projects/${project.id}/chat-images/${message.image}`" :alt="message.image_name || $t('参考截图缩略图')" @error="$event.target.style.display = 'none'">

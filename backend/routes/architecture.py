@@ -51,7 +51,13 @@ def get_architecture(project_id: str):
 @router.put("/api/projects/{project_id}/architecture")
 def put_architecture(project_id: str, body: ArchIn):
     _project(project_id)
-    return bundle(project_id, architecture.save(project_id, body.architecture))
+    raw = dict(body.architecture or {})
+    # 界面手里那份可能是梳理出来之前读的，没带 spec：别把存着的业务梳理冲掉
+    if "spec" not in raw:
+        stored = architecture.load(project_id) or {}
+        if stored.get("spec"):
+            raw["spec"] = stored["spec"]
+    return bundle(project_id, architecture.save(project_id, raw))
 
 
 # 从原型读：原型里新做出来的补进画布；画布上还没同步的改动（加的、删的、改名的、改字段的）照旧留着

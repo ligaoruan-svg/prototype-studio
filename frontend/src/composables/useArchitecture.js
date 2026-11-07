@@ -139,7 +139,8 @@ export function useArchitecture(s) {
     if (!hasPrototype()) { if (!arch.value) arch.value = { ...emptyArchitecture(project.value.name || ''), nodes: [] }; return }
     // 正在改名：等你改完再读
     if (archRenaming.value) { clearTimeout(readTimer); readTimer = setTimeout(readPrototype, 1500); return }
-    await saveNow()
+    // 只有还没存的手动改动才先存：不然拿手里的旧副本把后台刚改好的（AI 画的树、业务梳理）冲掉
+    if (saveTimer) await saveNow(); else await saving
     const rev = localRev
     archBusy.value ||= 'read'
     try {
@@ -180,7 +181,7 @@ export function useArchitecture(s) {
   // 这几处已经同步到原型了（AI 做完了，或者你确认原型里本来就有）：并进 base，不再算没同步
   async function acceptSynced(ids) {
     if (!arch.value || !ids?.length) return
-    await saveNow()
+    if (saveTimer) await saveNow(); else await saving
     const bundle = await api(url() + '/accept', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }) })
     apply(bundle)
   }

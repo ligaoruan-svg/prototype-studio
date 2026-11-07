@@ -98,7 +98,7 @@ def agent_stream(project_id: str, body: AgentIn):
         try:
             if body.intent == 'architecture':   # 架构模式：只改画布上的页面树，不走改代码那一套
                 result = arch_chat.run(project_id, body.page_id, body.message, key, body.model or settings['model'], settings['base_url'],
-                                       settings['max_tokens'], events.put, stop.is_set, settings.get('stream', True))
+                                       settings['max_tokens'], events.put, stop.is_set, settings.get('stream', True), display=body.display)
                 events.put({'type': 'complete', 'result': result})
                 return
             result = run_agent(project_id, body.page_id, body.message, key, body.model or settings['model'],

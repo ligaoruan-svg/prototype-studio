@@ -254,6 +254,12 @@ class 接口(unittest.TestCase):
         self.assertTrue(r['architecture']['nodes'][1].get('proto'))                    # 不再是虚线
         self.assertFalse(r['architecture']['nodes'][2].get('proto'))                   # 没同步的照旧
 
+    def test_界面存画布不会冲掉业务梳理(self):
+        url = f'/api/projects/{self.pid}/architecture'
+        A.save(self.pid, {"nodes": [], "spec": {"roles": [{"name": "客服"}], "objects": [{"name": "工单"}]}})
+        r = self.c.put(url, json={'architecture': {"nodes": [{"type": "page", "name": "工单"}]}}).json()
+        self.assertEqual(r['architecture']['spec']['objects'][0]['name'], '工单')
+
     def test_从原型读_画布上没同步的改动留着(self):
         page = storage.load_meta(self.pid)['pages'][0]['id']
         url = f'/api/projects/{self.pid}/architecture'
@@ -407,6 +413,107 @@ class 架构模式对话(unittest.TestCase):
         self.assertTrue(out['architecture_changed'])
         self.assertEqual([n['name'] for n in A.load(self.pid)['nodes']], ['报修工单', '维修工'])
         self.assertTrue(any('少了维修工管理' in m['content'] for m in seen[1] if m['role'] == 'assistant'))
+
+
+SPEC_REPLY = """好的，梳理如下：
+```json
+{"summary": "物业报修管理后台", "roles": [{"name": "物业客服", "does": "受理、派单"}, {"name": "维修工", "does": "接单、完工"}],
+ "objects": [{"name": "报修工单", "desc": "业主报的一次维修", "owner": "物业客服", "states": ["待派单", "处理中", "已完成"],
+              "actions": ["派单：待派单→处理中（客服）", "完工：处理中→已完成（维修工）"]},
+             {"name": "租户", "states": []}],
+ "flows": ["报修 → 派单 → 完工"], "rules": ["紧急工单 30 分钟内派单"],
+ "scope": {"in": ["报修派单"], "out": ["业主小程序"], "external": []},
+ "assumptions": ["费用只记录"], "questions": [{"q": "维修工要登录后台吗？", "options": ["要", "不要"]}, {"q": "只有一个选项的不算", "options": ["x"]}]}
+```"""
+
+
+class 业务梳理(unittest.TestCase):
+    def setUp(self):
+        from backend import arch_chat
+        self.mod = arch_chat
+        self.tmp = tempfile.TemporaryDirectory()
+        self.old_root, self.old_chat = storage.DATA_ROOT, arch_chat.chat
+        storage.DATA_ROOT = Path(self.tmp.name)
+        self.pid = storage.create_project('物业')['id']
+        self.seen = []
+
+    def tearDown(self):
+        storage.DATA_ROOT, self.mod.chat = self.old_root, self.old_chat
+        self.tmp.cleanup()
+
+    def answer(self, content):
+        def chat(key, model, messages, tools, **k):
+            self.seen.append(messages)
+            return {'choices': [{'finish_reason': 'stop', 'message': {'content': content}}]}
+        self.mod.chat = chat
+
+    def say(self, text):
+        return self.mod.run(self.pid, 'p', text, 'k', 'm', 'u', 16000, lambda e: None, lambda: False)
+
+    def test_读梳理(self):
+        from backend import arch_spec as S
+        spec = S.parse(SPEC_REPLY)
+        self.assertEqual([r["name"] for r in spec["roles"]], ["物业客服", "维修工"])
+        self.assertEqual(spec["objects"][0]["states"], ["待派单", "处理中", "已完成"])
+        self.assertEqual(len(spec["questions"]), 1)                       # 只有一个选项的问题不算
+        self.assertIsNone(S.parse("没有 JSON"))
+        self.assertIn("动作：派单：待派单→处理中（客服）", S.to_text(spec))
+        for yes in ("可以", "好的，画吧", "就这样", "直接画", "确认"):
+            self.assertTrue(S.CONFIRM.match(yes), yes)
+        for no in ("租户这次不做", "可以再加一个角色吗"):
+            self.assertFalse(S.CONFIRM.match(no), no)
+
+    def test_贴需求先梳理_改一句_确认了再画(self):
+        self.answer(SPEC_REPLY)
+        out = self.say("物业报修管理系统\n业主报修，客服派单\n维修工上门完工")
+        self.assertEqual(out["spec"]["objects"][0]["name"], "报修工单")
+        self.assertFalse(out["architecture_changed"])
+        self.assertIn("业务梳理清楚", self.seen[-1][0]["content"])                   # 用的是梳理的提示词
+        arch = A.load(self.pid)
+        self.assertEqual(arch["nodes"], [])                                    # 画布不动
+        self.assertEqual(arch["spec"]["status"], "draft")
+        # 梳理卡还没确认：再说一句是在改梳理
+        self.answer(SPEC_REPLY.replace('{"name": "租户", "states": []}', '{"name": "维修工档案"}'))
+        out = self.say("租户这次不做，加上维修工档案")
+        self.assertIn("上一版梳理", self.seen[-1][-1]["content"])
+        self.assertTrue(out["content"].startswith("按你的意思改了梳理"))
+        # 确认：按梳理画，带着产品规则
+        self.answer("说明：按梳理画了报修管理。\n\n【页面】\n报修管理 [模块]\n  报修工单 [菜单页]\n    工单列表 [表格] | 列：工单号、状态\n      派单 [按钮] | 出现：状态是待派单时")
+        out = self.say("按业务梳理画架构\n问题回答：\n- 维修工要登录后台吗？：要")
+        self.assertTrue(out["architecture_changed"])
+        self.assertIn("按业务梳理画页面树的规则", self.seen[-1][0]["content"])
+        self.assertIn("业务梳理（用户已确认）", self.seen[-1][-1]["content"])
+        arch = A.load(self.pid)
+        self.assertEqual(arch["nodes"][0]["name"], "报修管理")
+        self.assertEqual(arch["spec"]["status"], "confirmed")
+        self.assertEqual(arch["roles"], ["物业客服", "维修工"])
+        # 画完以后的小改：直接改，梳理当依据带上
+        self.answer("说明：加了维修工页。\n\n【页面】\n报修管理 [模块]\n  报修工单 [菜单页]\n  维修工 [菜单页]")
+        out = self.say("加一个维修工页")
+        self.assertTrue(out["architecture_changed"])
+        self.assertIn("业务梳理（用户已确认）", self.seen[-1][-1]["content"])
+        self.assertNotIn("业务梳理清楚", self.seen[-1][0]["content"])
+
+    def test_中间问一句_梳理卡还等着确认(self):
+        self.answer(SPEC_REPLY)
+        self.say("物业报修管理系统")
+        self.answer("三个角色分别负责受理、维修、管理。")
+        out = self.say("为什么要分三个角色？")
+        self.assertIn("discussion", out)
+        self.answer("说明：画好了。\n\n【页面】\n报修管理 [模块]\n  报修工单 [菜单页]")
+        out = self.say("就这样")
+        self.assertTrue(out["architecture_changed"])
+        self.assertEqual(A.load(self.pid)["spec"]["status"], "confirmed")
+
+    def test_有画布时说可以_不是确认梳理(self):
+        A.save(self.pid, {"nodes": [{"type": "page", "name": "报修工单"}]})
+        self.assertNotEqual(self.mod.stage_of("可以", None, A.load(self.pid), None), "draw")      # 没有待确认的梳理卡
+        spec = {"status": "draft", "roles": [{"name": "客服", "does": ""}]}
+        self.assertEqual(self.mod.stage_of("费用这次不做", None, A.load(self.pid), spec), "spec")       # 等确认时说的是在改梳理
+        self.assertEqual(self.mod.stage_of("为什么要分三个角色？", None, A.load(self.pid), spec), "ask")
+        self.assertEqual(self.mod.stage_of("就这样", None, A.load(self.pid), spec), "draw")
+        self.assertEqual(self.mod.stage_of("梳理一下架构", None, A.load(self.pid), None), "spec")
+        self.assertEqual(self.mod.stage_of("这样分合理吗？", None, A.load(self.pid), None), "ask")
 
 
 class 表格起名(unittest.TestCase):

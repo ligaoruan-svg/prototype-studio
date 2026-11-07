@@ -15,6 +15,7 @@ import uuid
 from typing import Any, Iterator
 
 from . import storage
+from .arch_spec import normalize as normalize_spec
 from .atomicio import write_atomic
 
 NODE_TYPES = {"module": "模块", "page": "菜单页", "tab": "页签", "drill": "下钻页", "modal": "弹窗", "drawer": "抽屉",
@@ -195,6 +196,10 @@ def normalize(raw: Any) -> dict[str, Any]:
     arch["steps"] = steps
     rules = _strings(raw.get("rules"), 20, 120) if isinstance(raw.get("rules"), list) else []
     arch["rules"] = rules or list(PC_RULES)
+    # 业务梳理（见 arch_spec）：出架构前先想清楚的那张卡片，确认后画树、以后改树都拿它当依据
+    spec = normalize_spec(raw.get("spec"))
+    if spec:
+        arch["spec"] = spec
     return arch
 
 

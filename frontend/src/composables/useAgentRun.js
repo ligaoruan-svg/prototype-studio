@@ -104,7 +104,7 @@ export function useAgentRun(s) {
         status.value = again ? '自检发现问题 · 马上自动修一轮' : report.issues.length ? `已保存 · 自检还剩 ${report.issues.length} 个问题` : '已保存 · 自检通过'
       }
       // 「架构」模式：只改了画布上的页面树，原型没动
-      else if (result.intent === 'architecture') { if (result.architecture_changed) { status.value = '页面树已更新'; await s.afterArchChat() } else status.value = '已回复 · 页面树没动' }
+      else if (result.intent === 'architecture') { if (result.architecture_changed) { status.value = '页面树已更新'; await s.afterArchChat() } else status.value = result.spec ? '业务梳理好了 · 确认后画架构' : '已回复 · 页面树没动' }
       // 改好了、没跑自检：状态栏留着检查保存时写的「已保存 · 刚刚」。以前这里不看改没改，小改动保存了也显示「没有改动页面」
       else if (!result.changed) status.value = result.clarification ? '等待你确认' : result.discussion ? '讨论完成 · 未修改文件' : '没有改动页面'
       lastResult.value = result
@@ -171,6 +171,16 @@ export function useAgentRun(s) {
     // 架构模式里给的建议：照着改页面树，不去改原型
     await runAgent(message, '', { intent: discussion?.arch ? 'architecture' : 'edit', includeAnnotations: false, selection: discussion?.selection || null, display })
   }
+  // 业务梳理卡：「按这个画架构」带上问题的回答；写了修改就是再梳理一版。都走架构模式，画布没开就先打开
+  async function drawSpec({ answers = [] } = {}) {
+    if (!s.archOpen.value) await s.showArch()
+    const message = '按业务梳理画架构' + (answers.length ? '\n问题回答：\n' + answers.map(a => '- ' + a).join('\n') : '')
+    await runAgent(message, '', { intent: 'architecture', includeAnnotations: false, selection: null, display: { kind: 'apply', title: '按业务梳理画架构', items: answers.length ? answers : ['按梳理画架构'] } })
+  }
+  async function reviseSpec(text) {
+    if (!s.archOpen.value) await s.showArch()
+    await runAgent(text, '', { intent: 'architecture', includeAnnotations: false, selection: null })
+  }
   // 建议清单底下的「其他」：跟着这次讨论的选区，按输入框当前的模式发出去
   async function customSuggestion({ text, discussion }) {
     await runAgent(text, '', { includeAnnotations: false, selection: discussion?.selection || null })
@@ -207,5 +217,5 @@ export function useAgentRun(s) {
     toast(clicky ? '先在预览里把出问题的操作点一遍，再按发送：AI 能看到你点了什么、有没有报错' : '在页面上点一下要改的地方，再按发送')
   }
   return { selftests, runAgent, activeRun, stopAgent, repairRun, chooseAnswer, applySuggestion, customSuggestion, discussSuggestion,
-    commentToAI, useRephrase, copyMessage, editAndResend, smallerRequest, pointAt }
+    commentToAI, useRephrase, copyMessage, editAndResend, smallerRequest, pointAt, drawSpec, reviseSpec }
 }
