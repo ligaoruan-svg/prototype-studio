@@ -374,7 +374,7 @@ class 架构模式对话(unittest.TestCase):
         self.mod.chat = chat
         events = []
         out = self.mod.run(self.pid, 'p', '加一个维修工页', 'k', 'm', 'u', 8000, events.append, lambda: False)
-        self.assertEqual(out['content'], '加了「维修工」菜单页，派单弹窗加了预计上门时间。')
+        self.assertTrue(out['content'].startswith('加了「维修工」菜单页，派单弹窗加了预计上门时间。'))
         self.assertIn('报修工单 [菜单页]', seen[0])                        # 现在的树交给模型
         self.assertTrue(any('已写' in e.get('label', '') for e in events))
         arch = A.load(self.pid)
@@ -448,6 +448,7 @@ class 业务梳理(unittest.TestCase):
         self.mod.chat = chat
 
     def say(self, text):
+        self.mark = len(self.seen)          # 这一轮的第一次调模型（后面可能还有自动检查修的那一次）
         return self.mod.run(self.pid, 'p', text, 'k', 'm', 'u', 16000, lambda e: None, lambda: False)
 
     def test_读梳理(self):
@@ -468,21 +469,21 @@ class 业务梳理(unittest.TestCase):
         out = self.say("物业报修管理系统\n业主报修，客服派单\n维修工上门完工")
         self.assertEqual(out["spec"]["objects"][0]["name"], "报修工单")
         self.assertFalse(out["architecture_changed"])
-        self.assertIn("业务梳理清楚", self.seen[-1][0]["content"])                   # 用的是梳理的提示词
+        self.assertIn("业务梳理清楚", self.seen[self.mark][0]["content"])                   # 用的是梳理的提示词
         arch = A.load(self.pid)
         self.assertEqual(arch["nodes"], [])                                    # 画布不动
         self.assertEqual(arch["spec"]["status"], "draft")
         # 梳理卡还没确认：再说一句是在改梳理
         self.answer(SPEC_REPLY.replace('{"name": "租户", "states": []}', '{"name": "维修工档案"}'))
         out = self.say("租户这次不做，加上维修工档案")
-        self.assertIn("上一版梳理", self.seen[-1][-1]["content"])
+        self.assertIn("上一版梳理", self.seen[self.mark][-1]["content"])
         self.assertTrue(out["content"].startswith("按你的意思改了梳理"))
         # 确认：按梳理画，带着产品规则
         self.answer("说明：按梳理画了报修管理。\n\n【页面】\n报修管理 [模块]\n  报修工单 [菜单页]\n    工单列表 [表格] | 列：工单号、状态\n      派单 [按钮] | 出现：状态是待派单时")
         out = self.say("按业务梳理画架构\n问题回答：\n- 维修工要登录后台吗？：要")
         self.assertTrue(out["architecture_changed"])
-        self.assertIn("按业务梳理画页面树的规则", self.seen[-1][0]["content"])
-        self.assertIn("业务梳理（用户已确认）", self.seen[-1][-1]["content"])
+        self.assertIn("按业务梳理画页面树的规则", self.seen[self.mark][0]["content"])
+        self.assertIn("业务梳理（用户已确认）", self.seen[self.mark][-1]["content"])
         arch = A.load(self.pid)
         self.assertEqual(arch["nodes"][0]["name"], "报修管理")
         self.assertEqual(arch["spec"]["status"], "confirmed")
@@ -491,8 +492,8 @@ class 业务梳理(unittest.TestCase):
         self.answer("说明：加了维修工页。\n\n【页面】\n报修管理 [模块]\n  报修工单 [菜单页]\n  维修工 [菜单页]")
         out = self.say("加一个维修工页")
         self.assertTrue(out["architecture_changed"])
-        self.assertIn("业务梳理（用户已确认）", self.seen[-1][-1]["content"])
-        self.assertNotIn("业务梳理清楚", self.seen[-1][0]["content"])
+        self.assertIn("业务梳理（用户已确认）", self.seen[self.mark][-1]["content"])
+        self.assertNotIn("业务梳理清楚", self.seen[self.mark][0]["content"])
 
     def test_中间问一句_梳理卡还等着确认(self):
         self.answer(SPEC_REPLY)
@@ -514,6 +515,130 @@ class 业务梳理(unittest.TestCase):
         self.assertEqual(self.mod.stage_of("就这样", None, A.load(self.pid), spec), "draw")
         self.assertEqual(self.mod.stage_of("梳理一下架构", None, A.load(self.pid), None), "spec")
         self.assertEqual(self.mod.stage_of("这样分合理吗？", None, A.load(self.pid), None), "ask")
+
+
+def repair_tree():
+    return A.normalize({"nodes": [
+        {"type": "module", "name": "报修管理", "proto": True, "seen": True, "desc": "我写的介绍", "children": [
+            {"type": "page", "name": "报修工单", "proto": True, "seen": True, "children": [
+                {"type": "table", "name": "工单列表", "cols": ["工单号"], "proto": True, "seen": True, "children": [
+                    {"type": "button", "name": "派单", "action": "open", "target": "派单", "proto": True, "seen": True}]},
+                {"type": "modal", "name": "派单", "fields": ["维修工*"], "proto": True, "seen": True}]},
+            {"type": "page", "name": "费用单"}]},
+        {"type": "page", "name": "统计"}]})
+
+
+class 只改动到的地方(unittest.TestCase):
+    def test_改动照着改_改名留着编号和原型标记(self):
+        from backend import arch_ops as O
+        tree = repair_tree()["nodes"]
+        ids = {n["name"]: n["id"] for n, _, _ in A.walk(tree)}
+        _, kind, body = O.split_reply("""说明：改了几处。
+
+【改动】
++ 在「报修管理」下面：
+    维修工 [菜单页]：管理维修工
+      维修工列表 [表格] | 列：姓名、电话
+- 删掉「报修管理 / 费用单」
+~ 「报修工单」改名为「工单管理」
+> 把「统计」挪到「报修管理」下面
+* 改「工单列表」：列：工单号、状态 | 介绍：所有工单
+* 改「派单」：出现：状态是待派单时
+* 改「派单 [弹窗]」：字段：维修工*（选人）、预计上门时间*（日期时间）
+> 把「报修管理」挪到「工单列表」下面
+- 删掉「不存在的页」""")
+        self.assertEqual(kind, "ops")
+        new, done, failed = O.apply_ops(tree, O.parse_ops(body))
+        flat = {n["name"]: n for n, _, _ in A.walk(new)}
+        self.assertEqual(flat["工单管理"]["id"], ids["报修工单"])               # 改名不换编号
+        self.assertTrue(flat["工单管理"]["proto"])                              # 原型里有的标记还在
+        self.assertEqual(flat["工单列表"]["cols"], ["工单号", "状态"])
+        self.assertEqual(flat["报修管理"]["desc"], "我写的介绍")                 # 没提到的一个字不动
+        self.assertNotIn("费用单", flat)
+        self.assertIn("维修工列表", flat)
+        self.assertEqual([n["name"] for n in new], ["报修管理"])                 # 统计挪进去了
+        # 挪进自己下面、找不到的、重名分不清的（按钮和弹窗都叫「派单」）：跳过并说出来
+        self.assertEqual(len(failed), 3)
+        self.assertTrue(any("没找到「派单」" in f for f in failed))
+        modal = next(n for n, _, _ in A.walk(new) if n["type"] == "modal")
+        self.assertEqual(modal["fields"], ["维修工*（选人）", "预计上门时间*（日期时间）"])           # 带上类型就分得清
+        self.assertEqual(len(tree), 2)                                         # 原来那份没被改
+
+    def test_自动检查(self):
+        from backend import arch_ops as O
+        arch = repair_tree()
+        arch["nodes"][0]["children"][0]["children"][0]["children"][0]["target"] = "指派维修工"
+        arch["nodes"][0]["children"][1]["children"] = [{"id": "nx1", "type": "table", "name": "列表", "children": []}]
+        arch["spec"] = {"objects": [{"name": "报修工单", "actions": ["派单：待派单→处理中", "关闭：待派单→已关闭"]},
+                                    {"name": "维修工档案", "actions": []}, {"name": "收费单", "actions": []}],
+                        "scope": {"external": ["收费单由收费系统回传"]}}
+        found = O.problems(arch)
+        self.assertTrue(any("指派维修工" in p for p in found))                  # 按钮要打开的不存在
+        self.assertTrue(any("叫「列表」" in p for p in found))
+        self.assertTrue(any("「关闭」这个动作没有按钮" in p for p in found))
+        self.assertTrue(any("维修工档案" in p for p in found))
+        self.assertFalse(any("收费单" in p for p in found))                     # 外部系统的不查
+        self.assertFalse(any("「派单」这个动作" in p for p in found))
+
+
+class 架构小改与自动修(unittest.TestCase):
+    def setUp(self):
+        from backend import arch_chat
+        self.mod = arch_chat
+        self.tmp = tempfile.TemporaryDirectory()
+        self.old_root, self.old_chat = storage.DATA_ROOT, arch_chat.chat
+        storage.DATA_ROOT = Path(self.tmp.name)
+        self.pid = storage.create_project('物业')['id']
+        A.save(self.pid, repair_tree())
+
+    def tearDown(self):
+        storage.DATA_ROOT, self.mod.chat = self.old_root, self.old_chat
+        self.tmp.cleanup()
+
+    def test_小改只动一处_检查出的问题自动修一轮(self):
+        replies = ["说明：加了关闭按钮。\n\n【改动】\n+ 在「工单列表」下面：\n    关闭 [按钮] | 打开：关闭工单",
+                   "说明：补上关闭工单弹窗。\n\n【改动】\n+ 在「报修工单」下面：\n    关闭工单 [弹窗] | 字段：关闭原因*（多行）"]
+        seen = []
+        def chat(key, model, messages, tools, **k):
+            seen.append(messages)
+            return {'choices': [{'finish_reason': 'stop', 'message': {'content': replies[len(seen) - 1]}}]}
+        self.mod.chat = chat
+        before = {n["id"]: n for n, _, _ in A.walk(A.load(self.pid)["nodes"])}
+        out = self.mod.run(self.pid, 'p', '工单列表加一个关闭按钮', 'k', 'm', 'u', 16000, lambda e: None, lambda: False)
+        self.assertIn("【改动】", seen[0][0]["content"])                        # 小改用改动格式
+        self.assertIn("关闭工单」在页面树里没有", seen[1][-1]["content"])          # 检查出来的交给 AI 修
+        self.assertIn("自动修了 1 处", out["content"])
+        after = {n["id"]: n for n, _, _ in A.walk(A.load(self.pid)["nodes"])}
+        for nid, node in before.items():                                       # 原来的节点一个没少、属性没变
+            self.assertEqual({k: v for k, v in after[nid].items() if k != "children"}, {k: v for k, v in node.items() if k != "children"})
+        self.assertEqual({n["name"] for n in after.values()} - {n["name"] for n in before.values()}, {"关闭", "关闭工单"})
+
+
+class 架构小改不冲掉刚读进来的(unittest.TestCase):
+    def setUp(self):
+        from backend import arch_chat
+        self.mod = arch_chat
+        self.tmp = tempfile.TemporaryDirectory()
+        self.old_root, self.old_chat = storage.DATA_ROOT, arch_chat.chat
+        storage.DATA_ROOT = Path(self.tmp.name)
+        self.pid = storage.create_project('物业')['id']
+        A.save(self.pid, repair_tree())
+
+    def tearDown(self):
+        storage.DATA_ROOT, self.mod.chat = self.old_root, self.old_chat
+        self.tmp.cleanup()
+
+    def test_模型想的时候画布从原型补了一页(self):
+        def chat(key, model, messages, tools, **k):
+            arch = A.load(self.pid)                       # 模拟：这时候从原型读完，补进来一页
+            arch["nodes"].append({"type": "page", "name": "巡检记录", "proto": True, "seen": True})
+            A.save(self.pid, arch)
+            return {'choices': [{'finish_reason': 'stop', 'message': {'content': "说明：改名。\n\n【改动】\n~ 「统计」改名为「统计分析」"}}]}
+        self.mod.chat = chat
+        self.mod.run(self.pid, 'p', '把统计改名为统计分析', 'k', 'm', 'u', 16000, lambda e: None, lambda: False)
+        names = [n["name"] for n in A.load(self.pid)["nodes"]]
+        self.assertIn("巡检记录", names)
+        self.assertIn("统计分析", names)
 
 
 class 表格起名(unittest.TestCase):

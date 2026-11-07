@@ -38,6 +38,11 @@ export function useAgentRun(s) {
       } finally { busy.value = false }
       intent = 'architecture'
     }
+    // 架构模式：画布还在从原型读，等它读完再发——不然 AI 拿着读到一半的树改，读完补进来的又被冲掉
+    if (intent === 'architecture' && s.archReading()) {
+      busy.value = true; status.value = '等画布从原型读完…'
+      try { for (let i = 0; i < 180 && s.archReading(); i++) await new Promise(resolve => setTimeout(resolve, 500)) } finally { busy.value = false }
+    }
     const run = { intent, options: { ...options, intent }, id: Date.now(), projectId: project.value.id, pageId: pageId.value, request: message, started: Date.now(), status: 'running', label: '理解需求中', steps: [], error: null, streamText: '', plan: [] }
     runs.value.push(run)
     const current = runs.value[runs.value.length - 1]

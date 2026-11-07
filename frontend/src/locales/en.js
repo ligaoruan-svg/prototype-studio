@@ -1438,6 +1438,7 @@ export default {
   "业务梳理好了 · 确认后画架构": "Summary ready · confirm to draw",
   "按业务梳理画架构": "Draw architecture from the summary",
   "按梳理画架构": "Draw from the summary",
+  "等画布从原型读完…": "Waiting for the canvas to finish reading the prototype…",
   "把话填进输入框、切到「自动」，你看一眼再发": "Fills the message box and switches to Auto — review it before sending",
   "让 AI 做出来": "Have AI build it",
   "正在从原型读页面…": "Reading the prototype…",

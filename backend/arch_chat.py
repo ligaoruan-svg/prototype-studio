@@ -14,7 +14,7 @@ import json
 import re
 from typing import Any, Callable
 
-from . import arch_spec, architecture, storage
+from . import arch_ops, arch_spec, architecture, storage
 from .conversation import ASK_HARD, NO_WRITE, chat_display, discussion_result, is_continue, looks_like_brief, resolve_intent
 from .arch_text import from_outline, keep_ids, to_outline
 from .deepseek_client import DeepSeekError, chat
@@ -52,6 +52,9 @@ SYSTEM = """你是产品架构师，帮产品经理改原型的页面树（只�
 
 后面可能附上「原型代码里的线索」（代码地图 + 每一页代码里出现的文字）。用户让你「同步 / 补全 / 对照原型」时，照原型里实际有的菜单、按钮、弹窗、抽屉、字段把页面树补全；
 原型里没有的不要编。别的时候它只是参考。"""
+
+# 小改（直接改、按建议改、自动检查后修）：不重写整棵树，只写【改动】（见 arch_ops）
+EDIT_SYSTEM = SYSTEM.replace(SYSTEM[SYSTEM.index("回复格式"):SYSTEM.index("页面树写法")], arch_ops.EDIT_FORMAT + "\n\n")
 
 ASK_SYSTEM = """你是产品架构师，帮产品经理看原型的页面树（只做电脑端）。这次用户在问问题、或者要你分析评价：【不要改页面树，也不要输出页面树】。
 
@@ -216,7 +219,7 @@ def run(project_id: str, page_id: str, message: str, key: str, model: str, base_
         system, label, limit = ASK_SYSTEM, "AI 正在看页面树", 4000
         prompt = clue + basis + tree + f"用户问：{message}"
     else:
-        system, label, limit = SYSTEM, "AI 正在改页面树", MAX_TOKENS
+        system, label, limit = EDIT_SYSTEM, "AI 正在改页面树", MAX_TOKENS
         prompt = clue + basis + tree + f"这次要改的：{message}"
     messages = [{"role": "system", "content": system}, *history, {"role": "user", "content": prompt}]
     on_event({"type": "progress", "label": label})
@@ -258,8 +261,39 @@ def run(project_id: str, page_id: str, message: str, key: str, model: str, base_
                                                                              "arch_mode": "discuss", "discussion": discussion, "usage": usage})
         return {"changed": False, "intent": "architecture", "content": discussion["answer"], "discussion": discussion,
                 "architecture_changed": False, "usage": usage}
-    summary, body = _split(reply)
-    fresh = from_outline(body)
+    # 模型想的这段时间里，画布可能刚从原型读完又补了东西：改动落在最新的那份上，别拿开头读的旧副本冲掉
+    latest = architecture.load(project_id)
+    if latest:
+        current["nodes"] = latest.get("nodes") or []
+    summary, nodes, failed = _apply_reply(current, reply, choice)
+    # 画完 / 改完自动查一遍：按钮要打开的不存在、重名、通用名、梳理里的对象没页面、流转动作没按钮——有就自动修一轮
+    check_note, check = _check_and_fix(current, nodes, basis if stage != "draw" else f"业务梳理（用户已确认）：\n{arch_spec.to_text(pending)}\n\n",
+                                       key, model, base_url, max_tokens, on_event, should_stop, usage)
+    nodes = check.pop("nodes")
+    current["nodes"] = nodes
+    if stage == "draw":   # 梳理确认了：角色、定位也记到架构上
+        current["spec"] = {**pending, "status": "confirmed"}
+        current["summary"] = current.get("summary") or pending.get("summary", "")
+        current["roles"] = [r["name"] for r in pending.get("roles", [])] or current.get("roles", [])
+    architecture.save(project_id, current)
+    summary = summary or "页面树改好了"
+    if failed:
+        summary += "\n\n有 {0} 处没对上，跳过了：{1}".format(len(failed), "；".join(failed[:5]))
+    content = summary + ("\n\n" + check_note if check_note else "")
+    storage.append_chat(project_id, "assistant", content, {"page_id": page_id, "changed": False, "intent": "architecture", "arch_mode": mode,
+                                                           "arch_changed": True, "arch_check": check, "usage": usage})
+    return {"changed": False, "intent": "architecture", "content": content, "architecture_changed": True, "arch_check": check, "usage": usage}
+
+
+def _apply_reply(current: dict, reply: str, choice: dict) -> tuple[str, list[dict], list[str]]:
+    """模型回的改动落到树上：【改动】照着改（编号、原型标记都留着）；回的是整棵树就按老办法对编号"""
+    summary, kind, body = arch_ops.split_reply(reply)
+    if kind == "ops":
+        ops = arch_ops.parse_ops(body)
+        if ops:
+            nodes, _done, failed = arch_ops.apply_ops(current.get("nodes") or [], ops)
+            return summary, architecture.normalize({"nodes": nodes})["nodes"], failed   # 新加的发编号，检查要用
+    fresh = from_outline(body if kind else reply)
     if not fresh.get("nodes"):
         cut = "（输出被截断了）" if choice.get("finish_reason") in ("length", "max_tokens") else ""
         raise WorkError("arch_unreadable", "AI 给的页面树读不出来" + cut + "，换个说法再试一次")
@@ -267,13 +301,33 @@ def run(project_id: str, page_id: str, message: str, key: str, model: str, base_
     flags = {n["id"]: {k: n[k] for k in ("proto", "seen") if n.get(k)} for n, _, _ in architecture.walk(current["nodes"])}
     for n, _, _ in architecture.walk(fresh["nodes"]):
         n.update(flags.get(n.get("id"), {}))
-    current["nodes"] = fresh["nodes"]
-    if stage == "draw":   # 梳理确认了：角色、定位也记到架构上
-        current["spec"] = {**pending, "status": "confirmed"}
-        current["summary"] = current.get("summary") or pending.get("summary", "")
-        current["roles"] = [r["name"] for r in pending.get("roles", [])] or current.get("roles", [])
-    architecture.save(project_id, current)
-    summary = summary or "页面树改好了"
-    storage.append_chat(project_id, "assistant", summary, {"page_id": page_id, "changed": False, "intent": "architecture", "arch_mode": mode,
-                                                           "arch_changed": True, "usage": usage})
-    return {"changed": False, "intent": "architecture", "content": summary, "architecture_changed": True, "usage": usage}
+    return summary, architecture.normalize({"nodes": fresh["nodes"]})["nodes"], []
+
+
+def _check_and_fix(current: dict, nodes: list[dict], basis: str, key: str, model: str, base_url: str, max_tokens: int,
+                   on_event: Callable[[dict], None], should_stop: Callable[[], bool], usage: dict) -> tuple[str, dict]:
+    """返回 (回复里加的那句「检查：…」, {found, fixed, left, nodes})。修一轮就停，修不好的列给人看"""
+    issues = arch_ops.problems({**current, "nodes": nodes})
+    if not issues:
+        return "检查：没发现问题。", {"found": 0, "fixed": 0, "left": [], "nodes": nodes}
+    on_event({"type": "progress", "label": f"自动检查发现 {len(issues)} 处问题，正在修"})
+    outline = to_outline({"name": current.get("name", ""), "nodes": nodes})
+    prompt = (basis + f"现在的页面树：\n<<<\n{outline}\n>>>\n\n自动检查发现下面这些问题，逐条修好，只改这些地方：\n"
+              + "\n".join(f"- {p}" for p in issues))
+    fixed_nodes = nodes
+    try:
+        resp = chat(key, model, [{"role": "system", "content": EDIT_SYSTEM}, {"role": "user", "content": prompt}], None, base_url=base_url,
+                    max_tokens=min(MAX_TOKENS, max(4000, int(max_tokens or 16000))), should_stop=should_stop)
+        for k, v in (resp.get("usage") or {}).items():
+            if isinstance(v, (int, float)):
+                usage[k] = usage.get(k, 0) + v
+        choice = (resp.get("choices") or [{}])[0]
+        _, fixed_nodes, _ = _apply_reply({**current, "nodes": nodes}, (choice.get("message") or {}).get("content") or "", choice)
+    except (DeepSeekError, WorkError):
+        fixed_nodes = nodes
+    left = arch_ops.problems({**current, "nodes": fixed_nodes})
+    if len(left) >= len(issues):   # 越修越多：不要这一轮
+        fixed_nodes, left = nodes, issues
+    fixed = len(issues) - len(left)
+    note = f"检查：发现 {len(issues)} 处问题，自动修了 {fixed} 处" + (f"；还有 {len(left)} 处要你看：" + "；".join(left[:4]) if left else "。")
+    return note, {"found": len(issues), "fixed": fixed, "left": left, "nodes": fixed_nodes}
