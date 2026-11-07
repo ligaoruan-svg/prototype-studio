@@ -17,6 +17,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from backend.shell_store import STORE_JS  # noqa: E402  统一数据层，和 shell_add 补进去的是同一份
+from backend.shell_list import LIST_JS  # noqa: E402  列表页模板，同上
 OUT = ROOT / "prompts" / "styles"
 
 SKELETON = r"""<!doctype html>
@@ -761,7 +762,7 @@ def build(style: dict) -> tuple[str, str]:
     token_css = "\n".join(f"  --{k}:{v};" for k, v in tokens.items())
     shell = (SKELETON.replace("%%NAME%%", style["name"]).replace("%%TOKENS%%", token_css)
              .replace("%%LAYOUT%%", layout["label"]).replace("%%LAYOUT_CSS%%", layout["css"].strip())
-             .replace("%%LAYOUT_JS%%", layout["js"].strip()).replace("%%STORE%%", STORE_JS.strip()))
+             .replace("%%LAYOUT_JS%%", layout["js"].strip()).replace("%%STORE%%", STORE_JS.strip() + "\n" + LIST_JS.strip()))
     category = style.get("category") or CATEGORY[style["layout"]]
     order = ORDER.index(style["name"]) + 1 if style["name"] in ORDER else len(ORDER) + STYLES.index(style) + 1
     skill = (f"---\nname: {style['name']}\ndescription: {style['description']}\n"

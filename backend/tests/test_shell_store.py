@@ -20,6 +20,7 @@ class 统一数据层(unittest.TestCase):
         for shell in (ROOT / 'prompts/styles').glob('*/assets/页面外壳.html'):
             text = shell.read_text(encoding='utf-8')
             self.assertEqual(text.count('const Store='), 1, shell)
+            self.assertEqual(text.count('const ListPage='), 1, shell)
             self.assertTrue(verify_source(text)['ok'], shell)
 
     def test_别的外壳加页面时补上_只补一次(self):
@@ -83,3 +84,42 @@ class 按梳理验收(unittest.TestCase):
         self.assertIn('Store.can(n,row.id,c.action)', bridge)                 # 状态变了按钮还在也算没过
         text = brief({'name': 't', 'nodes': [], 'spec': normalize({'status': 'confirmed', 'objects': [{'name': '工单'}]})})
         self.assertIn('状态和动作的名字跟梳理一字不差', text)
+
+
+try:
+    from playwright.sync_api import sync_playwright
+except ImportError:   # 安装包和用户电脑上一般没有，跳过
+    sync_playwright = None
+
+
+@unittest.skipIf(sync_playwright is None, '没装 playwright')
+class 列表页模板(unittest.TestCase):
+    """写配置就出一整页：页签带数、必填拦下、流转改 Store、按钮跟着消失、新增、详情里有流转记录"""
+    def test_一页配置跑通(self):
+        import tempfile
+        old = STYLE.replace(STORE_JS.strip(), '').replace('const ListPage=', 'const 旧模板=')
+        page = shell_add(old, nav="{key:'w',label:'工单',items:[{key:'orders',label:'工单管理'}]}",
+                         pages="""orders(){return ListPage('orders',{title:'工单管理',data:'工单',tabs:['待派单','处理中'],
+  columns:[{key:'no',label:'编号'},{key:'status',label:'状态',tag:true}],
+  actions:[{label:'查看',detail:true},{label:'派单',flow:'派单',form:[{key:'who',label:'维修工',type:'select',options:['张三'],required:true}]}],
+  toolbar:[{label:'新增',add:true,defaults:{status:'待派单'},form:[{key:'no',label:'编号',required:true}]}]})}""",
+                         script="Store.define('工单',[{no:'GD-1',status:'待派单'},{no:'GD-2',status:'处理中'}]);Store.flow('工单',{派单:['待派单','处理中']});")
+        self.assertEqual(page.count('const ListPage='), 1)          # 老外壳加页面时补上
+        with tempfile.NamedTemporaryFile('w', suffix='.html', delete=False, encoding='utf-8') as f:
+            f.write(page)
+        with sync_playwright() as p:
+            b = p.chromium.launch(); pg = b.new_page(); errs = []; pg.on('pageerror', lambda e: errs.append(str(e)))
+            pg.goto(Path(f.name).as_uri() + '#orders'); pg.wait_for_timeout(300)
+            self.assertEqual(pg.locator('.lp-tab').all_inner_texts(), ['待派单1', '处理中1'])
+            pg.click('.lp-ops button:has-text("派单")'); pg.click('#modalConfirm')
+            self.assertIn('请填写维修工', pg.inner_text('#toastHost'))           # 必填拦下
+            pg.select_option('#activeModal select', '张三'); pg.click('#modalConfirm'); pg.wait_for_timeout(100)
+            self.assertEqual(pg.evaluate("Store.all('工单').map(r=>r.status+r.who)"), ['处理中张三', '处理中undefined'])
+            self.assertEqual(pg.locator('.lp-ops button:has-text("派单")').count(), 0)   # 状态变了按钮跟着没
+            pg.click('.lp-tab:has-text("处理中")'); pg.locator('.lp-ops button:has-text("查看")').first.click()
+            self.assertIn('派单', pg.inner_text('.lp-logs'))                        # 详情里有流转记录
+            pg.keyboard.press('Escape'); pg.click('.page-actions button:has-text("新增")')
+            pg.fill('#activeModal [data-lpf="no"]', 'GD-3'); pg.click('#modalConfirm'); pg.wait_for_timeout(100)
+            self.assertEqual(pg.evaluate("Store.all('工单')[0].no+Store.all('工单')[0].status"), 'GD-3待派单')
+            self.assertEqual(errs, [])
+            b.close()

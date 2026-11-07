@@ -7,6 +7,8 @@
 """
 from __future__ import annotations
 
+from .shell_list import LIST_JS, MARK as LIST_MARK
+
 MARK = "const Store="
 
 STORE_JS = r"""// ===== 业务数据：所有页面共用一份（Store）=====
@@ -46,8 +48,11 @@ ANCHORS = ("// ===== 业务菜单", "const NAV=[/*PA:NAV*/")
 
 
 def ensure(source: str) -> str:
-    """外壳里还没有 Store 就补进去，放在菜单配置前面；不是外壳的页面不动"""
-    if MARK in source or "const NAV=[/*PA:NAV*/" not in source:
+    """外壳里还没有 Store、列表页模板就补进去，放在菜单配置前面；不是外壳的页面不动"""
+    if "const NAV=[/*PA:NAV*/" not in source:
+        return source
+    add = (STORE_JS + "\n" if MARK not in source else "") + (LIST_JS + "\n" if LIST_MARK not in source else "")
+    if not add:
         return source
     at = next((source.find(a) for a in ANCHORS if a in source), -1)
-    return source[:at] + STORE_JS + "\n" + source[at:]
+    return source[:at] + add + source[at:]
