@@ -63,6 +63,9 @@ ASK_SYSTEM = """你是产品架构师，帮产品经理看原型的页面树（�
 - 标题（10 个字以内）｜改完是什么样（一句话）｜具体改法：页面树里哪个模块 / 页面 / 节点改成什么
 没有值得改的就不写这一段。
 
+评价架构合不合理时，对照下面这些产品规则逐条看，别只说优点；后面附的「程序自动检查发现的问题」要一并说进去：
+""" + arch_spec.DRAW_RULES.split("\n", 1)[1] + """
+
 后面可能附上「原型代码里的线索」（代码地图 + 每一页代码里出现的文字），回答时可以参考。"""
 
 DIGEST_MAX = 14_000
@@ -238,7 +241,9 @@ def run(project_id: str, page_id: str, message: str, key: str, model: str, base_
                   "页面外壳自带的占位（「业务模块」「首页」这种里面什么都没有的空页）不用保留，按梳理换成真正的模块和页面。")
     elif stage == "ask":
         system, label, limit = ASK_SYSTEM, "AI 正在看页面树", 4000
-        prompt = clue + basis + tree + f"用户问：{message}"
+        found = arch_ops.problems(current) if current.get("nodes") else []
+        checked = ("程序自动检查发现的问题：\n" + "\n".join(f"- {p}" for p in found) + "\n\n") if found else ""
+        prompt = clue + basis + tree + checked + f"用户问：{message}"
     else:
         system, label, limit = EDIT_SYSTEM, "AI 正在改页面树", MAX_TOKENS
         ask_for = message

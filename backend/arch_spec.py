@@ -33,7 +33,8 @@ SPEC_SYSTEM = """你是资深 B 端产品经理。用户要做一个电脑端的
 - 主流程 1–3 条，用 → 串起来，写清谁在哪一步做什么。
 - 规则要具体、能验证：时限、校验、唯一性、联动（A 变了 B 跟着变）、统计口径。不要写「数据要准确」这种空话。
 - 范围：做什么、不做什么、哪些是外部系统（只接它的数据，不做它的页面）。
-- 能合理假设的别问，写进 assumptions；只有会明显改变架构、你猜不准的才问，最多 3 个，每个 2–4 个选项，推荐的放第一个。
+- 能合理假设的别问，写进 assumptions；只有会明显改变架构、你猜不准的才问，最多 3 个，每个 2–4 个选项，推荐的放第一个（选项文字里不要写「推荐」）。
+- assumptions 一条一句，不要提「问题 1」这类编号。
 - 用户给了现在的页面树或原型线索：已经有的业务都要梳理进来，不要丢；用户只让你改梳理的某处，就只改那处，别的照旧。"""
 
 # 按业务梳理画页面树：在 arch_chat 的格式说明后面接上这一段
@@ -45,11 +46,16 @@ DRAW_RULES = """按业务梳理画页面树的规则：
 3. 梳理里的每个流转动作都落成一个按钮：挂在表格行（或详情）下面，写「出现：状态是 xx 时」，点了打开对应弹窗或二次确认，
    写「确认后：状态变为 yy」，有联动的接着写（「；铺位变为空置」）。
 4. 状态多、不同阶段不同人处理的对象，菜单页下按状态分页签（待派单 / 处理中 / 已完成），或者在筛选里放状态下拉，二选一。
+   分页签时，页签只是按状态筛同一张表：筛选和表格写一次、挂在菜单页下，页签只列名字，不要每个页签重复一套筛选 + 表格 + 查看；
+   各状态才有的按钮都挂在那张表下，写「出现：状态是 xx 时」。
 5. 只给某个角色干活的（维修工接单），给他一个「我的任务」类菜单页，只列他要处理的。
 6. 统计、看板放首页或统计分析模块，每个指标从业务对象算出来，在介绍里写清口径。
 7. 范围里「不做」的不出页面；「外部系统」不做页面，只在用到它数据的地方写「数据：由 xx 系统回传」。
 8. 名字要具体：表格叫「工单列表」「巡检记录」，不要叫「列表」「表格」；按钮用动词开头。
-9. 规则（校验、时限、联动）写进对应按钮的「确认后」、弹窗字段或页面介绍里，不要丢。"""
+9. 规则（校验、时限、联动）写进对应按钮的「确认后」、弹窗字段或页面介绍里，不要丢。
+10. 每个按钮都写点了以后（打开 / 跳到 / 执行 / 二次确认）；跳到别的页写页面名，要到某个页签就写页签名，不要写「页面 / 页签」这种路径。
+11. 弹窗、抽屉的名字不带「弹窗」「抽屉」两个字（叫「派单」「新增设备」）；同一个弹窗里不要两个意思一样的字段。
+12. 下钻页要有内容（它展示什么），写「入口：点哪里进来」。"""
 
 # 确认梳理、开始画：卡片上的按钮发的话，或者你直接说「可以 / 好的，按这个来 / 就这样 / 直接画」
 DRAW_HEAD = "按业务梳理画架构"
@@ -98,13 +104,16 @@ def normalize(raw: Any) -> dict | None:
     questions = []
     for q in (raw.get("questions") if isinstance(raw.get("questions"), list) else [])[:3]:
         if isinstance(q, dict) and _s(q.get("q"), 100):
-            options = _list(q.get("options"), 4, 50)
+            # 卡片自己会标推荐：模型写在选项里的「（推荐）」去掉
+            options = [re.sub(r"\s*[（(【\[]?\s*推荐\s*[）)】\]]?\s*$", "", o) for o in _list(q.get("options"), 4, 50)]
+            options = [o for o in options if o]
             if len(options) >= 2:
                 questions.append({"q": _s(q.get("q"), 100), "options": options})
     spec = {"status": "confirmed" if raw.get("status") == "confirmed" else "draft", "summary": _s(raw.get("summary"), 200),
             "roles": roles, "objects": objects, "flows": _list(raw.get("flows"), 4, 200), "rules": _list(raw.get("rules"), 14, 140),
             "scope": {k: _list(scope.get(k), 10, 60) for k in ("in", "out", "external")},
-            "assumptions": _list(raw.get("assumptions"), 6, 120), "questions": questions}
+            "assumptions": [re.sub(r"[（(][^（）()]*问题\s*\d[^（）()]*[）)]", "", a).rstrip("。；;，, ")
+                            for a in _list(raw.get("assumptions"), 6, 120)], "questions": questions}
     return spec if (roles or objects) else None
 
 

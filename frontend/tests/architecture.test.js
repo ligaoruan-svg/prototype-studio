@@ -193,8 +193,9 @@ test('导出架构：Markdown 大纲和表格', async () => {
   assert.match(md, /## 模块：报修管理\n\n报修全流程/)
   assert.match(md, /### 菜单页：工单列表/)
   assert.match(md, /- \*\*表格\*\* 列表\n  - 列：工单号、状态\n  - \*\*按钮\*\* 查看\n    - 点了：打开「工单详情」/)
-  assert.match(md, /新增工单\n  - 字段：报修分类\*（下拉：水电\/门窗）\n  - （原型里还没有）/)
-  assert.doesNotMatch(toMarkdown(a), /原型里还没有/)                     // 没导入过原型：不标
+  assert.match(md, /- \*\*弹窗\*\* 新增工单（规划中）\n  - 字段：报修分类\*（下拉：水电\/门窗）\n/)
+  assert.equal(md.match(/规划中/g).length, 1)                              // 只在整块最上面标一次，不逐条重复
+  assert.doesNotMatch(toMarkdown(a), /规划中/)                             // 没导入过原型：不标
   const csv = toCsv(a, { tracked: true })
   assert.ok(csv.startsWith('﻿模块,菜单页'))                           // Excel 认得出中文
   assert.match(csv, /报修管理,工单列表,,按钮,查看,,,打开「工单详情」,,有/)
@@ -217,5 +218,6 @@ test('业务梳理卡：确认带上回答走架构模式，后面画了 / 出�
   assert.match(run, /async function reviseSpec\(text\)[\s\S]*?intent: 'architecture'/)
   assert.match(panel, /@draw-spec="drawSpec" @revise-spec="reviseSpec"/)
   assert.match(panel, /m\.arch_mode === 'draw' && m\.arch_changed\)\) return 'drawn'/)
-  assert.match(card, /note\.trim\(\) \? \$t\('发送修改'\) : \$t\('按这个画架构'\)/)
+  assert.match(card, /note\.trim\(\) \? \$t\('发送修改'\) : drawing \? \$t\('正在画架构…'\) : \$t\('按这个画架构'\)/)
+  assert.match(card, /:disabled="locked \|\| drawing"/)                  // 点了就不能再点，以前点两下画两遍
 })

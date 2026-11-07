@@ -7,14 +7,21 @@ const PROTO = { in: '有', planned: '还没有', gone: '已经没有' }
 const label = n => NODE_TYPES[n.type]?.label || ''
 const action = n => n.action ? `${ACTIONS[n.action] || n.action}${n.target ? `「${n.target}」` : ''}` : ''
 
-function lines(node, tracked) {
+// 标「规划中 / 原型里已经没有」：只标在整块的最上面那一个，下面的子项不再一条条重复
+function mark(node, parent, tracked) {
+  if (!tracked) return ''
+  const state = protoState(node)
+  if (state === 'in' || (parent && protoState(parent) === state)) return ''
+  return state === 'planned' ? '（规划中）' : '（原型里已经没有）'
+}
+
+function lines(node) {
   const out = []
   if (node.desc) out.push(node.desc)
   if (node.fields?.length) out.push('字段：' + node.fields.join('、'))
   if (node.cols?.length) out.push('列：' + node.cols.join('、'))
   if (action(node)) out.push('点了：' + action(node))
   if (node.when) out.push('出现：' + node.when)
-  if (tracked && protoState(node) !== 'in') out.push(`（原型里${PROTO[protoState(node)]}）`)
   return out
 }
 
@@ -22,22 +29,22 @@ function lines(node, tracked) {
 export function toMarkdown(arch, { tracked = false } = {}) {
   const out = [`# ${arch?.name || '未命名系统'}`]
   if (arch?.summary) out.push('', '> ' + arch.summary)
-  const visit = (nodes, depth, indent) => {
+  const visit = (nodes, depth, indent, parent = null) => {
     for (const node of nodes || []) {
-      const info = lines(node, tracked)
+      const info = lines(node), tag = mark(node, parent, tracked)
       if (HEADING.includes(node.type) && indent < 0) {
-        out.push('', `${'#'.repeat(Math.min(depth + 2, 6))} ${label(node)}：${node.name}`)
+        out.push('', `${'#'.repeat(Math.min(depth + 2, 6))} ${label(node)}：${node.name}${tag}`)
         const [desc, ...rest] = node.desc ? info : ['', ...info]
         if (desc) out.push('', desc)
         if (rest.length) out.push('', ...rest.map(x => '- ' + x))
-        visit(node.children, depth + 1, -1)
+        visit(node.children, depth + 1, -1, node)
         continue
       }
       const pad = '  '.repeat(Math.max(indent, 0))
       if (indent < 0) out.push('')
-      out.push(`${pad}- **${label(node)}** ${node.name}`)
+      out.push(`${pad}- **${label(node)}** ${node.name}${tag}`)
       for (const x of info) out.push(`${pad}  - ${x}`)
-      visit(node.children, depth + 1, Math.max(indent, 0) + 1)
+      visit(node.children, depth + 1, Math.max(indent, 0) + 1, node)
     }
   }
   visit(arch?.nodes, 0, -1)

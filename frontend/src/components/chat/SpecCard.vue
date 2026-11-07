@@ -26,11 +26,13 @@ function toggle(key) { const next = new Set(opened.value); next.has(key) ? next.
 const picks = ref((props.spec?.questions || []).map(() => 0))
 const note = ref('')
 const answers = computed(() => (props.spec?.questions || []).map((q, i) => `${q.q}：${q.options[picks.value[i]]}`))
+// 点了「按这个画架构」就不能再点（以前点两下会画两遍）
+const drawing = ref(false)
 function primary() {
-  if (props.locked) return
+  if (props.locked || drawing.value) return
   const text = note.value.trim()
   if (text) { note.value = ''; emit('revise', text) }
-  else emit('draw', { answers: answers.value })
+  else { drawing.value = true; emit('draw', { answers: answers.value }) }
 }
 </script>
 
@@ -61,7 +63,7 @@ function primary() {
         </div>
       </li>
     </ul>
-    <p v-if="spec.assumptions?.length" class="spec-assume"><b>{{ $t('我先这样假设') }}</b>{{ spec.assumptions.join('；') }}</p>
+    <div v-if="spec.assumptions?.length" class="spec-assume"><b>{{ $t('我先这样假设') }}</b><ul><li v-for="a in spec.assumptions" :key="a">{{ a }}</li></ul></div>
     <div v-if="!done && spec.questions?.length" class="spec-questions">
       <div v-for="(q, qi) in spec.questions" :key="q.q" class="spec-q">
         <p>{{ q.q }}</p>
@@ -70,7 +72,7 @@ function primary() {
     </div>
     <div v-if="!done" class="spec-foot">
       <input v-model="note" class="spec-note" maxlength="600" :disabled="locked" :placeholder="$t('哪里不对？直接说，比如「租户这次不做」')" :aria-label="$t('修改梳理')" @keydown.enter.prevent="primary">
-      <button class="primary spec-draw" :disabled="locked" @click="primary">{{ note.trim() ? $t('发送修改') : $t('按这个画架构') }}</button>
+      <button class="primary spec-draw" :disabled="locked || drawing" @click="primary">{{ note.trim() ? $t('发送修改') : drawing ? $t('正在画架构…') : $t('按这个画架构') }}</button>
     </div>
   </div>
 </template>
@@ -94,14 +96,15 @@ function primary() {
 .spec-states{display:flex;flex-wrap:wrap;gap:3px;margin:3px 0}.spec-states span{display:inline-flex;align-items:center;gap:3px;padding:0 7px;border-radius:9px;background:#eef3fc;color:#2f5bb5;font-size:11.5px}
 .spec-states i{font-style:normal;color:var(--subtle);margin-left:2px}
 .spec-actions,.spec-list{margin:2px 0 0;padding-left:16px;color:#5f5a52}.spec-actions li,.spec-list li{margin:1px 0}
-.spec-assume{margin:6px 8px;padding:6px 9px;border-radius:9px;background:var(--quiet);font-size:12px;color:#5f5a52}.spec-assume b{font-weight:500;color:var(--ink);margin-right:6px}
+.spec-assume{margin:6px 8px;padding:6px 9px;border-radius:9px;background:var(--quiet);font-size:12px;color:#5f5a52}.spec-assume b{display:block;font-weight:500;color:var(--ink)}
+.spec-assume ul{margin:2px 0 0;padding-left:16px}.spec-assume li{margin:1px 0}
 .spec-questions{margin:6px 4px 0;padding:8px 4px 2px;border-top:1px solid #f0ede4}
 .spec-q{margin:0 4px 8px}.spec-q p{margin:0 0 5px;font-weight:500;color:var(--ink)}
-.spec-options{display:flex;flex-wrap:wrap;gap:5px}
-.spec-options button{gap:5px;padding:4px 10px;border:1px solid var(--line);border-radius:999px;background:#fff;font-size:12px;color:#4d4a44;white-space:normal;text-align:left}
+.spec-options{display:flex;flex-wrap:wrap;gap:5px;min-width:0}
+.spec-options button{flex-shrink:1;min-width:0;max-width:100%;justify-content:flex-start;gap:5px;padding:4px 10px;border:1px solid var(--line);border-radius:999px;background:#fff;font-size:12px;color:#4d4a44;white-space:normal;text-align:left}
 .spec-options button:hover:not(:disabled){background:var(--quiet)}
 .spec-options button.on{border-color:var(--primary);background:var(--primary-soft);color:var(--primary)}
-.spec-options em{font-style:normal;font-size:10px;padding:0 5px;border-radius:7px;background:#fff;color:var(--primary)}
+.spec-options em{flex:none;font-style:normal;font-size:10px;padding:0 5px;border-radius:7px;background:#fff;color:var(--primary)}
 .spec-foot{display:flex;align-items:center;gap:6px;margin-top:4px;padding:6px 2px 0;border-top:1px solid #f0ede4}
 .spec-note{flex:1;min-width:0;height:32px;padding:0 8px;border:none;border-radius:9px;outline:none;background:none;font-size:12.5px;color:var(--ink)}.spec-note:focus{background:var(--quiet)}
 .spec-draw{flex:none;min-height:32px;padding:5px 12px;border-radius:9px;font-size:12.5px}

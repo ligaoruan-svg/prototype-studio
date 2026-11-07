@@ -664,7 +664,7 @@ class 架构AI的小毛病(unittest.TestCase):
 
     def test_系统自动和别的端做的动作不要求按钮(self):
         from backend import arch_ops as O
-        arch = A.normalize({"nodes": [{"type": "page", "name": "报修工单", "children": [{"type": "button", "name": "派单"}]}]})
+        arch = A.normalize({"nodes": [{"type": "page", "name": "报修工单", "children": [{"type": "button", "name": "派单", "action": "run"}]}]})
         arch["spec"] = {"roles": [{"name": "客服"}, {"name": "维修工"}], "objects": [{"name": "报修工单", "actions": [
             "派单：待派单→处理中（客服）", "超时升级：处理中→已超时（系统自动）", "报修：→待派单（业主，小程序）", "评价：待评价→已完成（业主）",
             "完工：处理中→待评价（维修工）", "关闭：待派单→已关闭"]}], "scope": {"out": ["业主小程序"]}}
@@ -689,6 +689,42 @@ class 架构AI的小毛病(unittest.TestCase):
         self.assertEqual([n["name"] for n in nodes[0]["children"]], ["报修工单"])          # 半截的最后一行不要
         self.assertIn(C.TRUNCATED, notes)
         self.assertEqual(C._limit(C.MAX_TOKENS, 65536), 65536)                               # 设置里调大了就用设置的
+
+
+class 第一轮真实测试的毛病(unittest.TestCase):
+    def test_检查带完整路径_还查空下钻页_没动作的按钮_占位模块(self):
+        from backend import arch_ops as O
+        arch = A.normalize({"nodes": [
+            {"type": "module", "name": "业务模块", "children": [{"type": "page", "name": "首页", "desc": "工作台"}]},
+            {"type": "module", "name": "能碳管理", "children": [
+                {"type": "page", "name": "减排措施", "children": [{"type": "tab", "name": "已登记", "children": [{"type": "table", "name": "列表"}]}]},
+                {"type": "page", "name": "能碳看板", "children": [{"type": "button", "name": "下钻", "action": "jump", "target": "企业碳排明细"},
+                                                               {"type": "drill", "name": "企业碳排明细"}]}]},
+            {"type": "module", "name": "告警运维", "children": [
+                {"type": "page", "name": "告警监测", "children": [{"type": "button", "name": "去处理", "action": "jump", "target": "告警工单 / 待派单"},
+                                                              {"type": "button", "name": "启停"}, {"type": "button", "name": "查询"}]},
+                {"type": "page", "name": "告警工单", "children": [{"type": "tab", "name": "待派单"}]}]}]})
+        found = O.problems(arch)
+        self.assertIn("「能碳管理 / 减排措施 / 已登记 / 列表」这个表格叫「列表」，起个具体的名字", found)
+        self.assertIn("下钻页「能碳管理 / 能碳看板 / 企业碳排明细」下面是空的：写清它展示什么", found)
+        self.assertTrue(any("没写从哪进来" in p for p in found))
+        self.assertTrue(any("按钮「告警运维 / 告警监测 / 启停」没写点了以后" in p for p in found))
+        self.assertFalse(any("查询" in p for p in found))                                  # 查询这种不用写
+        self.assertTrue(any("「业务模块」是页面外壳自带的占位名" in p for p in found))
+        self.assertFalse(any("告警工单 / 待派单" in p for p in found))                       # 跳到「页面 / 页签」认得
+        self.assertFalse(any("待派单" in p and "空" in p for p in found))                    # 页签只列名字是对的
+
+    def test_梳理卡_选项里的推荐_假设里的问题编号去掉(self):
+        from backend import arch_spec as S
+        spec = S.normalize({"roles": [{"name": "管理员"}], "assumptions": ["企业用户共用后台（由问题1确认）。", "数据只接收。"],
+                            "questions": [{"q": "企业用户怎么访问？", "options": ["同一后台（推荐）", "单独门户", "推荐"]}]})
+        self.assertEqual(spec["questions"][0]["options"], ["同一后台", "单独门户"])
+        self.assertEqual(spec["assumptions"], ["企业用户共用后台", "数据只接收"])
+
+    def test_问架构合不合理_带上规则和检查结果(self):
+        from backend import arch_chat as C
+        self.assertIn("对照下面这些产品规则逐条看", C.ASK_SYSTEM)
+        self.assertIn("不要每个页签重复一套筛选", C.ASK_SYSTEM)
 
 
 class 表格起名(unittest.TestCase):

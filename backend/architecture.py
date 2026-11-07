@@ -323,7 +323,8 @@ def check(arch: dict) -> list[dict]:
                 add("warn", f"「{item['name']}」用到的数据「{name}」在数据关系里没有", node=item["id"], area="data")
         if is_screen(item) and not item.get("desc"):
             add("warn", f"「{item['name']}」还没写介绍：AI 会按名字猜", node=item["id"])
-        if item["type"] == "button" and item.get("action") in ("open", "jump") and item.get("target") and item["target"] not in names_all and loose_name(item["target"]) not in loose_all:
+        target = re.split(r"\s*[/／›>]\s*", item.get("target") or "")[-1]   # 「告警工单 / 待派单」：认最后一段
+        if item["type"] == "button" and item.get("action") in ("open", "jump") and target and target not in names_all and loose_name(target) not in loose_all:
             add("error", f"按钮「{item['name']}」要{ACTIONS[item['action']]}的「{item['target']}」在页面树里没有", node=item["id"])
         if item["type"] == "drill" and not item.get("entry"):
             add("warn", f"下钻页「{item['name']}」没写从哪进", node=item["id"])

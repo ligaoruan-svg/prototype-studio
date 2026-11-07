@@ -241,15 +241,38 @@ def _verb(action: str) -> str:
     return re.split(r"[:：（(]", action, 1)[0].strip()
 
 
+# 外壳自带的占位名；不用写「点了以后」的按钮
+PLACEHOLDER = {"业务模块", "模块", "新模块"}
+PLAIN_BUTTON = re.compile(r"^(查询|重置|搜索|刷新|返回|取消|关闭|确定|保存|提交)$")
+
+
 def problems(arch: dict) -> list[str]:
-    """画完 / 改完自动查一遍，返回要修的问题（给 AI 修、也给人看）。只挑确定有问题的，不报「还没写介绍」这种"""
+    """画完 / 改完自动查一遍，返回要修的问题（给 AI 修、也给人看）。只挑确定有问题的，不报「还没写介绍」这种。
+    每条都带完整路径（能碳管理 / 减排措施 / 已登记 / 列表）：不带的话好几处同名，人看不出是哪个，AI 修的时候也找不准"""
     nodes = arch.get("nodes") or []
-    out = [i["text"] for i in check(arch) if i["level"] == "error" or i["text"].startswith("有两个页面都叫")]
     flat = [(n, parents) for n, _, parents in walk(nodes)]
+    path = {n.get("id"): " / ".join([p["name"] for p in parents] + [n["name"]]) for n, parents in flat}
+    out = []
+    for issue in check(arch):
+        if issue["level"] == "error":
+            out.append(f"「{path.get(issue.get('node'), '')}」：{issue['text']}" if issue.get("node") in path else issue["text"])
+        elif issue["text"].startswith("有两个页面都叫"):
+            out.append(issue["text"])
     for n, parents in flat:
-        if n.get("type") in ("table", "block") and n["name"] in GENERIC:
-            where = parents[-1]["name"] if parents else ""
-            out.append(f"「{where}」里的{'表格' if n['type'] == 'table' else '区块'}叫「{n['name']}」，起个具体的名字")
+        where, kind = path[n.get("id")], n.get("type")
+        if kind in ("table", "block") and n["name"] in GENERIC:
+            out.append(f"「{where}」这个{'表格' if kind == 'table' else '区块'}叫「{n['name']}」，起个具体的名字")
+        elif kind == "module" and not parents and n["name"] in PLACEHOLDER:
+            out.append(f"最外层的「{n['name']}」是页面外壳自带的占位名：按业务改个名字，或者把它下面的页面挪到最外层")
+        elif kind == "drill":
+            if not n.get("children") and not n.get("fields"):
+                out.append(f"下钻页「{where}」下面是空的：写清它展示什么")
+            if not n.get("entry"):
+                out.append(f"下钻页「{where}」没写从哪进来（入口：…）")
+        elif kind == "page" and not n.get("children") and not n.get("desc"):
+            out.append(f"菜单页「{where}」下面是空的")
+        elif kind == "button" and not n.get("action") and not PLAIN_BUTTON.match(n["name"]):
+            out.append(f"按钮「{where}」没写点了以后干什么（打开 / 跳到 / 执行 / 二次确认）")
     spec = arch.get("spec") or {}
     if spec and nodes:
         scope = spec.get("scope") or {}
@@ -272,4 +295,4 @@ def problems(arch: dict) -> list[str]:
     for p in out:
         if p not in seen:
             seen.append(p)
-    return seen[:12]
+    return seen[:15]
