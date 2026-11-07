@@ -270,7 +270,8 @@ def generate(arch: dict, only: set[str] | None = None) -> dict:
             cfg = list_page(p, spec, flow_map)
             if cfg:
                 used.add(cfg["data"])
-                pages.append(f"{key}(){{return ListPage({js(cfg)})}}")
+                name = key if re.fullmatch(r"[A-Za-z_]\w*", key) else json.dumps(key)   # order-fee 这种带 - 的要加引号
+                pages.append(f"{name}(){{return ListPage({js(cfg)})}}")
                 made.append(p["name"])
             else:
                 left.append(p["name"])

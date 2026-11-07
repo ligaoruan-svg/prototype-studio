@@ -43,6 +43,8 @@ class 画布直接生成列表页(unittest.TestCase):
         self.assertNotIn("BX-001", page)                            # 编号跳详情页留给 AI
         self.assertIn('Store.flow("报修工单",{"派单":["待派单","待接单"],"关闭":["待派单","已关闭"]', gen["script"])
         self.assertIn("工单统计（key: p2）", arch_gen.handoff(gen))
+        dashed = arch_gen.generate({"nodes": [{**TREE[0], "children": [{**TREE[0]["children"][0], "route": "order-fee"}]}], "spec": SPEC})
+        self.assertTrue(dashed["pages"].startswith('"order-fee"(){return ListPage('))   # 带 - 的页面名加引号，不然整页脚本报错
 
     def test_起点是空的动作_做成顶上的新增按钮(self):
         spec = {"status": "confirmed", "roles": [{"name": "财务对账员"}], "objects": [{"name": "月度对账单", "states": ["待核对", "已对平"],
