@@ -10,18 +10,26 @@ const ACTION = /^([^：:（(]+)[：:]\s*(.+?)\s*(?:→|->|—>|=>)\s*([^（(]+?)
 export function parseAction(text, roles = []) {
   const m = String(text || '').trim().match(ACTION)
   if (!m) return null
-  const [, action, from, to, who = ''] = m.map(x => (x || '').trim())
-  const ui = !AUTO.test(who) && !AUTO.test(action) && (!who || !roles.length || roles.some(r => r && who.includes(r)))
+  const [, action, from, to, note = ''] = m.map(x => (x || '').trim())
+  // 括号里第一段才是谁做的，后面是补充说明（「客服，需填原因」）；「客服」也算「物业客服」
+  const who = note.split(/[，,；;、\s]/)[0]
+  const ui = !AUTO.test(who) && !AUTO.test(action) && (!who || !roles.length || roles.some(r => r && (who.includes(r) || r.includes(who))))
   return { action, from: from.split(/[/、,，|]|或/).map(x => x.trim()).filter(Boolean), to, who, ui }
 }
 
 export function checklist(spec) {
   if (spec?.status !== 'confirmed') return []
   const roles = (spec.roles || []).map(r => r.name)
-  return (spec.objects || []).flatMap(o => (o.actions || []).map(a => parseAction(a, roles)).filter(Boolean).map(a => ({ object: o.name, ...a })))
+  // 同一个动作从同一个状态出发、结果二选一（导入并核对 → 已核对 / 有差异）：合成一条，到哪个都算
+  const out = []
+  for (const o of spec.objects || []) for (const a of (o.actions || []).map(x => parseAction(x, roles)).filter(Boolean)) {
+    const same = out.find(c => c.object === o.name && c.action === a.action && c.from.join() === a.from.join())
+    if (same) { if (!same.to.includes(a.to)) same.to.push(a.to) } else out.push({ object: o.name, ...a, to: [a.to] })
+  }
+  return out
 }
 
-export const itemText = c => c.ui ? `「${c.from.join('/')}」的${c.object}点「${c.action}」→ 变成「${c.to}」` : `${c.object}「${c.action}」（${c.who || '系统'}做，不在后台点）写进了流转`
+export const itemText = c => c.ui ? `「${c.from.join('/')}」的${c.object}点「${c.action}」→ 变成「${c.to.join('」或「')}」` : `${c.object}「${c.action}」（${c.who || '系统'}做，不在后台点）写进了流转`
 
 // 没过的原因 → 一句人和 AI 都看得懂的话
 function failText(c, r) {
@@ -35,9 +43,9 @@ function failText(c, r) {
     case 'gone': return `${head}点「${c.action}」后这一条从 Store 里没了：流转要用 Store.move 改状态，不是删掉`
     case 'blocked': return `${head}点「${c.action}」后弹窗确认不了${r.note ? `（${r.note}）` : ''}，状态还是「${r.from}」`
     case 'nostore': return `${head}点「${c.action}」页面变了，但 Store 里的状态还是「${r.from}」：要用 Store.move('${c.object}',id,'${c.action}') 改${flowHint}`
-    case 'noreact': return `${head}点「${c.action}」没反应，状态还是「${r.from}」，应该变成「${c.to}」${flowHint}`
-    case 'wrongto': return `${head}点「${c.action}」后变成了「${r.now}」，梳理里应该是「${c.to}」`
-    case 'stays': return `${head}「${c.action}」后已经是「${c.to}」，这一行的「${c.action}」按钮还在：要按 Store.can 出现`
+    case 'noreact': return `${head}点「${c.action}」没反应，状态还是「${r.from}」，应该变成「${c.to.join('」或「')}」${flowHint}`
+    case 'wrongto': return `${head}点「${c.action}」后变成了「${r.now}」，梳理里应该是「${c.to.join('」或「')}」`
+    case 'stays': return `${head}「${c.action}」后已经是「${r.now || c.to[0]}」，这一行的「${c.action}」按钮还在：要按 Store.can 出现`
     case 'noflow': return `「${c.action}」是${c.who || '系统'}做的、后台不用按钮，但 Store.flow('${c.object}') 里也要有这个动作`
     default: return `${head}点「${c.action}」没验过：${r.why || '原因不明'}`
   }

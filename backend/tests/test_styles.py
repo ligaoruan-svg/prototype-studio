@@ -56,6 +56,8 @@ class 内置风格(unittest.TestCase):
         normal = "{key:'g',label:'组',items:[{key:'a',label:'甲'}]}"
         out = patcher.shell_add(shell, nav=normal)
         self.assertIn("/*PA:NAV*/\n  " + normal + ",", out)
+        again = patcher.shell_add(out, nav="{key:'h',label:'后加的',items:[{key:'b',label:'乙'}]}")
+        self.assertLess(again.index("label:'组'"), again.index("label:'后加的'"))   # 后加的模块排在后面，菜单不倒过来
         for item in skills.builtin_listing():   # 外壳自己也兜着：散的页面不会让 g.items.map 崩掉
             text = skill_digest.find_shell({"style": "builtin:" + item["folder"]})[2]
             self.assertIn("const navGroups=()=>NAV.flat()", text)

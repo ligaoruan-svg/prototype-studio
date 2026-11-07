@@ -691,6 +691,14 @@ class 架构AI的小毛病(unittest.TestCase):
         self.assertEqual(C._limit(C.MAX_TOKENS, 65536), 65536)                               # 设置里调大了就用设置的
 
 
+class 谁做的动作(unittest.TestCase):
+    def test_括号第一段是谁_后面是说明(self):
+        from backend.arch_ops import _needs_button
+        self.assertTrue(_needs_button("关闭：待派单→已关闭（客服，需填原因；超时的标红）", ["物业客服", "维修工"]))
+        self.assertFalse(_needs_button("评价：待评价→已完成（业主在小程序评价后自动更新）", ["物业客服"]))
+        self.assertFalse(_needs_button("超时升级：待派单→待派单（系统）", ["物业客服"]))
+
+
 class 第一轮真实测试的毛病(unittest.TestCase):
     def test_检查带完整路径_还查空下钻页_没动作的按钮_占位模块(self):
         from backend import arch_ops as O

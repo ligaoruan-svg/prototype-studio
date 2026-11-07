@@ -825,7 +825,8 @@ _TEMPLATE = r'''
     for(const el of L.querySelectorAll('input,select,textarea')){
       if(!vis(el)||el.disabled||el.readOnly)continue;
       if(el.type==='radio'){if(![...L.querySelectorAll(`input[type=radio][name="${esc(el.name)}"]`)].some(r=>r.checked))el.checked=true;else continue;}
-      else if(el.type==='checkbox'||el.type==='file'||el.value)continue;
+      else if(el.type==='file'){if(el.files&&el.files.length)continue;try{const dt=new DataTransfer();dt.items.add(new File(['验收测试'],'验收测试.xlsx'));el.files=dt.files;}catch{continue;}}
+      else if(el.type==='checkbox'||el.value)continue;
       else if(el.tagName==='SELECT'){const o=[...el.options].find(o=>o.value);if(!o)continue;el.value=o.value;}
       else{const d=new Date().toISOString();el.value={date:d.slice(0,10),'datetime-local':d.slice(0,16),month:d.slice(0,7),time:'09:00',number:'1'}[el.type]||'验收测试';}
       el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));
@@ -855,6 +856,15 @@ _TEMPLATE = r'''
     }
     return null;
   }
+  // 行里、详情里都没有：可能是页面顶上的按钮（「导入并核对」「批量派单」），找每页上不在任何一行里的那个
+  async function findTop(action){
+    for(const r of [{hash:''},...routesOf()]){
+      await closeAll(acceptBase);await goRoute(r.hash);
+      const b=[...document.querySelectorAll(CLICKABLE)].find(x=>vis(x)&&!x.disabled&&isAct(x,action)&&!inChrome(x)&&!x.closest('tr,li'));
+      if(b)return b;
+    }
+    return null;
+  }
   async function acceptOne(c){
     const out={object:c.object,action:c.action};
     const n=collectionOf(c.object);if(!n)return {...out,ok:null,why:'missing'};
@@ -865,7 +875,12 @@ _TEMPLATE = r'''
     const keys=keysOf(row,rows);if(!keys.length)return {...out,ok:false,why:'nokey'};
     const who={keys,others:rows.filter(r=>r!==row).flatMap(r=>keysOf(r,rows))};
     out.key=keys[0];
-    const b=await findRow(c.action,who);if(!b)return {...out,ok:false,why:'nobutton',from:row.status};
+    let b=await findRow(c.action,who);const top=!b;
+    if(top)b=await findTop(c.action);
+    if(!b)return {...out,ok:false,why:'nobutton',from:row.status};
+    // 页面顶上的按钮不知道改的是哪一条：哪一条从「从」变成了「到」（或者新加了一条「到」）都算
+    const before=new Map(Store.all(n).map(r=>[r.id,r.status]));
+    const moved=()=>Store.all(n).filter(r=>c.to.includes(r.status)&&(top?(!before.has(r.id)||c.from.includes(before.get(r.id))):r===row));
     const from=row.status,at=Date.now(),sig=stateSig();let snap=snapshot();
     b.click();await sleep(320);
     // 点了弹出来的（填原因、二次确认）：空着的填上，点确定；最多两层
@@ -877,22 +892,23 @@ _TEMPLATE = r'''
       if(!go)break;
       snap=snapshot();go.click();await sleep(320);
       const next=topOpen(snap);
-      if(!next&&L.isConnected&&shown(L)&&Store.get(n,row.id)?.status===from)stuck=feedback()||titleOf(L);
+      if(!next&&L.isConnected&&shown(L)&&!moved().length)stuck=feedback()||titleOf(L);
       L=next;
     }
     await sleep(120);
     const errs=recentErrors.filter(e=>e.at>=at).map(e=>e.message);
-    const now=Store.get(n,row.id);
     if(errs.length)return {...out,ok:false,why:'error',error:String(errs[0]).slice(0,200)};
-    if(!now)return {...out,ok:false,why:'gone',from};
-    if(now.status!==c.to){
-      const why=now.status!==from?'wrongto':stuck?'blocked':stateSig()!==sig?'nostore':'noreact';
-      return {...out,ok:false,why,from,now:now.status,note:stuck};
+    if(moved().length){
+      if(top)return {...out,ok:true,from};
+      // 状态变了：这一行的「派单」应该跟着消失（按 Store.can 出现）
+      await closeAll(acceptBase);await sleep(120);
+      if(!Store.can(n,row.id,c.action)&&rowButton(c.action,who,document))return {...out,ok:false,why:'stays',from,now:row.status};
+      return {...out,ok:true,from};
     }
-    // 状态变了：这一行的「派单」应该跟着消失（按 Store.can 出现）
-    await closeAll(acceptBase);await sleep(120);
-    if(!Store.can(n,row.id,c.action)&&rowButton(c.action,who,document))return {...out,ok:false,why:'stays',from};
-    return {...out,ok:true,from};
+    const now=Store.get(n,row.id);
+    if(!top&&!now)return {...out,ok:false,why:'gone',from};
+    const why=!top&&now.status!==from?'wrongto':stuck?'blocked':stateSig()!==sig?'nostore':'noreact';
+    return {...out,ok:false,why,from,now:now&&now.status,note:stuck,top};
   }
   async function accept(checks){
     if(typeof Store==='undefined'||!Store.names)return {store:false,results:[]};

@@ -348,7 +348,15 @@ def shell_add(source: str, nav: str = "", pages: str = "", bind: str = "", scrip
         if not re.search(r"\bitems\s*:", nav):            # 只写了页面没写分组：收进一个分组，否则外壳读 g.items 整页崩掉
             nav = "{key:'main',label:'功能',items:[" + nav + "]}"
         source = source.replace(nav_at + "\n  " + SHELL_HOME_NAV + "\n", nav_at + "\n", 1)
-        source = source.replace(nav_at, nav_at + "\n  " + clean(nav) + ",", 1)
+        # 接在菜单最后：以前插在最前面，一个模块一个模块加，菜单整个倒过来（第一个模块跑到最后、打开先进统计页）
+        start = source.index(nav_at)
+        close = re.compile(r"\n\s*\];").search(source, start)
+        if close:
+            head = source[:close.start()].rstrip()
+            sep = "" if head.endswith((",", "[", "/*PA:NAV*/")) else ","
+            source = head + sep + "\n  " + nav + "," + source[close.start():]
+        else:
+            source = source.replace(nav_at, nav_at + "\n  " + nav + ",", 1)
     if pages:
         source = source.replace(pages_at + "\n  " + SHELL_HOME_PAGE + "\n", pages_at + "\n", 1)
         source = source.replace(pages_at, pages_at + "\n  " + clean(pages) + ",", 1)

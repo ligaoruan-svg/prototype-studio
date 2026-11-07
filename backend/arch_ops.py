@@ -228,11 +228,13 @@ AUTO = re.compile(r"系统|自动|定时|超时|到期")
 
 def _needs_button(action: str, roles: list[str]) -> bool:
     """这个动作要不要后台里有个按钮：系统自动做的不要；写了是谁做、而那个人不是这个后台的角色（业主在小程序里评价）也不要"""
-    who = " ".join(re.findall(r"[（(]([^（）()]*)[）)]", action))
+    # 括号里第一段才是谁做的，后面是补充说明（「客服，需填原因」「客服，超时要标红」）；「客服」也算「物业客服」
+    inner = re.findall(r"[（(]([^（）()]*)[）)]", action)
+    who = re.split(r"[，,；;、\s]", inner[0].strip(), 1)[0] if inner else ""
     if AUTO.search(who) or AUTO.search(action.split("：", 1)[0]):
         return False
     if who and roles:
-        return any(r and r in who for r in roles)
+        return any(r and (r in who or who in r) for r in roles)
     return True
 
 

@@ -16,6 +16,9 @@ test('动作写法：从、到、谁；多个起点；系统和外部角色不�
   assert.equal(parseAction('超时升级：待派单→待派单（系统）').ui, false)
   assert.equal(parseAction('评价：已完成→已评价（业主）', ['调度员']).ui, false)
   assert.equal(parseAction('随便写的一句'), null)
+  const close = parseAction('关闭：待派单→已关闭（客服，需填原因；超时的标红）', ['物业客服'])
+  assert.deepEqual([close.who, close.ui], ['客服', true])   // 后面是说明，「客服」就是「物业客服」
+  assert.equal(parseAction('评价：待评价→已完成（业主在小程序评价后自动更新）', ['物业客服']).ui, false)
 })
 
 test('清单只从确认过的梳理来，写不成「动作：从→到」的跳过', () => {
@@ -24,6 +27,9 @@ test('清单只从确认过的梳理来，写不成「动作：从→到」的�
   assert.equal(items.length, 4)
   assert.equal(itemText(items[0]), '「待派单」的工单点「派单」→ 变成「处理中」')
   assert.match(itemText(items[2]), /业主做，不在后台点/)
+  const both = checklist({ status: 'confirmed', roles: [{ name: '客服' }], objects: [{ name: '对账', actions: ['导入并核对：待对账→已核对（客服）', '导入并核对：待对账→有差异（客服）'] }] })
+  assert.equal(both.length, 1)   // 同一个动作结果二选一：合成一条，到哪个都算
+  assert.equal(itemText(both[0]), '「待对账」的对账点「导入并核对」→ 变成「已核对」或「有差异」')
 })
 
 test('汇总和交给 AI 的话', () => {
