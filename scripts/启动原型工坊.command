@@ -55,10 +55,36 @@ fi
 source .venv/bin/activate || { echo "虚拟环境损坏。删掉 .venv 文件夹后重试。"; read -r -p "按回车关闭"; exit 1; }
 
 echo "正在检查依赖…"
-if ! pip install -q -e . ; then
-  echo "依赖安装失败。检查网络后重试。"
-  read -r -p "按回车关闭"
-  exit 1
+# 以前每次启动都 pip install -e .：要先联网下 setuptools 打包本项目，网络或代理一抽风（SSL 报错）就启动不了。
+# 现在：依赖装好了、pyproject.toml 没变，就不联网；要装也只装运行要用的几个包（都有现成的安装包，不用打包本项目）；
+# 联网失败但之前装好的够用，照常启动。
+STAMP=.venv/.deps-ok
+want=$(shasum pyproject.toml 2>/dev/null | cut -d' ' -f1)
+deps_ready() {
+  python - <<'PY' >/dev/null 2>&1
+import importlib.metadata as m
+for name in ("fastapi", "uvicorn", "python-multipart", "beautifulsoup4"):
+    m.version(name)
+PY
+}
+if [ -n "$want" ] && [ "$(cat "$STAMP" 2>/dev/null)" = "$want" ] && deps_ready; then
+  :
+else
+  python - > .venv/requirements-run.txt <<'PY'
+import re
+text = open("pyproject.toml", encoding="utf-8").read()
+block = re.search(r"^dependencies\s*=\s*\[(.*?)^\]", text, re.S | re.M)   # 到行首的 ] 为止：uvicorn[standard] 里也有 ]
+print("\n".join(re.findall(r'"([^"]+)"', block.group(1))) if block else "")
+PY
+  if pip install -q -r .venv/requirements-run.txt; then
+    echo "$want" > "$STAMP"
+  elif deps_ready; then
+    echo "联网检查依赖没成功（多半是网络或代理），不过之前装好的够用，照常启动。"
+  else
+    echo "依赖安装失败。检查网络后重试；开着代理的话，试试换个节点或先关掉代理。"
+    read -r -p "按回车关闭"
+    exit 1
+  fi
 fi
 
 echo ""
