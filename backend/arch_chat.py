@@ -234,7 +234,8 @@ def run(project_id: str, page_id: str, message: str, key: str, model: str, base_
         pending = arch_spec.settle(pending, message)   # 问题定下来，写进假设
         system, label, limit = SYSTEM + "\n\n" + arch_spec.DRAW_RULES, "AI 正在按梳理画页面树", MAX_TOKENS
         prompt = (clue + tree + f"业务梳理（用户已确认）：\n{arch_spec.to_text(pending)}\n\n用户确认时说：{message}\n\n"
-                  "按这份梳理画出完整的页面树：现在页面树里已经有的保留（名字不变），按梳理补全和调整。")
+                  "按这份梳理画出完整的页面树：现在页面树里已经有的业务页面保留（名字不变），按梳理补全和调整；"
+                  "页面外壳自带的占位（「业务模块」「首页」这种里面什么都没有的空页）不用保留，按梳理换成真正的模块和页面。")
     elif stage == "ask":
         system, label, limit = ASK_SYSTEM, "AI 正在看页面树", 4000
         prompt = clue + basis + tree + f"用户问：{message}"
