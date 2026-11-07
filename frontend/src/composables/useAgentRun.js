@@ -2,6 +2,7 @@
 import { computed, nextTick, ref } from 'vue'
 import { consumeAgentStream } from '../lib/streamAgent.js'
 import { selfTest, selfTestRequest } from '../lib/probe.js'
+import { acceptRequest, acceptSummary } from '../lib/accept.js'
 import { locale } from '../lib/i18n.js'
 import { wantsArchitecture } from '../lib/architecture.js'
 
@@ -98,15 +99,23 @@ export function useAgentRun(s) {
         current.steps.push({ id: 'selftest', label: '做完自检：把每页的按钮点一遍', state: 'running' })
         const step = current.steps[current.steps.length - 1], html = previewDoc.value
         const report = await selfTest({ makeDoc: route => s.makeProbeDoc(route, html), width: canvasWidth.value || 1200 })
-        const again = report.issues.length && (selfRound === 0 || (selfRound === 1 && report.issues.some(i => i.kind === '报错')))
-        result.selftest = { ...report, round: selfRound + 1, final: !again }
+        // 有确认过的业务梳理：再按梳理把每个流转点一遍（Store 当裁判），没过的和自检的问题一起交回去修
+        status.value = '验收中 · 按业务梳理点一遍流转'
+        const acc = await s.checkAccept(html)
+        const passed = acc && !acc.skipped && acc.items.length ? acceptSummary(acc) : ''
+        const issues = [...report.issues, ...(acc?.fails || []).map(text => ({ kind: '验收', text }))]
+        const again = issues.length && (selfRound === 0 || (selfRound === 1 && issues.some(i => i.kind === '报错')))
+        result.selftest = { ...report, issues, accept: passed, round: selfRound + 1, final: !again }
         if (result.change_id) selftests.value = { ...selftests.value, [result.change_id]: result.selftest }
         step.state = 'done'
-        step.label = report.skipped ? '自检没跑完：' + report.skipped
-          : report.issues.length ? `自检发现 ${report.issues.length} 个问题${again ? '，接着自动修一轮' : ''}`
-          : `自检通过：${report.routes} 个页面、${report.clicked} 个按钮都点过`
-        if (again) { followUp = selfTestRequest(report.issues); followRound = selfRound + 1; followDisplay = { kind: 'check', title: `自检发现 ${report.issues.length} 个问题，自动修`, items: report.issues.map(i => i.text) } }
-        status.value = again ? '自检发现问题 · 马上自动修一轮' : report.issues.length ? `已保存 · 自检还剩 ${report.issues.length} 个问题` : '已保存 · 自检通过'
+        step.label = (report.skipped ? '自检没跑完：' + report.skipped
+          : issues.length ? `自检发现 ${issues.length} 个问题${again ? '，接着自动修一轮' : ''}`
+          : `自检通过：${report.routes} 个页面、${report.clicked} 个按钮都点过`) + (passed ? '；' + passed : '')
+        if (again) {
+          followUp = [report.issues.length && selfTestRequest(report.issues), acc?.fails.length && acceptRequest(acc.fails)].filter(Boolean).join('\n\n')
+          followRound = selfRound + 1; followDisplay = { kind: 'check', title: `自检发现 ${issues.length} 个问题，自动修`, items: issues.map(i => i.text) }
+        }
+        status.value = again ? '自检发现问题 · 马上自动修一轮' : issues.length ? `已保存 · 自检还剩 ${issues.length} 个问题` : '已保存 · 自检通过'
       }
       // 「架构」模式：只改了画布上的页面树，原型没动
       else if (result.intent === 'architecture') { if (result.architecture_changed) { status.value = '页面树已更新'; await s.afterArchChat() } else status.value = result.spec ? '业务梳理好了 · 确认后画架构' : '已回复 · 页面树没动' }

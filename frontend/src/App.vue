@@ -27,6 +27,7 @@ import { useExport } from './composables/useExport.js'
 import { useSideResize } from './composables/useSideResize.js'
 import { usePageCheck } from './composables/usePageCheck.js'
 import { useArchitecture } from './composables/useArchitecture.js'
+import { useAccept } from './composables/useAccept.js'
 
 // ---------- 共享状态 ----------
 const projects = ref([]), project = ref(null), pageId = ref('')
@@ -298,6 +299,7 @@ Object.assign(s, useImages(s))
 Object.assign(s, useExport(s))
 Object.assign(s, usePageCheck(s))
 Object.assign(s, useArchitecture(s))
+Object.assign(s, useAccept(s))
 const { sideWidth, dragging: resizingSide, startResize, resetWidth, nudge: nudgeSide } = useSideResize()
 // 模板里直接用到的
 const { presenting, exitShown, peekExit, hideExitSoon, stopPresent, drawing, drawNote, drawBusy, drawInput, drawClear, drawSend, drawSave,

@@ -309,7 +309,8 @@ const Store=(()=>{
     add(n,row){seq[n]=(seq[n]??list(n).length)+1;const r={id:row.id??`${n}-${seq[n]}`,...row};list(n).unshift(r);redraw();return r},
     update(n,id,patch){const r=this.get(n,id);if(!r)return null;Object.assign(r,typeof patch==='function'?patch(r):patch);redraw();return r},
     remove(n,id){const l=list(n),i=l.findIndex(r=>same(r.id,id));if(i>=0)l.splice(i,1);redraw()},
-    flow(n,map){flows[n]=map},
+    names(){return Object.keys(data)},
+    flow(n,map){if(map===undefined)return flows[n];flows[n]=map},
     can(n,id,action){const r=this.get(n,id),f=(flows[n]||{})[action];return !!(r&&f&&[].concat(f[0]).includes(r.status))},
     move(n,id,action,patch={}){
       const r=this.get(n,id),f=(flows[n]||{})[action];

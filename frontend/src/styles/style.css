@@ -651,6 +651,10 @@ input[type=color]::-webkit-color-swatch { border: none; border-radius: 2px; }
   container-type: inline-size; position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; margin-top: 10px; border: 1px solid var(--line); border-radius: 14px; background: #fbfaf7; overflow: hidden; }
 .arch-muted { color: var(--muted); font-size: 12px; line-height: 1.6; }
 .arch-error { display: flex; align-items: center; gap: 8px; margin: 8px 12px 0; padding: 7px 10px; border-radius: 9px; background: var(--danger-bg); color: var(--danger); font-size: 12.5px; }
+.arch-accept{margin:8px 12px 0;padding:8px 12px;border:1px solid var(--line);border-radius:12px;background:#fff;font-size:12px}
+.arch-accept p{display:flex;align-items:center;gap:8px;margin:0}.arch-accept p b{flex:1;font-weight:500;color:var(--ink)}.arch-accept p .outline{min-height:26px;padding:2px 10px;font-size:12px}
+.arch-accept ul{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:3px;max-height:180px;overflow:auto}.arch-accept li{display:flex;gap:6px;color:var(--muted);line-height:1.6}.arch-accept li svg{flex:none;margin-top:3px;color:var(--success)}
+.arch-accept li.bad{color:#8a5a12}.arch-accept li.bad svg{color:#c27a1a}
 .arch-error span { flex: 1; }
 .an-rename { min-width: 0; flex: 1; height: 22px; border: 1px solid var(--primary); border-radius: 6px; padding: 0 6px; font-size: 13px; font-weight: 600; }
 /* 大纲 */

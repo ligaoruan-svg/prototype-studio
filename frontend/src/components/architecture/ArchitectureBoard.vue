@@ -4,14 +4,17 @@
 // 画布上规划了、原型里还没有的卡片是虚线；画布上改了的（加、删、改名、改字段）右下角记着几处。
 // 「同步到原型」（底部，整个）和卡片工具条上的「同步」（这一块）一直都能点：有改动交代改动，没有就让 AI 照画布核对
 import { computed, inject, onMounted, onUnmounted, ref } from 'vue'
-import { ArrowUpRight, Check, ChevronDown, ChevronUp, Copy, Download, FileText, LoaderCircle, RefreshCw, Sheet, Undo2, X } from 'lucide-vue-next'
+import { ArrowUpRight, Check, ChevronDown, ChevronUp, CircleAlert, ClipboardCheck, Copy, Download, FileText, LoaderCircle, RefreshCw, Sheet, Undo2, X } from 'lucide-vue-next'
 import ArchNode from './ArchNode.vue'
 import ArchDetail from './ArchDetail.vue'
 import { NODE_TYPES, changeLabel } from '../../lib/architecture.js'
 import { download, toCsv, toMarkdown } from '../../lib/archExport.js'
+import { acceptSummary } from '../../lib/accept.js'
 
 const s = inject('studio')
-const { arch, archError, archSelected, archShowDesc, archRemoved, archHistory } = s
+const { arch, archError, archSelected, archShowDesc, archRemoved, archHistory, acceptReport } = s
+// 按业务梳理验收：梳理确认过才有；在后台副本里把每个流转真点一遍，没过的可以一键交给 AI 修
+const canAccept = computed(() => arch.value?.spec?.status === 'confirmed')
 const reading = computed(() => s.archReading())
 // 展开到哪一层：一个个点开太麻烦，一下全展开
 const levels = [{ v: 1, label: '模块' }, { v: 2, label: '菜单页' }, { v: 3, label: '页签' }, { v: 99, label: '全部' }]
@@ -46,10 +49,15 @@ function exportAs(kind) {
         <button v-else class="icon-button" :title="$t('从原型读一遍：原型改过、画布没跟上时点。画布上没同步的改动不会丢')" :aria-label="$t('从原型读一遍')" @click="s.readPrototype()"><RefreshCw :size="14" /></button>
         <div class="arch-export" @click.stop><button class="icon-button" :disabled="!arch?.nodes?.length" :aria-expanded="exportOpen" :title="$t('导出架构')" :aria-label="$t('导出架构')" @click="exportOpen = !exportOpen"><Download :size="15" /></button>
           <div v-if="exportOpen" class="arch-export-menu" role="menu"><button role="menuitem" @click="exportAs('md')"><FileText :size="14" /><span><b>{{ $t('Markdown 大纲') }}</b><small>{{ $t('贴进需求文档；XMind、幕布能导入成脑图') }}</small></span></button><button role="menuitem" @click="exportAs('csv')"><Sheet :size="14" /><span><b>{{ $t('表格') }}</b><small>{{ $t('一行一个页面 / 按钮 / 弹窗，Excel 直接打开') }}</small></span></button><button role="menuitem" @click="exportAs('copy')"><Copy :size="14" /><span><b>{{ $t('复制成文字') }}</b><small>{{ $t('直接粘贴到飞书、钉钉、微信') }}</small></span></button></div></div>
+        <button v-if="canAccept" class="icon-button" :disabled="s.accepting.value || !s.previewDoc.value" :title="$t('按业务梳理验收原型：把每个流转在页面上真点一遍')" :aria-label="$t('验收原型')" @click="s.runAcceptance()"><LoaderCircle v-if="s.accepting.value" :size="14" class="spin" /><ClipboardCheck v-else :size="15" /></button>
         <button class="icon-button" :disabled="!archHistory.length" :title="$t('撤销')" :aria-label="$t('撤销')" @click="s.undoArch()"><Undo2 :size="15" /></button>
         <button class="icon-button" :title="$t('回到预览 · Esc')" :aria-label="$t('回到预览')" @click="s.showPreview()"><X :size="16" /></button>
       </div>
     </header>
+    <div v-if="acceptReport && canAccept" class="arch-accept" @click.stop>
+      <p><b>{{ acceptSummary(acceptReport) }}</b><button v-if="acceptReport.fails.length" class="outline" :disabled="s.locked.value" @click="s.fixAcceptance()">{{ $t('交给 AI 修') }}</button><button class="icon-button" :aria-label="$t('关闭')" @click="acceptReport = null"><X :size="13" /></button></p>
+      <ul><li v-for="it in acceptReport.items" :key="it.text" :class="{ bad: it.ok === false }"><Check v-if="it.ok" :size="12" /><CircleAlert v-else :size="12" /><span>{{ it.ok === false ? it.fail : it.text }}</span></li></ul>
+    </div>
     <div v-if="archError" class="arch-error" role="alert" @click.stop><span>{{ $t(archError) }}</span><button class="icon-button" :aria-label="$t('关闭')" @click="archError = ''"><X :size="13" /></button></div>
 
     <div class="arch-body">

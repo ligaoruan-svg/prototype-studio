@@ -31,7 +31,7 @@ export function newLabels(now, prev) {
 }
 
 // 一个后台副本：载入、发指令、出问题时重载
-function probeFrame(doc, width, height, routes = []) {
+export function probeFrame(doc, width, height, routes = []) {
   const frame = document.createElement('iframe')
   // 不给 allow-modals / allow-popups：副本里就算有人调 alert、window.open，也弹不到用户面前
   frame.setAttribute('sandbox', 'allow-scripts allow-forms')

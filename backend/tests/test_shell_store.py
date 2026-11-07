@@ -53,6 +53,7 @@ out.logs = Store.get('工单', '工单-1').logs.length;
 out.count = Store.count('工单', r => r.status === '处理中');
 out.added = Store.add('工单', {status: '待派单'}).id;
 out.size = Store.all('工单').length;
+out.names = Store.names(); out.flow = Object.keys(Store.flow('工单'));
 setTimeout(() => { out.renders = renders; out.toasts = toasts; console.log(JSON.stringify(out)); }, 20);
 """
         res = subprocess.run(['node', '-e', script], capture_output=True, text=True, timeout=20)
@@ -65,7 +66,20 @@ setTimeout(() => { out.renders = renders; out.toasts = toasts; console.log(JSON.
         self.assertEqual((out['added'], out['size']), ('工单-3', 3))     # 编号接着往下排；define 第二次不覆盖
         self.assertEqual(out['renders'], 1)                            # 连着改几处只重画一次
         self.assertIn('现在是「处理中」，不能派单', out['toasts'])
+        self.assertEqual((out['names'], out['flow']), (['工单'], ['派单', '完工']))   # 验收要读：有哪些数据、流转里有哪些动作
 
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class 按梳理验收(unittest.TestCase):
+    def test_副本里能跑验收_交给AI的话里有验收要的写法(self):
+        from backend.bridge import build_bridge
+        from backend.architecture import brief
+        from backend.arch_spec import normalize
+        bridge = build_bridge('p', 'x')
+        self.assertIn("m.type==='PA_ACCEPT'", bridge)
+        self.assertIn('Store.can(n,row.id,c.action)', bridge)                 # 状态变了按钮还在也算没过
+        text = brief({'name': 't', 'nodes': [], 'spec': normalize({'status': 'confirmed', 'objects': [{'name': '工单'}]})})
+        self.assertIn('状态和动作的名字跟梳理一字不差', text)

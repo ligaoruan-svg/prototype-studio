@@ -220,7 +220,7 @@ export function useArchitecture(s) {
   }
 
   return { arch, archIssues, archMounted, archError, archSelected, archShowDesc, archShowFields, archQuery,
-    archRemoved, archHistory: history, showArch, archSnapshot: snapshot, archDirty: dirty, archChange: change,
+    archRemoved, archHistory: history, loadArch, showArch, archSnapshot: snapshot, archDirty: dirty, archChange: change,
     archLevel, archExpand, nodeOpen, openNode, setLevel, archReading, archFlash, archBase, archChanges, syncToPrototype, archAttached, acceptSynced,
     undoArch, archSelect: select, archSelectedItem: selectedItem, archAdd, archSibling, archMove, archRemove,
     readPrototype, afterArchChat, archRenaming, archKey, renameNode }

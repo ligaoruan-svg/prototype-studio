@@ -45,6 +45,6 @@ test('做完自检：改动大时把每页按钮点一遍，有问题自动交�
   assert.match(probe, /直接打开「\$\{r\.title\}」就报错/, '每页单独直接打开一次')
   assert.match(bridge, /m\.type==='PA_SELFTEST'/)
   assert.match(bridge, /翻到第 2 页后/, '查串页')
-  assert.match(app, /selfRound === 1 && report\.issues\.some\(i => i\.kind === '报错'\)/, '修出新报错再修第二轮')
+  assert.match(app, /selfRound === 1 && issues\.some\(i => i\.kind === '报错'\)/, '修出新报错再修第二轮')
   assert.match(app, /selfReview: followRound/)
 })

@@ -394,7 +394,9 @@ def brief(arch: dict, limit: int = 16000) -> str:
         lines.append("角色：" + "、".join(arch["roles"]))
     if (arch.get("spec") or {}).get("status") == "confirmed":
         lines.append("\n业务梳理（用户确认过）。做页面时照着做：状态流转用 Store.flow 写，按钮按状态出现（Store.can）、点了状态真的变（Store.move），列表和统计跟着变；"
-                     "规则做成校验、提示或标红；「这次不做」的不做页面，「外部系统」只生成它回传的数据：")
+                     "规则做成校验、提示或标红；「这次不做」的不做页面，「外部系统」只生成它回传的数据。"
+                     "改完程序会照梳理逐个流转去页面上点来验收，所以：Store 的数据名就用梳理里的对象名（Store.define('工单',…)），状态字段叫 status、"
+                     "状态和动作的名字跟梳理一字不差，每个状态都有几条演示数据，每条有编号或名称并显示在列表里：")
         lines.append(spec_text(arch["spec"]))
     lines.append("\n页面树（缩进是层级）：")
     for item, depth, _ in walk(arch.get("nodes") or []):

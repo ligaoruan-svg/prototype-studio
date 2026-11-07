@@ -632,7 +632,8 @@ _TEMPLATE = r'''
     for(const el of document.body.querySelectorAll('*')){if(!vis(el)||el.closest('[data-pa-overlay]'))continue;const r=el.getBoundingClientRect();
       if((r.left<40&&r.width<W*0.35&&r.height>H*0.55)||(r.top<90&&r.height<130&&r.width>W*0.6))cand.add(el);}
     let best=null,score=2;const open=layers();
-    for(const el of cand){if(open.some(l=>l.contains(el)))continue;const r=el.getBoundingClientRect();if(r.width>W*0.6&&r.height>H*0.6)continue;
+    // 标题下面紧挨着的页签条（.tabs / role=tablist）也是贴顶的一横条，菜单项少的时候会被当成导航
+    for(const el of cand){if(open.some(l=>l.contains(el))||el.matches('[role=tablist]')||TAB_BAR.test(String(el.className)))continue;const r=el.getBoundingClientRect();if(r.width>W*0.6&&r.height>H*0.6)continue;
       const n=navItems(el).length;if(n>score||(n===score&&best&&best.contains(el))){best=el;score=n;}}
     navCache=best;if(!best)navMiss=Date.now();return best;
   }
@@ -791,6 +792,122 @@ _TEMPLATE = r'''
     await go(list[0].hash);
     return {issues,clicked,routes:list,ms:Date.now()-t0};
   }
+  // ===== 按梳理验收：「待派单」的工单点「派单」→ Store 里真变成「处理中」、这一行的「派单」跟着消失 =====
+  // Store 当裁判（页面上的字可能是写死的，Store 里的状态才是真的）。只在后台副本里跑，点了什么都不算数
+  // checks：[{object,action,from:[…],to,ui}]；ui=false 是系统自动做的，不找按钮，只看流转里有没有这个动作
+  let acceptBase=null;
+  const isAct=(el,action)=>{const t=bare(el);return t===action||(t.startsWith(action)&&t.length<=action.length+2);};
+  const CONFIRM_TEXT=/^(确定|确认|提交|保存|完成|是)/;
+  function collectionOf(name){
+    const names=Store.names();if(names.includes(name))return name;
+    const near=names.filter(n=>n.includes(name)||name.includes(n));return near.length===1?near[0]:'';
+  }
+  // 认出页面上的这一条：它在这类数据里独一无二的字段值（编号、名称），页面上一般会显示；程序生成的 id 放最后
+  // 别的条里的字跟它互相包含的不要（「空调」和「空调不制冷」），不然会认到别的行上
+  function keysOf(row,rows){
+    const other=rows.filter(r=>r!==row).flatMap(r=>Object.values(r).filter(v=>typeof v==="string"&&v.length>=2));
+    return Object.entries(row).filter(([k,v])=>k!=='status'&&typeof v==='string'&&v.length>=2&&v.length<=40&&!other.some(o=>o.includes(v)||v.includes(o)))
+      .sort(([a],[b])=>(a==='id')-(b==='id')).map(([,v])=>v).slice(0,6);
+  }
+  // 这一条所在那一行（或卡片）里的动作按钮：从按钮往上找，找到含这一条编号的那层；碰到别的行的编号就是找过头了，停
+  function rowButton(action,{keys,others},scope){
+    const has=(el,list)=>{const t=el.innerText||'';return list.some(k=>t.includes(k));};
+    for(const b of [...scope.querySelectorAll(CLICKABLE)].filter(el=>vis(el)&&!el.disabled&&isAct(el,action)&&!inChrome(el))){
+      for(let p=b.parentElement,i=0;p&&p!==document.body&&i<12;p=p.parentElement,i++){
+        if(has(p,others))break;
+        if(has(p,keys))return b;
+      }
+    }
+    return null;
+  }
+  // 弹窗里空着的项随便填上，免得卡在必填校验上（这里验的是流转，不是表单）
+  function fillBlank(L){
+    for(const el of L.querySelectorAll('input,select,textarea')){
+      if(!vis(el)||el.disabled||el.readOnly)continue;
+      if(el.type==='radio'){if(![...L.querySelectorAll(`input[type=radio][name="${esc(el.name)}"]`)].some(r=>r.checked))el.checked=true;else continue;}
+      else if(el.type==='checkbox'||el.type==='file'||el.value)continue;
+      else if(el.tagName==='SELECT'){const o=[...el.options].find(o=>o.value);if(!o)continue;el.value=o.value;}
+      else{const d=new Date().toISOString();el.value={date:d.slice(0,10),'datetime-local':d.slice(0,16),month:d.slice(0,7),time:'09:00',number:'1'}[el.type]||'验收测试';}
+      el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));
+    }
+  }
+  async function goRoute(h){if(!h)return;if(h.startsWith('nav:'))await navTo(h);else if(location.hash!==h)location.hash=h;await sleep(300);}
+  // 在一个视图里找：先看列表这一行；没有就点开这一行的详情（查看 / 详情 / 编号链接），在弹出来的那层里找
+  async function inView(action,who){
+    const keys=who.keys;let b=rowButton(action,who,document);if(b)return b;
+    const rows=[...document.querySelectorAll('tr,li,[class*=card],[class*=item]')].filter(el=>vis(el)&&!inChrome(el)&&keys.some(k=>(el.innerText||'').includes(k)));
+    const row=rows.sort((a,b)=>(a.innerText||'').length-(b.innerText||'').length)[0];if(!row)return null;
+    const open=[...row.querySelectorAll(CLICKABLE)].find(el=>vis(el)&&/查看|详情/.test(bare(el)))||[...row.querySelectorAll('a,[class*=link],.lnk')].find(el=>vis(el)&&keys.some(k=>bare(el).includes(k)));
+    if(!open)return null;
+    const snap=snapshot(),sig=pageSig();open.click();await sleep(320);
+    const L=topOpen(snap);
+    if(L)b=[...L.querySelectorAll(CLICKABLE)].find(x=>vis(x)&&!x.disabled&&isAct(x,action));
+    else if(pageSig()!==sig)b=rowButton(action,who,document)||[...document.querySelectorAll(CLICKABLE)].find(x=>vis(x)&&!x.disabled&&isAct(x,action)&&!inChrome(x));
+    if(!b)await closeAll(acceptBase);
+    return b||null;
+  }
+  // 每个菜单页、每个页签（分状态的）都找一遍
+  async function findRow(action,who){
+    for(const r of [{hash:''},...routesOf()]){
+      await closeAll(acceptBase);await goRoute(r.hash);
+      let b=await inView(action,who);if(b)return b;
+      for(const t of tabsIn()){const el=findTarget(t);if(!el)continue;el.click();await sleep(220);b=await inView(action,who);if(b)return b;}
+    }
+    return null;
+  }
+  async function acceptOne(c){
+    const out={object:c.object,action:c.action};
+    const n=collectionOf(c.object);if(!n)return {...out,ok:null,why:'missing'};
+    const flow=Store.flow(n)||{};out.inFlow=c.action in flow;
+    if(c.ui===false)return {...out,ok:out.inFlow,why:out.inFlow?'':'noflow'};
+    const rows=Store.all(n),row=rows.find(r=>c.from.includes(r.status));
+    if(!row)return {...out,ok:false,why:'nofrom',states:[...new Set(rows.map(r=>r.status).filter(Boolean))]};
+    const keys=keysOf(row,rows);if(!keys.length)return {...out,ok:false,why:'nokey'};
+    const who={keys,others:rows.filter(r=>r!==row).flatMap(r=>keysOf(r,rows))};
+    out.key=keys[0];
+    const b=await findRow(c.action,who);if(!b)return {...out,ok:false,why:'nobutton',from:row.status};
+    const from=row.status,at=Date.now(),sig=stateSig();let snap=snapshot();
+    b.click();await sleep(320);
+    // 点了弹出来的（填原因、二次确认）：空着的填上，点确定；最多两层
+    let L=topOpen(snap),stuck='';
+    for(let i=0;i<2&&L;i++){
+      fillBlank(L);
+      const btns=[...L.querySelectorAll(REAL_CONTROL+',.btn,[class*=btn]')].filter(x=>vis(x)&&!x.disabled&&!CLOSE_TEXT.test(bare(x)));
+      const go=btns.find(x=>isAct(x,c.action))||btns.find(x=>CONFIRM_TEXT.test(bare(x)))||btns.find(x=>/primary/.test(String(x.className)));
+      if(!go)break;
+      snap=snapshot();go.click();await sleep(320);
+      const next=topOpen(snap);
+      if(!next&&L.isConnected&&shown(L)&&Store.get(n,row.id)?.status===from)stuck=feedback()||titleOf(L);
+      L=next;
+    }
+    await sleep(120);
+    const errs=recentErrors.filter(e=>e.at>=at).map(e=>e.message);
+    const now=Store.get(n,row.id);
+    if(errs.length)return {...out,ok:false,why:'error',error:String(errs[0]).slice(0,200)};
+    if(!now)return {...out,ok:false,why:'gone',from};
+    if(now.status!==c.to){
+      const why=now.status!==from?'wrongto':stuck?'blocked':stateSig()!==sig?'nostore':'noreact';
+      return {...out,ok:false,why,from,now:now.status,note:stuck};
+    }
+    // 状态变了：这一行的「派单」应该跟着消失（按 Store.can 出现）
+    await closeAll(acceptBase);await sleep(120);
+    if(!Store.can(n,row.id,c.action)&&rowButton(c.action,who,document))return {...out,ok:false,why:'stays',from};
+    return {...out,ok:true,from};
+  }
+  async function accept(checks){
+    if(typeof Store==='undefined'||!Store.names)return {store:false,results:[]};
+    await sleep(50);acceptBase=snapshot();
+    try{window.confirm=()=>true;}catch{}   // 「确定要派单吗？」点确定
+    const t0=Date.now(),results=[];
+    for(const c of checks){
+      const base={object:c.object,action:c.action};
+      if(Date.now()-t0>50000){results.push({...base,ok:null,why:'timeout'});continue;}
+      try{results.push(await acceptOne(c));}catch(e){results.push({...base,ok:false,why:'error',error:String(e&&e.message||e).slice(0,200)});}
+      await closeAll(acceptBase);
+    }
+    const info={};for(const n of Store.names()){const rows=Store.all(n);info[n]={n:rows.length,states:[...new Set(rows.map(r=>r.status).filter(Boolean))]};}
+    return {store:true,info,results,ms:Date.now()-t0};
+  }
   let probeBase=null,probeSig='';
   async function probeInit(full){
     await sleep(50);probeBase=snapshot();probeSig=pageSig();
@@ -879,6 +996,7 @@ _TEMPLATE = r'''
     if(m.type==='PA_PROBE_ROUTES'){send('PROBE_REPLY',{id:m.id,routes:routesOf(),current:location.hash,currentTitle:activeNav()||pageTitle()});return;}
     if(m.type==='PA_PROBE_NAV'){const home=location.hash,homeTitle=activeNav()||pageTitle();discoverNav().then(routes=>send('PROBE_REPLY',{id:m.id,routes,current:home,currentTitle:homeTitle}),()=>send('PROBE_REPLY',{id:m.id,routes:[]}));return;}
     if(m.type==='PA_PROBE_INIT'){if(Array.isArray(m.routes))knownRoutes=m.routes;probeInit(!!m.full).then(r=>send('PROBE_REPLY',{id:m.id,...r}),err=>send('PROBE_REPLY',{id:m.id,ok:false,error:String(err)}));return;}
+    if(m.type==='PA_ACCEPT'){accept(m.checks||[]).then(r=>send('PROBE_REPLY',{id:m.id,...r}),err=>send('PROBE_REPLY',{id:m.id,store:false,results:[],error:String(err)}));return;}
     if(m.type==='PA_SELFTEST'){selfTest().then(r=>send('PROBE_REPLY',{id:m.id,...r}),err=>send('PROBE_REPLY',{id:m.id,issues:[],error:String(err)}));return;}
     if(m.type==='PA_PROBE_TRY'){probeTry(m.path||[],m.step).then(r=>send('PROBE_REPLY',{id:m.id,...r}),err=>send('PROBE_REPLY',{id:m.id,ok:false,error:String(err),needReload:true}));return;}
     if(m.type==='PA_REPLAY'){replay(m.path||[]).then(r=>send('REPLAYED',r),()=>send('REPLAYED',{ok:false,at:0}));return;}
