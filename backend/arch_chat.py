@@ -294,7 +294,7 @@ def run(project_id: str, page_id: str, message: str, key: str, model: str, base_
     latest = architecture.load(project_id)
     if latest:
         current["nodes"] = latest.get("nodes") or []
-    summary, nodes, failed = _apply_reply(current, reply, choice)
+    summary, nodes, failed = _apply_reply(current, reply, choice, redraw=stage == "draw")
     # 画完 / 改完自动查一遍：按钮要打开的不存在、重名、通用名、梳理里的对象没页面、流转动作没按钮——有就自动修一轮
     check_note, check = _check_and_fix(current, nodes, basis if stage != "draw" else f"业务梳理（用户已确认）：\n{arch_spec.to_text(pending)}\n\n",
                                        key, model, base_url, max_tokens, on_event, should_stop, usage)
@@ -328,7 +328,7 @@ def _limit(stage_limit: int, setting: int | None) -> int:
 TRUNCATED = "AI 这次写得太长被截断了，后面一部分没画出来。说「继续画完」我接着补。"
 
 
-def _apply_reply(current: dict, reply: str, choice: dict) -> tuple[str, list[dict], list[str]]:
+def _apply_reply(current: dict, reply: str, choice: dict, redraw: bool = False) -> tuple[str, list[dict], list[str]]:
     """模型回的改动落到树上：【改动】照着改（编号、原型标记都留着）；回的是整棵树就按老办法对编号"""
     summary, kind, body = arch_ops.split_reply(reply)
     if kind == "ops":
@@ -336,6 +336,8 @@ def _apply_reply(current: dict, reply: str, choice: dict) -> tuple[str, list[dic
         if ops:
             nodes, _done, failed = arch_ops.apply_ops(current.get("nodes") or [], ops)
             return summary, architecture.normalize({"nodes": nodes})["nodes"], failed   # 新加的发编号，检查要用
+        # 写了【改动】却一条都看不懂：不能把这几行当成一整棵树——以前「- 删掉最外层的「筛选」」被读成四个模块，整棵树被换掉
+        raise WorkError("arch_unreadable", "AI 回的改动一条都没看懂，画布没动：" + body.strip()[:120])
     text = body if kind else reply
     cut_off = choice.get("finish_reason") in ("length", "max_tokens")
     if cut_off:   # 截断了：最后一行多半是半截的，不要它；能用的先用上，回复里说一声
@@ -344,6 +346,10 @@ def _apply_reply(current: dict, reply: str, choice: dict) -> tuple[str, list[dic
     if not fresh.get("nodes"):
         cut = "（输出被截断了）" if choice.get("finish_reason") in ("length", "max_tokens") else ""
         raise WorkError("arch_unreadable", "AI 给的页面树读不出来" + cut + "，换个说法再试一次")
+    # 回的是整棵树，却比现在少了一大半：多半是 AI 把要改的几条当成了树，不敢用（以前整棵树被换成四个「删掉…」模块）
+    before, after = len(list(architecture.walk(current.get("nodes") or []))), len(list(architecture.walk(fresh["nodes"])))
+    if not redraw and before >= 12 and after < before / 2:
+        raise WorkError("arch_unreadable", f"AI 回的页面树只有 {after} 项，现在有 {before} 项，少了一大半，没敢用，画布没动。换个说法再试一次")
     fresh = keep_ids(fresh, current)
     flags = {n["id"]: {k: n[k] for k in ("proto", "seen") if n.get(k)} for n, _, _ in architecture.walk(current["nodes"])}
     for n, _, _ in architecture.walk(fresh["nodes"]):

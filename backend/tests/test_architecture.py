@@ -691,6 +691,20 @@ class 架构AI的小毛病(unittest.TestCase):
         self.assertEqual(C._limit(C.MAX_TOKENS, 65536), 65536)                               # 设置里调大了就用设置的
 
 
+class 改动看不懂不能换掉整棵树(unittest.TestCase):
+    def test_改动一条都没看懂_或者回的树少了一大半_画布不动(self):
+        from backend.arch_chat import _apply_reply
+        from backend.errors import WorkError
+        kids = [{"id": f"p{i}", "type": "page", "name": f"页{i}", "children": []} for i in range(14)]
+        current = {"nodes": [{"id": "m", "type": "module", "name": "工单", "children": kids}]}
+        with self.assertRaises(WorkError):    # 以前这几行被读成四个模块，整棵树被换掉
+            _apply_reply(current, "【改动】\n- 把最外层那几个「筛选」都处理一下\n- 还有分类列表", {})
+        with self.assertRaises(WorkError):
+            _apply_reply(current, "模块：删掉的东西\n  菜单页：页1", {})
+        summary, nodes, _ = _apply_reply(current, "【改动】\n- 删掉最外层的「页3」", {})
+        self.assertEqual(len(nodes[0]["children"]), 13)   # 「删掉最外层的「…」」也认
+
+
 class 重放找不到位置的改动(unittest.TestCase):
     def test_挂的地方没了就跳过_不堆到最外层(self):
         from backend.arch_expand import replay
