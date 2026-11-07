@@ -214,6 +214,7 @@ test('业务梳理卡：确认带上回答走架构模式，后面画了 / 出�
   const run = readFileSync(new URL('../src/composables/useAgentRun.js', import.meta.url), 'utf8')
   const panel = readFileSync(new URL('../src/components/layout/ConversationPanel.vue', import.meta.url), 'utf8')
   const card = readFileSync(new URL('../src/components/chat/SpecCard.vue', import.meta.url), 'utf8')
+  assert.match(card, /o\.fields\.map\(short\)/, '业务对象下面露出字段表')
   assert.match(run, /'按业务梳理画架构' \+ \(answers\.length \? '\\n问题回答：\\n'/)        // 后台认这个开头（arch_spec.DRAW_HEAD）
   assert.match(run, /async function reviseSpec\(text\)[\s\S]*?intent: 'architecture'/)
   assert.match(panel, /@draw-spec="drawSpec" @revise-spec="reviseSpec"/)

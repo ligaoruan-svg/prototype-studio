@@ -16,6 +16,7 @@ FIELD_TYPES = {
     "text": "文本", "textarea": "多行", "select": "下拉", "multi": "多选", "radio": "单选", "check": "勾选",
     "date": "日期", "datetime": "日期时间", "daterange": "日期范围", "time": "时间", "number": "数字", "money": "金额",
     "phone": "手机号", "upload": "上传", "image": "图片", "switch": "开关", "person": "选人", "cascade": "级联", "note": "提示文字",
+    "ref": "关联",    # 引用另一个业务对象的一条：维修工（关联：维修工）
 }
 TYPE_WORDS = {label: key for key, label in FIELD_TYPES.items()}
 TYPE_WORDS.update({

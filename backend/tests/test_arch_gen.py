@@ -67,6 +67,17 @@ class 画布直接生成列表页(unittest.TestCase):
         self.assertIn("报修工单·派单说明", gen["texts"])            # 文字留给 AI 换成真话
         self.assertIn("别再 Store.define 同一份", arch_gen.handoff(gen))
 
+    def test_字段表_关联的下拉从对方取_详情放全_数据对得上(self):
+        spec = {**SPEC, "objects": [{**SPEC["objects"][0], "fields": ["工单编号🔒", "报修分类*（下拉：水电/门窗）", "维修工（关联：维修工）", "问题描述*（多行）"]},
+                                    {"name": "维修工", "fields": ["工号🔒", "姓名*", "手机号（手机号）"]}]}
+        tree = [{**TREE[0], "children": [{**TREE[0]["children"][0], "children": [k for k in TREE[0]["children"][0]["children"] if k["type"] != "drawer"]}]}]
+        gen = arch_gen.generate({"nodes": tree, "spec": spec})
+        self.assertIn('{key:"维修工",label:"维修工",type:"select",options:()=>Store.all("维修工").map(r=>r["姓名"]).filter(Boolean),required:true}', gen["pages"])
+        self.assertIn('detail:{title:"报修工单详情",fields:[{key:"工单编号",label:"工单编号"},{key:"报修分类",label:"报修分类"},{key:"维修工"', gen["pages"])
+        self.assertIn('Store.define("维修工",[', gen["script"])                  # 没有页面、但被关联的对象也有数据
+        self.assertIn('"维修工":Demo.pick("维修工","姓名",0)', gen["script"])
+        self.assertLess(gen["script"].index('Store.define("维修工"'), gen["script"].index('Store.define("报修工单"'))
+
     def test_同步到空外壳时程序先生成_再交给AI补(self):
         tmp = tempfile.TemporaryDirectory()
         old = storage.DATA_ROOT, agent.chat, agent.stage

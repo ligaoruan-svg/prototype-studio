@@ -6,7 +6,8 @@ from __future__ import annotations
 
 import re
 
-from .arch_gen import JS, js
+from .arch_fields import parse_field
+from .arch_gen import JS, js, key_of, name_key
 
 PEOPLE = ["张三", "李四", "王五", "赵六", "钱七", "孙八", "周九", "吴十"]
 PLACES = ["阳光花园 3 栋 201", "翠湖苑 1 栋 502", "锦绣家园 7 栋 1103", "金色港湾 2 栋 806"]
@@ -67,9 +68,22 @@ def demo(cfgs_by_data: dict[str, list[dict]], spec: dict, keys: dict) -> tuple[s
     texts: dict[str, list[str]] = {}
     rows_by: dict[str, list[dict]] = {}
     namefield: dict[str, str] = {}
+    # 梳理里的字段表：每份数据的字段以它为准补全；没有页面、但被别人关联的对象（维修工）也生成，关联才取得到
+    objects = {o["name"]: o.get("fields") or [] for o in (spec or {}).get("objects") or []}
+    cfgs_by_data = {**cfgs_by_data, **{o: [] for o, fs in objects.items() if fs and o not in cfgs_by_data}}
     fields_by = {d: _fields(c) for d, c in cfgs_by_data.items()}
     for data, fields in fields_by.items():
-        namefield[data] = next((f for f in fields if NAME.search(f)), next((f for f in fields if CODE.search(f)), ""))
+        for raw in objects.get(data, []):
+            f = parse_field(raw)
+            meta = fields.setdefault(key_of(f["name"]), {"type": "", "options": []})
+            if f["type"] == "ref" and f["options"]:
+                meta["ref"] = f["options"][0]
+            elif not f["guessed"] or not meta["type"]:
+                meta["type"] = f["type"]
+                if f["options"] and f["type"] in ("select", "radio", "multi") and not meta["options"]:
+                    meta["options"] = f["options"]
+        namefield[data] = name_key(objects[data]) if objects.get(data) else \
+            next((f for f in fields if NAME.search(f)), next((f for f in fields if CODE.search(f)), ""))
     # 别的数据里写了选项的同名字段（业主评价的「报修分类」）：照用那些选项
     shared = {f: m["options"] for fs in fields_by.values() for f, m in fs.items() if m["options"]}
     # 几份数据都有的编号（工单费用里的「工单编号」）：状态最多的那份是正主，别的从它那儿取，对得上
@@ -91,7 +105,9 @@ def demo(cfgs_by_data: dict[str, list[dict]], spec: dict, keys: dict) -> tuple[s
             for f, meta in fields.items():
                 kind, options = meta["type"], meta["options"] or shared.get(f, [])
                 ref = next((d for d in cfgs_by_data if d != data and (f == d or f in d or d in f) and namefield.get(d)), "")
-                if CODE.search(f) and owner.get(f, data) != data:
+                if meta.get("ref"):     # 关联：从对方那份数据里取名字
+                    row[f] = JS(f"Demo.pick({js(meta['ref'])},{js(namefield.get(meta['ref']) or name_key(objects.get(meta['ref'], [])))},{i})")
+                elif CODE.search(f) and owner.get(f, data) != data:
                     row[f] = JS(f"Demo.pick({js(owner[f])},{js(f)},{i})")
                 elif CODE.search(f):
                     row[f] = f"{prefix}{20261100 + i + 1}" if "工号" not in f else f"W{i + 1:03d}"

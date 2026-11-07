@@ -294,8 +294,29 @@ def problems(arch: dict) -> list[str]:
                 verb = _verb(action)
                 if verb and _needs_button(action, roles) and not any(verb in b or (len(b) >= 2 and b in verb) for b in buttons):
                     out.append(f"「{name}」的「{verb}」这个动作没有按钮")
+        out += _synonyms(nodes, spec, path)
     seen: list[str] = []
     for p in out:
         if p not in seen:
             seen.append(p)
     return seen[:15]
+
+
+def _synonyms(nodes: list[dict], spec: dict, path: dict) -> list[str]:
+    """页面上的列、弹窗字段和这个对象字段表里的名字差一点（业主 / 业主姓名）：同一个东西两个名字，原型里各页就对不上。最多报 3 处"""
+    from .arch_gen import _object, key_of      # 只有这里用：认这一页管的是哪个对象
+    from .arch_fields import parse_field
+    out: list[str] = []
+    for page, _, _ in walk(nodes):
+        tables = [k for k in page.get("children") or [] if k["type"] == "table"] if page.get("type") == "page" else []
+        obj = tables and _object(page, tables[0], spec)
+        names = {key_of(parse_field(f)["name"]) for f in (obj or {}).get("fields") or []}
+        if not names:
+            continue
+        for n, _, _ in walk(page.get("children") or []):
+            for raw in (n.get("cols") or []) + (n.get("fields") or []):
+                name = key_of(parse_field(raw)["name"])
+                twin = next((f for f in names if f != name and len(min(f, name, key=len)) >= 2 and (f in name or name in f)), "")
+                if name not in names and twin and len(out) < 3:
+                    out.append(f"「{path.get(n.get('id'), n['name'])}」的「{name}」和「{obj['name']}」字段表里的「{twin}」是不是一个东西？统一叫「{twin}」")
+    return out

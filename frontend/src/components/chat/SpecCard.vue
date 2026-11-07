@@ -21,6 +21,8 @@ const sections = computed(() => {
   ].filter(x => x.count)
 })
 const opened = ref(new Set(['objects']))
+// 字段表在卡片上只露名字和 * 🔒，控件、选项放到悬停提示里（不然一个对象占好几行）
+const short = f => String(f).replace(/\s*[（(].*$/, '')
 function toggle(key) { const next = new Set(opened.value); next.has(key) ? next.delete(key) : next.add(key); opened.value = next }
 // 问题的回答：默认第一个（推荐的）
 const picks = ref((props.spec?.questions || []).map(() => 0))
@@ -50,6 +52,7 @@ function primary() {
           <template v-else-if="sec.key === 'objects'">
             <div v-for="o in spec.objects" :key="o.name" class="spec-object">
               <p><b>{{ o.name }}</b><span v-if="o.desc">{{ o.desc }}</span><small v-if="o.owner">{{ $t('{0} 管', [o.owner]) }}</small></p>
+              <p v-if="o.fields?.length" class="spec-fields" :title="o.fields.join('、')"><em>{{ $t('字段') }}</em>{{ o.fields.map(short).join('、') }}</p>
               <div v-if="o.states.length" class="spec-states"><span v-for="(st, i) in o.states" :key="st">{{ st }}<i v-if="i < o.states.length - 1">→</i></span></div>
               <ul v-if="o.actions.length" class="spec-actions"><li v-for="a in o.actions" :key="a">{{ a }}</li></ul>
             </div>
@@ -93,6 +96,7 @@ function primary() {
 .spec-detail{margin:0 8px 8px 10px;padding:6px 0 2px 12px;border-left:1.5px solid var(--line);color:#4d4a44}
 .spec-detail p{margin:2px 0}.spec-detail p b{font-weight:500;color:var(--ink);margin-right:6px}
 .spec-object{margin-bottom:8px}.spec-object p span{color:var(--muted)}.spec-object small{margin-left:6px;font-size:11px;color:var(--subtle)}
+.spec-fields{color:#5f5a52;font-size:12px}.spec-fields em{font-style:normal;color:var(--subtle);margin-right:6px}
 .spec-states{display:flex;flex-wrap:wrap;gap:3px;margin:3px 0}.spec-states span{display:inline-flex;align-items:center;gap:3px;padding:0 7px;border-radius:9px;background:#eef3fc;color:#2f5bb5;font-size:11.5px}
 .spec-states i{font-style:normal;color:var(--subtle);margin-left:2px}
 .spec-actions,.spec-list{margin:2px 0 0;padding-left:16px;color:#5f5a52}.spec-actions li,.spec-list li{margin:1px 0}

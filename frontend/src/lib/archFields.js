@@ -6,6 +6,7 @@ export const FIELD_TYPES = {
   text: '文本', textarea: '多行', select: '下拉', multi: '多选', radio: '单选', check: '勾选',
   date: '日期', datetime: '日期时间', daterange: '日期范围', time: '时间', number: '数字', money: '金额',
   phone: '手机号', upload: '上传', image: '图片', switch: '开关', person: '选人', cascade: '级联', note: '提示文字',
+  ref: '关联',   // 引用另一个业务对象的一条：维修工（关联：维修工）
 }
 const TYPE_WORDS = {
   ...Object.fromEntries(Object.entries(FIELD_TYPES).map(([k, v]) => [v, k])),
@@ -16,7 +17,7 @@ const TYPE_WORDS = {
   地区: 'cascade', 说明: 'note', 提示: 'note',
 }
 // 有选项的控件：编辑时给一格写选项
-export const WITH_OPTIONS = ['select', 'multi', 'radio']
+export const WITH_OPTIONS = ['select', 'multi', 'radio', 'ref']   // 关联的「选项」是它关联的那个对象
 const GUESS = [
   ['textarea', /备注|说明|描述|内容|原因|意见/],
   ['image', /照片|图片|头像/],

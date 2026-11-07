@@ -13,7 +13,7 @@ from .arch_fields import parse_field
 CJK = re.compile(r"[一-鿿]")
 MONEY = re.compile(r"(费|费用|金额|价|总额|合计)(（元）)?$")
 ADD = re.compile(r"^(新增|添加|新建|登记|创建)")
-FORM = {"select": "select", "radio": "select", "multi": "select", "person": "select", "textarea": "textarea", "note": "textarea",
+FORM = {"ref": "select", "select": "select", "radio": "select", "multi": "select", "person": "select", "textarea": "textarea", "note": "textarea",
         "date": "date", "daterange": "date", "datetime": "datetime", "number": "number", "money": "money",
         "upload": "file", "image": "file", "check": "check", "switch": "check"}
 ACTION = re.compile(r"^([^：:（(]+)[：:]\s*(.+?)\s*(?:→|->)\s*([^（(]+?)\s*(?:[（(].*)?$")
@@ -101,15 +101,48 @@ def _pick(data: str, key: str) -> JS:
     return JS(f"()=>[...new Set(Store.all({js(data)}).map(r=>r[{js(key)}]).filter(Boolean))]")
 
 
-def _form(fields: list[str], data: str = "") -> list[dict]:
+NAMEISH = re.compile(r"(姓名|名称|名字)$")
+CODEISH = re.compile(r"(编号|单号|工号|编码|代码)$")
+
+
+def name_key(fields: list[str]) -> str:
+    """一个对象里认得出是哪一条的字段：先名字，再编号"""
+    names = [key_of(parse_field(f)["name"]) for f in fields]
+    return next((n for n in names if NAMEISH.search(n)), next((n for n in names if CODEISH.search(n)), names[0] if names else ""))
+
+
+class Kb:
+    """这一页管的对象，和梳理里所有对象的字段表：页面上没写类型、选项的字段照字段表补，关联字段从对方那份数据里选"""
+
+    def __init__(self, data: str, spec: dict):
+        self.data = data
+        self.objects = {o["name"]: o.get("fields") or [] for o in (spec or {}).get("objects") or []}
+        self.fields = {key_of(parse_field(f)["name"]): parse_field(f) for f in self.objects.get(data, [])}
+
+    def field(self, raw: str) -> dict:
+        f = parse_field(raw)
+        base = self.fields.get(key_of(f["name"]))
+        if base and base["type"] == "ref" and not f["options"] and not f["locked"]:   # 页面上写的「下拉」其实是关联
+            return {**f, "type": "ref", "options": base["options"]}
+        if base and (f["guessed"] or not f["options"]) and not f["locked"]:
+            f = {**f, "type": base["type"] if f["guessed"] else f["type"], "options": f["options"] or base["options"]}
+        return f
+
+    def options(self, f: dict, key: str):
+        if f["type"] == "ref" and f["options"]:
+            target = f["options"][0]
+            nk = name_key(self.objects.get(target, []))
+            return JS(f"()=>Store.all({js(target)}).map(r=>r[{js(nk)}]).filter(Boolean)") if nk else _pick(self.data, key)
+        return f["options"] if _real(f["options"]) else _pick(self.data, key)
+
+
+def _form(fields: list[str], kb: Kb) -> list[dict]:
     out = []
     for raw in fields:
-        f = parse_field(raw)
+        f = kb.field(raw)
         item = {"key": key_of(f["name"]), "label": label_of(f["name"]), "type": FORM.get(f["type"], "text")}
-        if _real(f["options"]) and item["type"] == "select":     # 金额写的「（按用料明细汇总，只读）」不是选项
-            item["options"] = f["options"]
-        elif item["type"] == "select" and data:
-            item["options"] = _pick(data, item["key"])
+        if item["type"] == "select":     # 金额写的「（按用料明细汇总，只读）」不是选项：只有下拉才要
+            item["options"] = kb.options(f, item["key"])
         if f["must"]:
             item["required"] = True
         if f["locked"]:
@@ -118,10 +151,10 @@ def _form(fields: list[str], data: str = "") -> list[dict]:
     return out
 
 
-def _filters(block: dict | None, has_tabs: bool, data: str = "") -> list[dict]:
+def _filters(block: dict | None, has_tabs: bool, kb: Kb) -> list[dict]:
     out, seen = [], set()
     for raw in (block or {}).get("fields") or []:
-        f = parse_field(raw)
+        f = kb.field(raw)
         name, kind = f["name"], f["type"]
         if (name == "状态" and has_tabs) or name in seen:
             continue
@@ -131,8 +164,8 @@ def _filters(block: dict | None, has_tabs: bool, data: str = "") -> list[dict]:
                 continue
         seen.add(name)
         item = {"key": key_of(name), "label": name}
-        if kind in ("select", "radio", "multi", "person"):
-            item.update(type="select", options=f["options"] if _real(f["options"]) else _pick(data, item["key"]))
+        if kind in ("select", "radio", "multi", "person", "ref"):
+            item.update(type="select", options=kb.options(f, item["key"]))
         elif kind in ("daterange", "date", "datetime"):
             item["type"] = "daterange"
         elif kind in ("check", "switch"):
@@ -141,13 +174,13 @@ def _filters(block: dict | None, has_tabs: bool, data: str = "") -> list[dict]:
     return out
 
 
-def _columns(cols: list[str]) -> list[dict]:
+def _columns(cols: list[str], kb: Kb) -> list[dict]:
     out = []
     for i, c in enumerate(cols):
         item = {"key": key_of(c), "label": label_of(c)}
         if c == "状态":
             item["tag"] = True
-        elif MONEY.search(c) and "编号" not in c:
+        elif (MONEY.search(c) or kb.field(c)["type"] == "money") and "编号" not in c:
             item["money"] = True
         if i == 0:
             item["width"] = 140
@@ -161,7 +194,7 @@ def _states(when: str) -> list[str]:
     return [x for x in re.split(r"[、,，/]|或", m.group(1)) if x] if m else []
 
 
-def _button(b: dict, page: dict, verbs: dict, first: str, row: bool, data: str = "", made: dict | None = None) -> dict | None:
+def _button(b: dict, page: dict, verbs: dict, first: str, row: bool, kb: Kb, made: dict | None = None) -> dict | None:
     name = b["name"]
     new_as = next((to for verb, to in (made or {}).items() if name.startswith(verb)), "") if not row else ""
     if new_as:
@@ -176,10 +209,10 @@ def _button(b: dict, page: dict, verbs: dict, first: str, row: bool, data: str =
         item["show"] = JS(f"r=>{js(_states(b['when']))}.includes(r.status)")
     target = b.get("target") or ""
     layer = _find(page, target, ("modal", "drawer", "wizard")) if b.get("action") == "open" else None
-    if layer and layer["type"] == "drawer":
+    if (layer and layer["type"] == "drawer") or (not layer and row and re.match(r"^(查看|详情)", name)):   # 没画抽屉的「查看」：详情放字段表
         item["detail"] = True
     elif layer:
-        item["form"] = _form(layer.get("fields") or [], data)
+        item["form"] = _form(layer.get("fields") or [], kb)
         if layer["name"] != name:
             item["title"] = layer["name"]
         if not row and (ADD.match(name) or new_as):
@@ -210,7 +243,7 @@ def list_page(page: dict, spec: dict, flow_map: dict) -> dict | None:
     table = max(tables, key=lambda t: (sum(1 for b in t.get("children") or [] if b.get("when")), len(t.get("children") or [])))
     obj = _object(page, table, spec)
     data = obj["name"] if obj else re.sub(r"列表$", "", table["name"]) or page["name"]
-    verbs = flow_map.get(data, {})
+    verbs, kb = flow_map.get(data, {}), Kb(data, spec)
     first = ((obj or {}).get("states") or [""])[0]
     tabs = []
     for t in kids:
@@ -223,21 +256,21 @@ def list_page(page: dict, spec: dict, flow_map: dict) -> dict | None:
     cfg["data"] = data
     if tabs:
         cfg["tabs"] = tabs
-    filters = _filters(next((k for k in kids if k["type"] == "block" and k["name"] == "筛选"), None), bool(tabs), data)
+    filters = _filters(next((k for k in kids if k["type"] == "block" and k["name"] == "筛选"), None), bool(tabs), kb)
     if filters:
         cfg["filters"] = filters
-    cfg["columns"] = _columns(table.get("cols") or [])
+    cfg["columns"] = _columns(table.get("cols") or [], kb)
     if table["name"] != page["name"] + "列表":
         cfg["listTitle"] = table["name"]
     actions, toolbar, names = [], [], set()
     for b in table.get("children") or []:
-        item = b["type"] == "button" and b["name"] not in names and _button(b, page, verbs, first, True, data)
+        item = b["type"] == "button" and b["name"] not in names and _button(b, page, verbs, first, True, kb)
         if item:
             names.add(b["name"])
             actions.append(item)
     made = flow_map.get("_new", {}).get(data, {})
     for b in kids:
-        item = b["type"] == "button" and _button(b, page, verbs, first, False, data, made)
+        item = b["type"] == "button" and _button(b, page, verbs, first, False, kb, made)
         if item:
             toolbar.append(item)
     if actions:
@@ -247,9 +280,11 @@ def list_page(page: dict, spec: dict, flow_map: dict) -> dict | None:
     drawer = next((a for a in actions if a.get("detail")), None)
     if drawer:
         layer = _find(page, next(b.get("target") for b in table["children"] if b["name"] == drawer["label"]), ("drawer",))
-        fields = [parse_field(f)["name"] for f in (layer or {}).get("fields") or []]
+        # 详情：画了抽屉照抽屉，没画的放这个对象的整张字段表
+        fields = [parse_field(f)["name"] for f in (layer or {}).get("fields") or kb.objects.get(data, [])] + ([] if layer else ["状态"])
         if fields:
-            cfg["detail"] = {"title": layer["name"], "fields": [{"key": key_of(f), "label": label_of(f), **({"tag": True} if f == "状态" else {})} for f in fields]}
+            cfg["detail"] = {"title": layer["name"] if layer else data + "详情",
+                             "fields": [{"key": key_of(f), "label": label_of(f), **({"tag": True} if f == "状态" else {})} for f in fields]}
     return cfg
 
 

@@ -734,6 +734,19 @@ class 读列表页模板做的页面(unittest.TestCase):
         self.assertIn("确认接单", [k["name"] for k in kids if k["type"] == "modal"])
 
 
+class 业务对象字段表(unittest.TestCase):
+    def test_梳理带字段表_页面上换了说法要提醒(self):
+        from backend.arch_spec import normalize, to_text
+        from backend.arch_ops import problems
+        spec = normalize({"status": "confirmed", "roles": [{"name": "客服"}], "objects": [
+            {"name": "报修工单", "fields": "工单编号🔒、业主姓名*、报修分类*（下拉：水电、门窗）", "states": ["待派单"]}]})
+        self.assertEqual(spec["objects"][0]["fields"], ["工单编号🔒", "业主姓名*", "报修分类*（下拉：水电、门窗）"])   # 括号里的顿号不切
+        self.assertIn("字段：工单编号🔒、业主姓名*", to_text(spec))
+        arch = {"spec": spec, "nodes": [{"id": "p", "type": "page", "name": "报修工单", "children": [
+            {"id": "t", "type": "table", "name": "工单列表", "cols": ["工单编号", "业主", "报修分类"], "children": []}]}]}
+        self.assertTrue(any("「业主」和「报修工单」字段表里的「业主姓名」" in p for p in problems(arch)))
+
+
 class 谁做的动作(unittest.TestCase):
     def test_括号第一段是谁_后面是说明(self):
         from backend.arch_ops import _needs_button

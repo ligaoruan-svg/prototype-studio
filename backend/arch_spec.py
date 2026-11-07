@@ -17,6 +17,8 @@ SPEC_SYSTEM = """你是资深 B 端产品经理。用户要做一个电脑端的
   "summary": "一句话：这个系统给谁用、解决什么问题",
   "roles": [{"name": "物业客服", "does": "受理报修、派单、回访"}],
   "objects": [{"name": "报修工单", "desc": "业主报的一次维修", "owner": "物业客服",
+               "fields": ["工单编号🔒", "报修分类*（下拉：给排水/电气照明/门窗）", "问题描述*（多行）", "业主姓名*", "联系电话*（手机号）",
+                          "预约上门时间（日期时间）", "维修工（关联：维修工）", "处理结果（多行）", "材料费（金额）", "提交时间🔒"],
                "states": ["待派单", "处理中", "待评价", "已完成", "已关闭"],
                "actions": ["派单：待派单→处理中（客服）", "完工：处理中→待评价（维修工）", "关闭：待派单→已关闭（客服，需填原因）"]}],
   "flows": ["业主报修 → 客服派单 → 维修工上门处理 → 完工 → 业主评价"],
@@ -30,6 +32,9 @@ SPEC_SYSTEM = """你是资深 B 端产品经理。用户要做一个电脑端的
 - 角色 2–6 个。只在别的端用、不登录这个后台的（业主小程序），写进 scope.out 或 external，不算角色。
 - 业务对象是系统要管的「东西」（工单、设备、合同、账单……），核心的 3–10 个。有流转的写 states（3–7 个）和 actions，
   action 写成「动作：从状态→到状态（谁，必要的条件）」；只是基础资料（字典、区域）的不写状态。
+- 每个业务对象写 fields（字段表，6–14 个，不含状态）：名字后面 * 必填、🔒 系统生成或带出，括号里写控件——
+  下拉：选项/选项、多行、日期、日期时间、金额、数字、手机号、上传、图片、勾选，引用别的对象写「关联：对象名」。
+  后面每一页的列、表单、详情都从这里挑，所以同一个东西只叫一个名字（不要这里「业主」那里「业主姓名」），编号、名称这类认得出是哪一条的字段要有。
 - 主流程 1–3 条，用 → 串起来，写清谁在哪一步做什么。
 - 规则要具体、能验证：时限、校验、唯一性、联动（A 变了 B 跟着变）、统计口径。不要写「数据要准确」这种空话。
 - 范围：做什么、不做什么、哪些是外部系统（只接它的数据，不做它的页面）。
@@ -55,7 +60,9 @@ DRAW_RULES = """按业务梳理画页面树的规则：
 9. 规则（校验、时限、联动）写进对应按钮的「确认后」、弹窗字段或页面介绍里，不要丢。
 10. 每个按钮都写点了以后（打开 / 跳到 / 执行 / 二次确认）；跳到别的页写页面名，要到某个页签就写页签名，不要写「页面 / 页签」这种路径。
 11. 弹窗、抽屉的名字不带「弹窗」「抽屉」两个字（叫「派单」「新增设备」）；同一个弹窗里不要两个意思一样的字段。
-12. 下钻页要有内容（它展示什么），写「入口：点哪里进来」。"""
+12. 下钻页要有内容（它展示什么），写「入口：点哪里进来」。
+13. 表格的列、弹窗和抽屉的字段都从业务梳理里这个对象的字段表挑，名字一字不差、控件照抄：列表挑 6–9 个关键的，
+    详情抽屉放全，新增弹窗放要人填的（不放 🔒 的），流转弹窗只放这一步要填的。字段表里没有、确实要的，先想是不是换了个说法。"""
 
 # 确认梳理、开始画：卡片上的按钮发的话，或者你直接说「可以 / 好的，按这个来 / 就这样 / 直接画」
 DRAW_HEAD = "按业务梳理画架构"
@@ -85,6 +92,18 @@ def _list(value: Any, count: int, limit: int) -> list[str]:
     return out
 
 
+def _split_fields(text: str) -> list[str]:
+    """「工单编号🔒、报修分类*（下拉：水电、门窗）、备注」→ 三项：括号里的顿号不切"""
+    out, buf, depth = [], "", 0
+    for ch in text:
+        depth += ch in "（(" and 1 or ch in "）)" and -1 or 0
+        if ch in "、,，;；\n" and depth <= 0:
+            out.append(buf.strip()); buf = ""
+        else:
+            buf += ch
+    return [x for x in out + [buf.strip()] if x]
+
+
 def normalize(raw: Any) -> dict | None:
     """模型或界面给的梳理收拾成固定的样子；什么都没有就是 None"""
     if not isinstance(raw, dict):
@@ -99,6 +118,7 @@ def normalize(raw: Any) -> dict | None:
         if not isinstance(o, dict) or not _s(o.get("name"), 20):
             continue
         objects.append({"name": _s(o.get("name"), 20), "desc": _s(o.get("desc"), 100), "owner": _s(o.get("owner"), 20),
+                        "fields": _list(o.get("fields") if isinstance(o.get("fields"), list) else _split_fields(str(o.get("fields") or "")), 16, 60),
                         "states": _list(o.get("states"), 8, 12), "actions": _list(o.get("actions"), 10, 80)})
     scope = raw.get("scope") if isinstance(raw.get("scope"), dict) else {}
     questions = []
@@ -151,6 +171,8 @@ def to_text(spec: dict) -> str:
         for o in spec["objects"]:
             head = f"- {o['name']}" + (f"：{o['desc']}" if o["desc"] else "") + (f"（{o['owner']}管）" if o["owner"] else "")
             lines.append(head)
+            if o.get("fields"):
+                lines.append("  字段：" + "、".join(o["fields"]))
             if o["states"]:
                 lines.append("  状态：" + " / ".join(o["states"]))
             for a in o["actions"]:
