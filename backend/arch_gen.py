@@ -153,8 +153,9 @@ def _columns(cols: list[str]) -> list[dict]:
 
 
 def _states(when: str) -> list[str]:
-    m = re.match(r"状态是(.+?)时", when or "")
-    return [x for x in re.split(r"[、,，/或]", m.group(1)) if x] if m and "且" not in m.group(1) else []
+    """「状态是待接单、处理中，且已过预约时间时」→ [待接单, 处理中]（后面的「且…」交给 AI 补进 show）"""
+    m = re.match(r"状态是(.+?)(?:[，,]\s*且.*)?时$", (when or "").strip())
+    return [x for x in re.split(r"[、,，/]|或", m.group(1)) if x] if m else []
 
 
 def _button(b: dict, page: dict, verbs: dict, first: str, row: bool, data: str = "") -> dict | None:
