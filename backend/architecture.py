@@ -393,7 +393,7 @@ def brief(arch: dict, limit: int = 16000) -> str:
     if arch.get("roles"):
         lines.append("角色：" + "、".join(arch["roles"]))
     if (arch.get("spec") or {}).get("status") == "confirmed":
-        lines.append("\n业务梳理（用户确认过）。做页面时照着做：状态流转做成按状态出现的按钮，点了状态真的变、列表和统计跟着变；"
+        lines.append("\n业务梳理（用户确认过）。做页面时照着做：状态流转用 Store.flow 写，按钮按状态出现（Store.can）、点了状态真的变（Store.move），列表和统计跟着变；"
                      "规则做成校验、提示或标红；「这次不做」的不做页面，「外部系统」只生成它回传的数据：")
         lines.append(spec_text(arch["spec"]))
     lines.append("\n页面树（缩进是层级）：")

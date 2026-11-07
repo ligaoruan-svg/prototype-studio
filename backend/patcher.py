@@ -12,6 +12,8 @@ import subprocess
 from dataclasses import dataclass
 from html.parser import HTMLParser
 
+from .shell_store import ensure as ensure_store
+
 from bs4 import BeautifulSoup
 
 
@@ -337,6 +339,7 @@ def shell_add(source: str, nav: str = "", pages: str = "", bind: str = "", scrip
         raise PatchError("页面不是从外壳起步的，没有 const NAV=[/*PA:NAV*/ 等位置；用 replace_source_text 改")
     if not (nav or pages or bind or script):
         raise PatchError("shell_add 至少要写 nav、pages、bind、script 中的一项")
+    source = ensure_store(source)   # 自己装的 skill、以前做的原型：外壳里还没有统一数据层就补上
     clean = lambda text: str(text or "").strip().rstrip(",")
     if nav:
         nav = clean(nav)

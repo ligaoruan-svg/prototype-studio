@@ -81,8 +81,12 @@ def shell_api(shell: str) -> dict:
                       + [f"ZeroUI.{n}({sig(a)})" for n, a in plain if not n.startswith("_")],
             "helpers": [f"{n}({{{sig(a)}}})" for n, a in helpers] + [f"{n}({a})" for n, a in funcs if n in {"pageShell", "bindPage"}],
             "events": "PageEvents.on('页面key','click','选择器',(el,e)=>{...})：只在那一页触发",
+            "store": ["业务数据只放一份：script 里 Store.define('工单',[{status:'待派单',…}])，所有页面从 Store 读，切页不重置",
+                      "读：Store.all(名) / where(名,fn) / get(名,id) / count(名,fn) / sum(名,字段,fn)——统计数字现算，不要写死",
+                      "改：Store.add(名,行) / update(名,id,改动) / remove(名,id)，改完当前页自动重画（列表、统计、别的页都跟着变）",
+                      "状态流转：Store.flow('工单',{派单:['待派单','处理中'],完工:['处理中','已完成']})；按钮出不出现 Store.can(名,id,'派单')，点了 Store.move(名,id,'派单',{处理人:'张三'})，不合法会提示并返回 false"],
             "notes": ["ZeroUI.openModal(ZeroUI.Modal({...}), (close, 确定按钮)=>{...}, 触发按钮)：校验不过就 return，不调 close",
-                      "改完数据后 Router.render() 重画当前页；每页的状态放自己的对象里（const planState={page:1}）",
+                      "数据改了用 Store 的方法，会自动重画当前页；每页的界面状态（页码、筛选）放自己的对象里（const planState={page:1}）",
                       "不要 location.reload()、不要在 document 上挂 click 监听",
                       "表格包在 <div class=\"tw\"> 里（宽了会横向滚动），不要自己起 table-wrap 之类的类名"],
             "css": css[:120]}

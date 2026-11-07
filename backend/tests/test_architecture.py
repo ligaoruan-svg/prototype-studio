@@ -680,7 +680,7 @@ class 架构AI的小毛病(unittest.TestCase):
         self.assertIn("费用要结算吗？——只记录（按推荐）", done["assumptions"])
         brief = A.brief(A.normalize({"nodes": [{"type": "page", "name": "工单"}], "spec": {**done, "status": "confirmed"}}))
         self.assertIn("紧急 30 分钟内派单", brief)
-        self.assertIn("状态流转做成按状态出现的按钮", brief)
+        self.assertIn("状态流转用 Store.flow 写", brief)
         self.assertNotIn("业务梳理", A.brief(A.normalize({"nodes": [{"type": "page", "name": "工单"}], "spec": spec})))   # 草稿不带
 
     def test_截断了说出来_还能接着画(self):
