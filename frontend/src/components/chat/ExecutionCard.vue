@@ -26,7 +26,7 @@ const heading = computed(() => {
   if (!busy.value) return discussing.value ? '这次回复未完成' : '这次修改未完成'
   if (props.run.intent === 'architecture') {   // 架构模式分几步：标题跟着后台报的进度走
     const label = props.run.label || ''
-    return /梳理业务/.test(label) ? '正在梳理业务' : /按梳理画/.test(label) ? '正在画架构' : /自动检查/.test(label) ? '正在检查架构'
+    return /梳理业务/.test(label) ? '正在梳理业务' : /页面清单/.test(label) && !/展开/.test(label) ? '正在定页面清单' : /展开页面树/.test(label) ? '正在画架构' : /自动检查/.test(label) ? '正在检查架构'
       : /改页面树/.test(label) ? '正在改架构' : '正在看架构'
   }
   if (discussing.value) return props.run.steps.length ? '正在看这个页面' : '思考中'

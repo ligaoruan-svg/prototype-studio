@@ -1,11 +1,11 @@
 <script setup>
 // 业务梳理卡（参照 Claude 先给计划、你点头再动手）：出架构之前先看这一张——角色、业务对象和状态、主流程、规则、范围。
 // 每一块一行摘要，点开看全；AI 拿不准的地方带选项问你（默认选第一个，就是它推荐的）。
-// 底下一行：写了字就是「发送修改」（改梳理），没写就是「按这个画架构」
+// 底下一行：写了字就是「发送修改」（改梳理），没写就是确认——接着出页面清单卡
 import { computed, ref } from 'vue'
 import { Check, ChevronDown, ListChecks } from 'lucide-vue-next'
 
-// state：open 等你确认；drawn 已经按它画了；replaced 后面有了新版
+// state：open 等你确认；confirmed 已确认、出了页面清单；drawn 已经按它画了；replaced 后面有了新版
 const props = defineProps({ spec: Object, state: { type: String, default: 'open' }, locked: Boolean })
 const done = computed(() => props.state !== 'open')
 const emit = defineEmits(['draw', 'revise'])
@@ -40,7 +40,7 @@ function primary() {
 
 <template>
   <div class="spec-card" :class="{ done }">
-    <div class="spec-head"><ListChecks :size="14" /><span>{{ $t('业务梳理') }}</span><em v-if="state === 'drawn'"><Check :size="11" />{{ $t('已按它画好架构') }}</em><small v-else-if="state === 'replaced'">{{ $t('已更新，看下面的新版') }}</small><small v-else>{{ $t('确认后再画架构') }}</small></div>
+    <div class="spec-head"><ListChecks :size="14" /><span>{{ $t('业务梳理') }}</span><em v-if="state === 'drawn'"><Check :size="11" />{{ $t('已按它画好架构') }}</em><em v-else-if="state === 'confirmed'"><Check :size="11" />{{ $t('已确认') }}</em><small v-else-if="state === 'replaced'">{{ $t('已更新，看下面的新版') }}</small><small v-else>{{ $t('确认后再画架构') }}</small></div>
     <p v-if="spec.summary" class="spec-summary">{{ spec.summary }}</p>
     <ul class="spec-sections">
       <li v-for="sec in sections" :key="sec.key" :class="{ open: opened.has(sec.key) }">
@@ -75,7 +75,7 @@ function primary() {
     </div>
     <div v-if="!done" class="spec-foot">
       <input v-model="note" class="spec-note" maxlength="600" :disabled="locked" :placeholder="$t('哪里不对？直接说，比如「租户这次不做」')" :aria-label="$t('修改梳理')" @keydown.enter.prevent="primary">
-      <button class="primary spec-draw" :disabled="locked || drawing" @click="primary">{{ note.trim() ? $t('发送修改') : drawing ? $t('正在画架构…') : $t('按这个画架构') }}</button>
+      <button class="primary spec-draw" :disabled="locked || drawing" @click="primary">{{ note.trim() ? $t('发送修改') : drawing ? $t('正在列页面清单…') : $t('确认，列页面清单') }}</button>
     </div>
   </div>
 </template>

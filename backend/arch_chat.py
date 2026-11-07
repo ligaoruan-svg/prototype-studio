@@ -1,7 +1,8 @@
-"""架构模式下的对话：AI 只改画布上的页面树，不碰原型代码。四条路（stage_of 决定走哪条）：
+"""架构模式下的对话：AI 只改画布上的页面树，不碰原型代码。五条路（stage_of 决定走哪条）：
 - 梳理（spec）：贴了一段需求、说「出 / 梳理架构」、画布还空着——先出一张业务梳理卡片（见 arch_spec），不动画布。
   梳理卡还没确认时你再说的话（「租户这次不做」）是在改梳理，改完再给你看
-- 按梳理画（draw）：点了卡片上的「按这个画架构」，或者说「可以 / 就这样 / 直接画」——带着产品规则按梳理画整棵树
+- 页面清单（plan）：梳理卡点了确认，或者说「可以 / 就这样」——AI 只列每个模块下有哪些页、什么类型（见 arch_plan），不动画布
+- 按清单画（draw）：清单卡点了「按这个画架构」——程序按页面类型展开整棵树（arch_plan.expand），再自动检查一遍
 - 直接改（edit）：画布上已经有东西，只是「加一个维修工页」这种小改
 - 只回答（ask）：「分析一下架构」「这样分合理吗」——页面树一点不动；值得改的列成几条建议，点「按这个改」才改
 
@@ -14,7 +15,7 @@ import json
 import re
 from typing import Any, Callable
 
-from . import arch_ops, arch_spec, architecture, storage
+from . import arch_ops, arch_plan, arch_spec, architecture, storage
 from .conversation import ASK_HARD, EDIT_WORDS, NO_WRITE, chat_display, discussion_result, is_continue, looks_like_brief, resolve_intent
 from .arch_text import from_outline, keep_ids, to_outline
 from .deepseek_client import DeepSeekError, chat
@@ -181,11 +182,25 @@ def _pending_spec(project_id: str, page_id: str, current: dict) -> dict | None:
     return spec if last and last.get("spec") else None
 
 
-def stage_of(message: str, previous: str | None, current: dict, pending: dict | None) -> str:
-    """这句话走哪条路：spec 梳理、draw 按梳理画、edit 直接改、ask 只回答"""
+def _pending_plan(project_id: str, page_id: str, current: dict) -> dict | None:
+    """页面清单还在等你确认：存的清单是草稿，最近一条架构回复就是这张清单（中间问几句不算）"""
+    plan = current.get("plan")
+    if not plan or plan.get("status") != "draft":
+        return None
+    log = [m for m in storage.load_meta(project_id).get("chat", []) if m.get("intent") == "architecture" and m.get("page_id") == page_id]
+    last = next((m for m in reversed(log) if m.get("role") == "assistant" and m.get("arch_mode") in ("spec", "plan", "draw", "edit")), None)
+    return plan if last and last.get("plan") else None
+
+
+def stage_of(message: str, previous: str | None, current: dict, pending: dict | None, plan: dict | None = None) -> str:
+    """这句话走哪条路：spec 梳理、plan 定页面清单、draw 按清单展开、edit 直接改、ask 只回答"""
     text = (message or "").strip()
     if pending and (text.startswith(arch_spec.DRAW_HEAD) or arch_spec.is_confirm(text)):
+        return "plan"     # 梳理确认了：先出页面清单，不直接画
+    if plan and (text.startswith(arch_plan.PLAN_HEAD) or arch_spec.is_confirm(text)):
         return "draw"
+    if plan:              # 清单卡还没确认：问句只回答，别的都是在改清单
+        return "ask" if ASK_HARD.search(text) and not NO_WRITE.search(text) else "plan"
     # 梳理卡还没确认：明摆着的问句才只回答（「为什么要分这么多对象？」），别的都是在改梳理（「费用这次不做」）
     if pending:
         return "ask" if ASK_HARD.search(text) and not NO_WRITE.search(text) else "spec"
@@ -206,8 +221,9 @@ def run(project_id: str, page_id: str, message: str, key: str, model: str, base_
     history, previous = _history(project_id, page_id)
     current = architecture.load(project_id) or architecture.empty()
     pending = _pending_spec(project_id, page_id, current)
-    stage = stage_of(message, previous, current, pending)
-    mode = {"ask": "discuss", "spec": "spec", "draw": "draw"}.get(stage, "edit")
+    plan = _pending_plan(project_id, page_id, current)
+    stage = stage_of(message, previous, current, pending, plan)
+    mode = {"ask": "discuss", "spec": "spec", "plan": "plan", "draw": "draw"}.get(stage, "edit")
     extra = {"page_id": page_id, "intent": "architecture", "arch_mode": mode}
     if chat_display(display):
         extra["display"] = chat_display(display)
@@ -233,12 +249,17 @@ def run(project_id: str, page_id: str, message: str, key: str, model: str, base_
         else:
             ask_for = f"用户的需求：\n{message}"
         prompt = clue + tree + ask_for
-    elif stage == "draw":
-        pending = arch_spec.settle(pending, message)   # 问题定下来，写进假设
-        system, label, limit = SYSTEM + "\n\n" + arch_spec.DRAW_RULES, "AI 正在按梳理画页面树", MAX_TOKENS
-        prompt = (clue + tree + f"业务梳理（用户已确认）：\n{arch_spec.to_text(pending)}\n\n用户确认时说：{message}\n\n"
-                  "按这份梳理画出完整的页面树：现在页面树里已经有的业务页面保留（名字不变），按梳理补全和调整；"
-                  "页面外壳自带的占位（「业务模块」「首页」这种里面什么都没有的空页）不用保留，按梳理换成真正的模块和页面。")
+    elif stage == "plan":
+        if pending:      # 梳理刚确认：问题定下来写进假设，梳理记成已确认
+            spec = current["spec"] = {**arch_spec.settle(pending, message), "status": "confirmed"}
+            architecture.save(project_id, current)
+            basis = f"业务梳理（用户已确认）：\n{arch_spec.to_text(spec)}\n\n"
+        system, label, limit = arch_plan.PLAN_SYSTEM, "AI 正在定页面清单", 6000
+        ask_for = (f"上一版页面清单（JSON）：\n{json.dumps(plan, ensure_ascii=False)}\n\n用户要改的：{message}\n只改用户说的地方，别的照旧，输出改好的完整 JSON。"
+                   if plan else "按这份业务梳理定页面清单。")
+        prompt = clue + tree + basis + ask_for
+    elif stage == "draw":    # 按确认过的清单展开：不用再问 AI 画整棵树
+        return _draw_plan(project_id, page_id, current, plan, message, basis, key, model, base_url, max_tokens, on_event, should_stop, extra)
     elif stage == "ask":
         system, label, limit = ASK_SYSTEM, "AI 正在看页面树", 4000
         found = arch_ops.problems(current) if current.get("nodes") else []
@@ -280,6 +301,17 @@ def run(project_id: str, page_id: str, message: str, key: str, model: str, base_
         storage.append_chat(project_id, "assistant", content, {"page_id": page_id, "changed": False, "intent": "architecture",
                                                                "arch_mode": "spec", "spec": fresh_spec, "usage": usage})
         return {"changed": False, "intent": "architecture", "content": content, "spec": fresh_spec, "architecture_changed": False, "usage": usage}
+    if stage == "plan":   # 只出页面清单卡，画布不动
+        fresh = arch_plan.parse(reply)
+        if not fresh:
+            cut = "（输出被截断了）" if choice.get("finish_reason") in ("length", "max_tokens") else ""
+            raise WorkError("arch_unreadable", "AI 给的页面清单读不出来" + cut + "，换个说法再试一次")
+        current["plan"] = fresh
+        architecture.save(project_id, current)
+        content = arch_plan.headline(fresh, revised=bool(plan))
+        storage.append_chat(project_id, "assistant", content, {"page_id": page_id, "changed": False, "intent": "architecture",
+                                                               "arch_mode": "plan", "plan": fresh, "usage": usage})
+        return {"changed": False, "intent": "architecture", "content": content, "plan": fresh, "architecture_changed": False, "usage": usage}
     if stage == "ask":   # 只回答，页面树不动
         answer, suggestions = _answer(reply)
         try:
@@ -294,16 +326,11 @@ def run(project_id: str, page_id: str, message: str, key: str, model: str, base_
     latest = architecture.load(project_id)
     if latest:
         current["nodes"] = latest.get("nodes") or []
-    summary, nodes, failed = _apply_reply(current, reply, choice, redraw=stage == "draw")
-    # 画完 / 改完自动查一遍：按钮要打开的不存在、重名、通用名、梳理里的对象没页面、流转动作没按钮——有就自动修一轮
-    check_note, check = _check_and_fix(current, nodes, basis if stage != "draw" else f"业务梳理（用户已确认）：\n{arch_spec.to_text(pending)}\n\n",
-                                       key, model, base_url, max_tokens, on_event, should_stop, usage)
+    summary, nodes, failed = _apply_reply(current, reply, choice)
+    # 改完自动查一遍：按钮要打开的不存在、重名、通用名、梳理里的对象没页面、流转动作没按钮——有就自动修一轮
+    check_note, check = _check_and_fix(current, nodes, basis, key, model, base_url, max_tokens, on_event, should_stop, usage)
     nodes = check.pop("nodes")
     current["nodes"] = nodes
-    if stage == "draw":   # 梳理确认了：角色、定位也记到架构上
-        current["spec"] = {**pending, "status": "confirmed"}
-        current["summary"] = current.get("summary") or pending.get("summary", "")
-        current["roles"] = [r["name"] for r in pending.get("roles", [])] or current.get("roles", [])
     architecture.save(project_id, current)
     summary = summary or "页面树改好了"
     if TRUNCATED in failed:
@@ -313,6 +340,39 @@ def run(project_id: str, page_id: str, message: str, key: str, model: str, base_
         summary += "\n\n有 {0} 处没对上，跳过了：{1}".format(len(failed), "；".join(failed[:5]))
     content = summary + ("\n\n" + check_note if check_note else "")
     storage.append_chat(project_id, "assistant", content, {"page_id": page_id, "changed": False, "intent": "architecture", "arch_mode": mode,
+                                                           "arch_changed": True, "arch_check": check, "usage": usage})
+    return {"changed": False, "intent": "architecture", "content": content, "architecture_changed": True, "arch_check": check, "usage": usage}
+
+
+def _draw_plan(project_id, page_id, current, plan, message, basis, key, model, base_url, max_tokens, on_event, should_stop, extra) -> dict:
+    """按确认过的页面清单展开整棵树：可选页照勾的，问题选了和推荐不一样的先让 AI 把清单改一下；
+    展开是程序按页面类型做的（列表 / 我的任务 / 配置 / 看板 / 统计），再自动查一遍、修一轮"""
+    usage: dict = {}
+    plan, differ = arch_plan.settle(plan, message)
+    if differ:
+        on_event({"type": "progress", "label": "AI 正在按你的选择调整页面清单"})
+        resp = chat(key, model, [{"role": "system", "content": arch_plan.PLAN_SYSTEM},
+                                 {"role": "user", "content": basis + f"页面清单（JSON）：\n{json.dumps(plan, ensure_ascii=False)}\n\n"
+                                  "用户对这几个问题选了：\n" + "\n".join(f"- {d}" for d in differ) + "\n照这个改页面清单，输出完整 JSON（choices 给空数组）。"}],
+                    None, base_url=base_url, max_tokens=_limit(6000, max_tokens), should_stop=should_stop)
+        usage = resp.get("usage") or {}
+        fresh = arch_plan.parse(((resp.get("choices") or [{}])[0].get("message") or {}).get("content") or "")
+        if fresh:
+            plan = {**fresh, "choices": [], "status": "confirmed"}
+    on_event({"type": "progress", "label": "按页面清单展开页面树"})
+    spec = current.get("spec") or {}
+    fresh_tree = keep_ids({"nodes": arch_plan.expand(plan, spec)}, current)   # 画布上原来就有的同名节点，编号和原型标记留着
+    flags = {n["id"]: {k: n[k] for k in ("proto", "seen") if n.get(k)} for n, _, _ in architecture.walk(current.get("nodes") or [])}
+    for n, _, _ in architecture.walk(fresh_tree["nodes"]):
+        n.update(flags.get(n.get("id"), {}))
+    nodes = architecture.normalize({"nodes": fresh_tree["nodes"]})["nodes"]
+    check_note, check = _check_and_fix(current, nodes, basis, key, model, base_url, max_tokens, on_event, should_stop, usage)
+    current.update(nodes=check.pop("nodes"), plan=plan, summary=current.get("summary") or spec.get("summary", ""),
+                   roles=[r["name"] for r in spec.get("roles", [])] or current.get("roles", []))
+    architecture.save(project_id, current)
+    pages = sum(len(m["pages"]) for m in plan["modules"])
+    content = f"按页面清单展开了 {len(plan['modules'])} 个模块、{pages} 个页面。\n\n" + check_note
+    storage.append_chat(project_id, "assistant", content, {"page_id": page_id, "changed": False, "intent": "architecture", "arch_mode": "draw",
                                                            "arch_changed": True, "arch_check": check, "usage": usage})
     return {"changed": False, "intent": "architecture", "content": content, "architecture_changed": True, "arch_check": check, "usage": usage}
 
@@ -328,7 +388,7 @@ def _limit(stage_limit: int, setting: int | None) -> int:
 TRUNCATED = "AI 这次写得太长被截断了，后面一部分没画出来。说「继续画完」我接着补。"
 
 
-def _apply_reply(current: dict, reply: str, choice: dict, redraw: bool = False) -> tuple[str, list[dict], list[str]]:
+def _apply_reply(current: dict, reply: str, choice: dict) -> tuple[str, list[dict], list[str]]:
     """模型回的改动落到树上：【改动】照着改（编号、原型标记都留着）；回的是整棵树就按老办法对编号"""
     summary, kind, body = arch_ops.split_reply(reply)
     if kind == "ops":
@@ -348,7 +408,7 @@ def _apply_reply(current: dict, reply: str, choice: dict, redraw: bool = False) 
         raise WorkError("arch_unreadable", "AI 给的页面树读不出来" + cut + "，换个说法再试一次")
     # 回的是整棵树，却比现在少了一大半：多半是 AI 把要改的几条当成了树，不敢用（以前整棵树被换成四个「删掉…」模块）
     before, after = len(list(architecture.walk(current.get("nodes") or []))), len(list(architecture.walk(fresh["nodes"])))
-    if not redraw and before >= 12 and after < before / 2:
+    if before >= 12 and after < before / 2:
         raise WorkError("arch_unreadable", f"AI 回的页面树只有 {after} 项，现在有 {before} 项，少了一大半，没敢用，画布没动。换个说法再试一次")
     fresh = keep_ids(fresh, current)
     flags = {n["id"]: {k: n[k] for k in ("proto", "seen") if n.get(k)} for n, _, _ in architecture.walk(current["nodes"])}

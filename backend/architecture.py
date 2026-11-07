@@ -16,6 +16,7 @@ from typing import Any, Iterator
 
 from . import storage
 from .arch_spec import normalize as normalize_spec, to_text as spec_text
+from .arch_plan import normalize as normalize_plan
 from .atomicio import write_atomic
 
 NODE_TYPES = {"module": "模块", "page": "菜单页", "tab": "页签", "drill": "下钻页", "modal": "弹窗", "drawer": "抽屉",
@@ -199,6 +200,10 @@ def normalize(raw: Any) -> dict[str, Any]:
     spec = normalize_spec(raw.get("spec"))
     if spec:
         arch["spec"] = spec
+    # 页面清单（见 arch_plan）：梳理确认后、展开整棵树之前的那一层
+    plan = normalize_plan(raw.get("plan"))
+    if plan:
+        arch["plan"] = {**plan, "status": "confirmed" if (raw.get("plan") or {}).get("status") == "confirmed" else "draft"}
     return arch
 
 

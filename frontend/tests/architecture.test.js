@@ -210,15 +210,23 @@ test('说「出架构」才转到画布，问架构的不转', async () => {
   assert.match(run, /intent === 'auto' && wantsArchitecture\(message\)[\s\S]*?await s\.showArch\(\)[\s\S]*?intent = 'architecture'/)
 })
 
-test('业务梳理卡：确认带上回答走架构模式，后面画了 / 出了新版就收起', () => {
+test('业务梳理卡：确认带上回答 → 页面清单卡；清单卡确认带上可选页和回答 → 画架构；后面画了 / 出了新版就收起', () => {
   const run = readFileSync(new URL('../src/composables/useAgentRun.js', import.meta.url), 'utf8')
   const panel = readFileSync(new URL('../src/components/layout/ConversationPanel.vue', import.meta.url), 'utf8')
   const card = readFileSync(new URL('../src/components/chat/SpecCard.vue', import.meta.url), 'utf8')
+  const plan = readFileSync(new URL('../src/components/chat/PlanCard.vue', import.meta.url), 'utf8')
+  const result = readFileSync(new URL('../src/components/chat/ResultCard.vue', import.meta.url), 'utf8')
   assert.match(card, /o\.fields\.map\(short\)/, '业务对象下面露出字段表')
-  assert.match(run, /'按业务梳理画架构' \+ \(answers\.length \? '\\n问题回答：\\n'/)        // 后台认这个开头（arch_spec.DRAW_HEAD）
-  assert.match(run, /async function reviseSpec\(text\)[\s\S]*?intent: 'architecture'/)
-  assert.match(panel, /@draw-spec="drawSpec" @revise-spec="reviseSpec"/)
-  assert.match(panel, /m\.arch_mode === 'draw' && m\.arch_changed\)\) return 'drawn'/)
-  assert.match(card, /note\.trim\(\) \? \$t\('发送修改'\) : drawing \? \$t\('正在画架构…'\) : \$t\('按这个画架构'\)/)
-  assert.match(card, /:disabled="locked \|\| drawing"/)                  // 点了就不能再点，以前点两下画两遍
+  assert.match(run, /archSend\('按业务梳理画架构' \+ answerLines\(answers\)/)        // 后台认这个开头（arch_spec.DRAW_HEAD）
+  assert.match(run, /archSend\('按页面清单画架构\\n可选页要：' \+/)                    // arch_plan.PLAN_HEAD + settle 读的那行
+  assert.match(run, /'\\n问题回答：\\n' \+ answers\.map\(a => '- ' \+ a\)/)
+  assert.match(run, /async function archSend[\s\S]*?intent: 'architecture'/)
+  assert.match(panel, /@draw-spec="drawSpec" @revise-spec="reviseSpec" @draw-plan="drawPlan" @revise-plan="revisePlan"/)
+  assert.match(panel, /message\.spec \|\| message\.plan"/)
+  assert.match(panel, /later\.some\(m => m\.plan\) \? 'confirmed'/)                    // 梳理卡出了清单就算确认了
+  assert.match(panel, /function planState[\s\S]*?m\.arch_mode === 'draw' && m\.arch_changed\)\) return 'drawn'/)
+  assert.match(result, /<PlanCard v-if="result\.plan" :plan="result\.plan" :state="planState"/)
+  assert.match(card, /drawing \? \$t\('正在列页面清单…'\) : \$t\('确认，列页面清单'\)/)
+  assert.match(plan, /emit\('draw', \{ picked: \[\.\.\.picked\.value\], answers:/)
+  for (const c of [card, plan]) assert.match(c, /:disabled="locked \|\| drawing"/)     // 点了就不能再点，以前点两下画两遍
 })

@@ -2,9 +2,10 @@
 import { computed, ref } from 'vue'
 import { Check, Undo2, ChevronDown, AlertCircle, BookmarkCheck, MessageCircle, Sparkles } from 'lucide-vue-next'
 import SpecCard from './SpecCard.vue'
+import PlanCard from './PlanCard.vue'
 // applied：这张卡上已经照着改好（并保存）的建议的 instruction，由对话记录推出来，刷新后也对
-const props = defineProps({ result: Object, canUndo: Boolean, locked: Boolean, checking: Boolean, selftest: Object, applied: { type: Array, default: () => [] }, specState: { type: String, default: 'open' } })
-const emit = defineEmits(['undo', 'choose', 'apply', 'discuss', 'custom', 'rephrase', 'forget', 'draw-spec', 'revise-spec'])
+const props = defineProps({ result: Object, canUndo: Boolean, locked: Boolean, checking: Boolean, selftest: Object, applied: { type: Array, default: () => [] }, specState: { type: String, default: 'open' }, planState: { type: String, default: 'open' } })
+const emit = defineEmits(['undo', 'choose', 'apply', 'discuss', 'custom', 'rephrase', 'forget', 'draw-spec', 'revise-spec', 'draw-plan', 'revise-plan'])
 const report = computed(() => props.result?.report)
 const discussion = computed(() => props.result?.discussion)
 // A question is already rendered by its own block; everything else needs a headline.
@@ -46,6 +47,7 @@ const statuses = { completed: '已完成', partial: '部分完成', unprocessed:
   <div class="result-card">
     <p v-if="headline" class="result-summary">{{ $t(headline) }}</p>
     <SpecCard v-if="result.spec" :spec="result.spec" :state="specState" :locked="locked" @draw="$emit('draw-spec', $event)" @revise="$emit('revise-spec', $event)" />
+    <PlanCard v-if="result.plan" :plan="result.plan" :state="planState" :locked="locked" @draw="$emit('draw-plan', $event)" @revise="$emit('revise-plan', $event)" />
     <div v-if="result.clarification" class="clarification"><p>{{ result.clarification.question }}</p><button v-for="option in result.clarification.options" :key="option" class="outline" :disabled="locked" @click="$emit('choose', { option, clarification: result.clarification })">{{ option }}</button></div>
     <div v-if="suggestions.length" class="suggest-box">
       <div class="suggest-head"><Sparkles :size="13" /><span>{{ $t('可以这样改') }}</span><small v-if="suggestions.length > 1">{{ $t('可以多选') }}</small></div>
