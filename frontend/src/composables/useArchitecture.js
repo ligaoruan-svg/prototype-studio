@@ -8,7 +8,7 @@ import { expand, expandAll, isFresh } from '../lib/expandStore.js'
 
 export function useArchitecture(s) {
   const { project, archOpen, boardOpen, boardFocus, view, api, sourceInfo, previewRoute, composerIntent } = s
-  const arch = ref(null), archIssues = ref([]), archCounts = ref({})
+  const arch = ref(null), archIssues = ref([])
   const archBase = ref(null)       // 上次从原型读出来的样子；画布和它比，多做的就是还没同步到原型的
   const archMounted = ref(false), archLoaded = ref(''), archBusy = ref(''), archError = ref('')
   const archSelected = ref(null), archShowDesc = ref(true), archQuery = ref('')
@@ -25,7 +25,7 @@ export function useArchitecture(s) {
   const url = () => `/api/projects/${project.value.id}/architecture`
   function apply(bundle, replace = true) {
     if (replace) arch.value = bundle.architecture
-    archIssues.value = bundle.issues || []; archCounts.value = bundle.counts || {}
+    archIssues.value = bundle.issues || []
     if ('base' in bundle) archBase.value = bundle.base
   }
   async function loadArch(force = false) {
@@ -49,7 +49,6 @@ export function useArchitecture(s) {
     await loadArch()
     readPrototype()
   }
-  function hideArch() { archOpen.value = false }
   // 「架构」模式和画布绑在一起：打开画布就切过去，关掉回到原来的模式
   let intentBefore = 'auto'
   watch(archOpen, open => {
@@ -120,7 +119,6 @@ export function useArchitecture(s) {
   function archAdd(parentId, type) { const node = change(a => addChild(a, parentId, type)); select('node', node.id); archRenaming.value = node.id; return node }
   function archSibling(id) { const node = change(a => addSibling(a, id)); if (node) { select('node', node.id); archRenaming.value = node.id } }
   function archMove(id, delta) { change(a => moveNode(a, id, delta)) }
-  function archToggle(id) { const node = findNode(arch.value, id)?.node; if (node) change(() => { node.collapsed = !node.collapsed }) }
   function archRemove(id) {
     const node = findNode(arch.value, id)?.node
     if (!node) return
@@ -221,10 +219,9 @@ export function useArchitecture(s) {
     if (node && name.trim() && name.trim() !== node.name) change(() => { node.name = name.trim() })
   }
 
-  return { arch, archIssues, archCounts, archMounted, archBusy, archError, archSelected, archShowDesc, archShowFields, archQuery,
-    archRemoved, archHistory: history, loadArch, showArch, hideArch, saveArch: saveNow, archSnapshot: snapshot, archDirty: dirty, archChange: change,
+  return { arch, archIssues, archMounted, archError, archSelected, archShowDesc, archShowFields, archQuery,
+    archRemoved, archHistory: history, showArch, archSnapshot: snapshot, archDirty: dirty, archChange: change,
     archLevel, archExpand, nodeOpen, openNode, setLevel, archReading, archFlash, archBase, archChanges, syncToPrototype, archAttached, acceptSynced,
-    undoArch, archSelect: select, archSelectedItem: selectedItem, archAdd, archSibling, archMove, archToggle, archRemove,
-    readPrototype, afterArchChat, archRenaming, archKey, renameNode,
-    cloneArch: () => clone(arch.value) }
+    undoArch, archSelect: select, archSelectedItem: selectedItem, archAdd, archSibling, archMove, archRemove,
+    readPrototype, afterArchChat, archRenaming, archKey, renameNode }
 }

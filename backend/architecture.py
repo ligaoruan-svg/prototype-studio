@@ -20,7 +20,6 @@ from .atomicio import write_atomic
 
 NODE_TYPES = {"module": "模块", "page": "菜单页", "tab": "页签", "drill": "下钻页", "modal": "弹窗", "drawer": "抽屉",
               "wizard": "向导", "jump": "跳转", "block": "区块", "table": "表格", "button": "按钮", "feature": "功能"}
-LAYER_TYPES = ("modal", "drawer", "wizard")    # 点按钮打开的那一层
 # 按钮点了以后怎样：打开哪个弹窗 / 跳到哪一页 / 直接执行 / 先二次确认
 ACTIONS = {"open": "打开", "jump": "跳到", "run": "执行", "confirm": "二次确认"}
 SCREEN_TYPES = ("page", "tab", "drill")       # 会成为一个能看到的页面

@@ -168,14 +168,6 @@ def prototype_digest(source: str) -> str:
     return "\n".join(parts)[:DIGEST_MAX]
 
 
-def _split(reply: str) -> tuple[str, str]:
-    text = re.sub(r"```\w*", "", reply or "").strip()
-    m = re.match(r"^\s*说明[:：]\s*(.+?)\s*(?:\n|$)", text)
-    if not m:
-        return "", text
-    return m.group(1).strip(), text[m.end():].strip()
-
-
 def _pending_spec(project_id: str, page_id: str, current: dict) -> dict | None:
     """梳理卡还在等你确认：存的梳理还是草稿，而且之后没有按它画、也没有直接改过画布（中间问几句不算）"""
     spec = current.get("spec")
