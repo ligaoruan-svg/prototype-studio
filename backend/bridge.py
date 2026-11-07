@@ -861,7 +861,8 @@ _TEMPLATE = r'''
   async function findTop(action){
     for(const r of [{hash:''},...routesOf()]){
       await closeAll(acceptBase);await goRoute(r.hash);
-      const b=[...document.querySelectorAll(CLICKABLE)].find(x=>vis(x)&&!x.disabled&&isAct(x,action)&&!inChrome(x)&&!x.closest('tr,li'));
+      const near=x=>{const t=bare(x);return isAct(x,action)||(t.startsWith(action)&&t.length<=action.length+5);};   // 页面顶上常写全：「生成」→「生成对账单」
+      const b=[...document.querySelectorAll(CLICKABLE)].find(x=>vis(x)&&!x.disabled&&near(x)&&!inChrome(x)&&!x.closest('tr,li'));
       if(b)return b;
     }
     return null;
@@ -871,18 +872,18 @@ _TEMPLATE = r'''
     const n=collectionOf(c.object);if(!n)return {...out,ok:null,why:'missing'};
     const flow=Store.flow(n)||{};out.inFlow=c.action in flow;
     if(c.ui===false)return {...out,ok:out.inFlow,why:out.inFlow?'':'noflow'};
-    const rows=Store.all(n),row=rows.find(r=>c.from.includes(r.status));
-    if(!row)return {...out,ok:false,why:'nofrom',states:[...new Set(rows.map(r=>r.status).filter(Boolean))]};
-    const keys=keysOf(row,rows);if(!keys.length)return {...out,ok:false,why:'nokey'};
-    const who={keys,others:rows.filter(r=>r!==row).flatMap(r=>keysOf(r,rows))};
-    out.key=keys[0];
-    let b=await findRow(c.action,who);const top=!b;
+    const create=!c.from.length;   // 「生成：—→待核对」：起点是空的，就是新建一条，点页面顶上的按钮
+    const rows=Store.all(n),row=create?null:rows.find(r=>c.from.includes(r.status));
+    if(!create&&!row)return {...out,ok:false,why:'nofrom',states:[...new Set(rows.map(r=>r.status).filter(Boolean))]};
+    let who=null;
+    if(row){const keys=keysOf(row,rows);if(!keys.length)return {...out,ok:false,why:'nokey'};who={keys,others:rows.filter(r=>r!==row).flatMap(r=>keysOf(r,rows))};out.key=keys[0];}
+    let b=row?await findRow(c.action,who):null;const top=!b;
     if(top)b=await findTop(c.action);
-    if(!b)return {...out,ok:false,why:'nobutton',from:row.status};
+    if(!b)return {...out,ok:false,why:'nobutton',from:row?row.status:'新建'};
     // 页面顶上的按钮不知道改的是哪一条：哪一条从「从」变成了「到」（或者新加了一条「到」）都算
     const before=new Map(Store.all(n).map(r=>[r.id,r.status]));
     const moved=()=>Store.all(n).filter(r=>c.to.includes(r.status)&&(top?(!before.has(r.id)||c.from.includes(before.get(r.id))):r===row));
-    const from=row.status,at=Date.now(),sig=stateSig();let snap=snapshot();
+    const from=row?row.status:'新建',at=Date.now(),sig=stateSig();let snap=snapshot();
     b.click();await sleep(320);
     // 点了弹出来的（填原因、二次确认）：空着的填上，点确定；最多两层
     let L=topOpen(snap),stuck='';
@@ -906,7 +907,7 @@ _TEMPLATE = r'''
       if(!Store.can(n,row.id,c.action)&&rowButton(c.action,who,document))return {...out,ok:false,why:'stays',from,now:row.status};
       return {...out,ok:true,from};
     }
-    const now=Store.get(n,row.id);
+    const now=row&&Store.get(n,row.id);
     if(!top&&!now)return {...out,ok:false,why:'gone',from};
     const why=!top&&now.status!==from?'wrongto':stuck?'blocked':stateSig()!==sig?'nostore':'noreact';
     return {...out,ok:false,why,from,now:now&&now.status,note:stuck,top};

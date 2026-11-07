@@ -54,7 +54,10 @@ def flows(spec: dict) -> dict[str, dict[str, list]]:
             if not m:
                 continue
             verb, src, dst = (x.strip() for x in m.groups())
-            src = [x for x in re.split(r"\s*[/、,，]\s*|或", src) if x]
+            src = [x for x in re.split(r"\s*[/、,，]\s*|或", src) if x and not re.fullmatch(r"[—\-–－]+|无|空|新建", x)]
+            if not src:      # 「生成：—→待核对」是新建一条，不是流转：页面顶上叫「生成…」的按钮做成新增，初始状态是「待核对」
+                out.setdefault("_new", {}).setdefault(o["name"], {})[verb] = re.split(r"\s*[/／]\s*", dst)[0]
+                continue
             out.setdefault(o["name"], {})[verb] = [src[0] if len(src) == 1 else src, re.split(r"\s*[/／]\s*", dst)[0]]
     return out
 
@@ -158,8 +161,11 @@ def _states(when: str) -> list[str]:
     return [x for x in re.split(r"[、,，/]|或", m.group(1)) if x] if m else []
 
 
-def _button(b: dict, page: dict, verbs: dict, first: str, row: bool, data: str = "") -> dict | None:
+def _button(b: dict, page: dict, verbs: dict, first: str, row: bool, data: str = "", made: dict | None = None) -> dict | None:
     name = b["name"]
+    new_as = next((to for verb, to in (made or {}).items() if name.startswith(verb)), "") if not row else ""
+    if new_as:
+        first = new_as
     if not CJK.search(name) or b.get("action") == "jump":     # 点编号跳详情页：详情页是手写的，留给 AI
         return None
     item: dict = {"label": name}
@@ -175,17 +181,19 @@ def _button(b: dict, page: dict, verbs: dict, first: str, row: bool, data: str =
         item["form"] = _form(layer.get("fields") or [], data)
         if layer["name"] != name:
             item["title"] = layer["name"]
-        if not row and ADD.match(name):
+        if not row and (ADD.match(name) or new_as):
             item.update(add=True, primary=True, defaults={"status": first} if first else {})
         elif row and not item.get("flow") and re.match(r"^(编辑|修改)", name):
             item["edit"] = True
-        if not item["form"] and row and item.get("flow"):          # 弹窗里没字段：当二次确认
+        if not item["form"] and (row and item.get("flow") or item.get("add")):   # 弹窗里没字段：当二次确认
             item.pop("form")
             item["confirm"] = f"确认{name}？"
     elif b.get("action") == "confirm":
         item["confirm"] = target or f"确认{name}？"
         if re.match(r"^删除", name) and not item.get("flow"):
             item["remove"] = True
+    elif new_as:
+        item.update(add=True, primary=True, defaults={"status": new_as}, confirm=f"确认{name}？")
     elif not item.get("flow"):
         item["run"] = JS(f"()=>UI.Toast({js((target or name) + '（演示）')})")
     return item
@@ -226,8 +234,9 @@ def list_page(page: dict, spec: dict, flow_map: dict) -> dict | None:
         if item:
             names.add(b["name"])
             actions.append(item)
+    made = flow_map.get("_new", {}).get(data, {})
     for b in kids:
-        item = b["type"] == "button" and _button(b, page, verbs, first, False, data)
+        item = b["type"] == "button" and _button(b, page, verbs, first, False, data, made)
         if item:
             toolbar.append(item)
     if actions:
@@ -267,9 +276,9 @@ def generate(arch: dict, only: set[str] | None = None) -> dict:
                 left.append(p["name"])
         if items:
             groups.append({"key": f"g{i + 1}", "label": mod["name"] if mod["type"] == "module" else "", "items": items})
-    script = "\n".join(f"Store.flow({js(name)},{js(fl)});" for name, fl in flow_map.items())
+    script = "\n".join(f"Store.flow({js(name)},{js(fl)});" for name, fl in flow_map.items() if name != "_new")
     return {"nav": ",\n  ".join(js(g) for g in groups), "pages": ",\n  ".join(pages), "script": script,
-            "made": made, "left": left, "keys": keys, "data": sorted(used | set(flow_map))}
+            "made": made, "left": left, "keys": keys, "data": sorted(used | set(flow_map) - {"_new"})}
 
 
 def handoff(gen: dict) -> str:

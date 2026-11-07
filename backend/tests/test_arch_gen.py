@@ -44,6 +44,17 @@ class 画布直接生成列表页(unittest.TestCase):
         self.assertIn('Store.flow("报修工单",{"派单":["待派单","待接单"],"关闭":["待派单","已关闭"]', gen["script"])
         self.assertIn("工单统计（key: p2）", arch_gen.handoff(gen))
 
+    def test_起点是空的动作_做成顶上的新增按钮(self):
+        spec = {"status": "confirmed", "roles": [{"name": "财务对账员"}], "objects": [{"name": "月度对账单", "states": ["待核对", "已对平"],
+                "actions": ["生成：—→待核对（财务对账员）", "对平：待核对→已对平（财务对账员）"]}]}
+        tree = [{"type": "page", "name": "月度对账单", "children": [
+            {"type": "table", "name": "对账单列表", "cols": ["账期月份", "状态"], "children": []},
+            {"type": "button", "name": "生成对账单", "action": "open", "target": "生成对账单"},
+            {"type": "modal", "name": "生成对账单", "fields": ["账期月份*（下拉：2026-10/2026-11）"]}]}]
+        gen = arch_gen.generate({"nodes": tree, "spec": spec})
+        self.assertIn('add:true,primary:true,defaults:{status:"待核对"}', gen["pages"])
+        self.assertNotIn("生成", gen["script"])               # 新建不是流转
+
     def test_同步到空外壳时程序先生成_再交给AI补(self):
         tmp = tempfile.TemporaryDirectory()
         old = storage.DATA_ROOT, agent.chat, agent.stage

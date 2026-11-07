@@ -16,7 +16,8 @@ export function parseAction(text, roles = []) {
   // 先认角色：写全了的算人（系统管理员）；简称（客服 → 物业客服）也算，但简称本身是「系统」这类不算
   const isRole = !!who && roles.some(r => r && (who.includes(r) || (r.includes(who) && !AUTO.test(who))))
   const ui = isRole || (!AUTO.test(who) && !AUTO.test(action) && (!who || !roles.length))
-  return { action, from: from.split(/[/、,，|]|或/).map(x => x.trim()).filter(Boolean), to, who, ui }
+  // 起点写「—」「无」「新建」的是新建一条（生成：—→待核对）
+  return { action, from: from.split(/[/、,，|]|或/).map(x => x.trim()).filter(x => x && !/^([—\-–－]+|无|空|新建)$/.test(x)), to, who, ui }
 }
 
 export function checklist(spec) {
@@ -31,11 +32,12 @@ export function checklist(spec) {
   return out
 }
 
-export const itemText = c => c.ui ? `「${c.from.join('/')}」的${c.object}点「${c.action}」→ 变成「${c.to.join('」或「')}」` : `${c.object}「${c.action}」（${c.who || '系统'}做，不在后台点）写进了流转`
+const whose = c => c.from.length ? `「${c.from.join('/')}」的${c.object}` : `新建${c.object}：`
+export const itemText = c => c.ui ? `${whose(c)}点「${c.action}」→ 变成「${c.to.join('」或「')}」` : `${c.object}「${c.action}」（${c.who || '系统'}做，不在后台点）写进了流转`
 
 // 没过的原因 → 一句人和 AI 都看得懂的话
 function failText(c, r) {
-  const head = `「${c.from.join('/')}」的${c.object}${r.key ? `（${r.key}）` : ''}`
+  const head = whose(c) + (r.key ? `（${r.key}）` : '')
   const flowHint = r.inFlow === false ? `（Store.flow('${c.object}') 里还没有「${c.action}」）` : ''
   switch (r.why) {
     case 'nofrom': return `${c.object}的演示数据里没有「${c.from.join('/')}」的，演示不了「${c.action}」：Store.define 里补几条${r.states?.length ? `（现在只有：${r.states.join('、')}）` : ''}`
