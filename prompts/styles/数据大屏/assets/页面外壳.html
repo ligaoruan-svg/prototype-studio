@@ -328,7 +328,7 @@ const ListPage=(()=>{
   const STYLE=`.lp-tabs{display:flex;gap:2px;margin-bottom:12px;border-bottom:1px solid var(--line);overflow-x:auto}
 .lp-tab{height:40px;padding:0 14px;border:0;border-bottom:2px solid transparent;background:none;color:var(--text-2);cursor:pointer;white-space:nowrap}
 .lp-tab:hover{color:var(--primary)}.lp-tab.on{color:var(--primary);border-bottom-color:var(--primary);font-weight:500}
-.lp-tab i{font-style:normal;margin-left:6px;padding:0 6px;border-radius:9px;background:var(--head-bg);color:var(--text-3);font-size:12px}
+.lp-tab::after{content:attr(data-n);margin-left:6px;padding:0 6px;border-radius:9px;background:var(--head-bg);color:var(--text-3);font-size:12px}
 .data-table .lp-ops{position:sticky;right:0;z-index:1;background:var(--card);box-shadow:-1px 0 0 var(--line)}.data-table th.lp-ops{background:var(--head-bg)}
 .data-table tr.lp-danger td{background:var(--danger-weak)}.data-table tr.lp-danger td.t1{color:var(--danger);font-weight:600}
 .field .lp-check{display:flex;align-items:center;gap:6px;min-height:32px;margin:0;color:var(--text-2);font-weight:400}.field .lp-check input{flex:none;width:16px;height:16px;min-height:0;margin:0;padding:0}.lp-h{margin:20px 0 8px;font-size:14px;color:var(--text-1)}
@@ -391,7 +391,7 @@ const ListPage=(()=>{
     const shown=rows.slice((st.page-1)*size,st.page*size),cols=cfg.columns||[],acts=cfg.actions||[];
     const opsW=Math.min(280,Math.max(96,acts.reduce((n,a)=>n+a.label.length*14+16,24)));
     const minW=cols.reduce((n,c)=>n+(c.width||120),0)+(acts.length?opsW:0);
-    const tabBar=tabs.length?`<div class="lp-tabs" role="tablist">${tabs.map(t=>`<button type="button" role="tab" class="lp-tab ${t===st.tab?'on':''}" aria-selected="${t===st.tab}" data-lp="tab" data-v="${esc(t)}">${esc(t)}<i>${counts[t]}</i></button>`).join('')}</div>`:'';
+    const tabBar=tabs.length?`<div class="lp-tabs" role="tablist">${tabs.map(t=>`<button type="button" role="tab" class="lp-tab ${t===st.tab?'on':''}" aria-selected="${t===st.tab}" data-lp="tab" data-v="${esc(t)}" data-n="${counts[t]}">${esc(t)}</button>`).join('')}</div>`:'';
     const filter=(cfg.filters||[]).length?Card({title:'筛选',body:`<div class="filter">${cfg.filters.map(f=>filterField(f,st.filter[fid(f)])).join('')}<div class="filter-actions"><button type="button" class="btn primary" data-lp="query">查询</button><button type="button" class="btn" data-lp="reset">重置</button></div></div>`}):'';
     const head=`<tr>${cols.map(c=>`<th${c.width?` style="width:${c.width}px"`:''}>${esc(c.label)}</th>`).join('')}${acts.length?`<th class="lp-ops" style="width:${opsW}px">操作</th>`:''}</tr>`;
     const body=shown.length?shown.map(r=>{const cls=cfg.rowClass&&cfg.rowClass(r);return `<tr${cls?` class="lp-${esc(cls)}"`:''}>${cols.map((c,i)=>`<td${i===0?' class="t1"':''} title="${esc(plain(r,c))}">${cell(r,c)}</td>`).join('')}${acts.length?`<td class="lp-ops"><div class="ops">${acts.map((a,i)=>visible(cfg,a,r)?btn(a,'r'+i,r):'').join('')}</div></td>`:''}</tr>`}).join('')
@@ -405,7 +405,11 @@ const ListPage=(()=>{
     const say=m=>{if(!said.has(m)){said.add(m);console.error(m)}};
     if(!Store.names().includes(cfg.data)){say(`ListPage「${cfg.title}」：Store 里没有「${cfg.data}」，先 Store.define('${cfg.data}',[…])`);return}
     const flow=Store.flow(cfg.data)||{};
-    for(const a of [...(cfg.actions||[]),...(cfg.toolbar||[])])if(a.flow&&!(a.flow in flow))say(`ListPage「${cfg.title}」的按钮「${a.label}」写了 flow:'${a.flow}'，但 Store.flow('${cfg.data}') 里没有这个动作`);
+    for(const a of [...(cfg.actions||[]),...(cfg.toolbar||[])]){
+      if(a.flow&&!(a.flow in flow))say(`ListPage「${cfg.title}」的按钮「${a.label}」写了 flow:'${a.flow}'，但 Store.flow('${cfg.data}') 里没有这个动作`);
+      // 自己写弹窗（run）的流转按钮也要写 flow，不然每个状态都出现（已完成的工单上还有「派单」）
+      if(!a.flow&&!a.show&&(cfg.actions||[]).includes(a)&&a.label in flow)say(`ListPage「${cfg.title}」的按钮「${a.label}」是流转动作，要写 flow:'${a.label}'（run 自己弹窗也照样写），不然每个状态都会出现`);
+    }
   }
   function handle(k,el){
     const cfg=reg[k],st=state[k];if(!cfg)return;

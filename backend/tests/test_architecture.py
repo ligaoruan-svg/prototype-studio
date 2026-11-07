@@ -691,6 +691,24 @@ class 架构AI的小毛病(unittest.TestCase):
         self.assertEqual(C._limit(C.MAX_TOKENS, 65536), 65536)                               # 设置里调大了就用设置的
 
 
+class 读列表页模板做的页面(unittest.TestCase):
+    def test_页签不带数_同样的表只记一次_编号弹窗用按钮名(self):
+        from backend.arch_expand import _fill
+        table = '<div class="card-title">工单列表</div><table class="data-table"><thead><tr><th>工单编号</th><th>状态</th><th>操作</th></tr></thead><tbody><tr><td><button class="lnk">BX-001</button></td><td>待派单</td><td><button>派单</button></td></tr></tbody></table>'
+        nodes = [{"id": 1, "parent": None, "label": "表格行 · 派单", "title": "派单 · BX-001", "html": '<section role="dialog" aria-label="派单 · BX-001"><label>维修工</label><select></select></section>'},
+                 {"id": 2, "parent": None, "label": "页签 · 待接单2", "kind": "subpage", "title": "待接单2", "html": table.replace("派单</button>", "接单</button>")},
+                 {"id": 3, "parent": 2, "label": "表格行 · 接单", "title": "确认接单", "html": '<section role="dialog" aria-label="确认接单"></section>'}]
+        page = {"type": "page", "name": "工单管理", "children": []}
+        _fill(page, table, nodes, None, {None: [("表格行 · BX-001", "jump", "工单详情页")]})
+        kids = page["children"]
+        tab = next(k for k in kids if k["type"] == "tab")
+        self.assertEqual((tab["name"], tab["children"]), ("待接单", []))          # 页签只留名字
+        buttons = [b["name"] for b in next(k for k in kids if k["type"] == "table")["children"]]
+        self.assertEqual(buttons, ["派单", "接单", "工单编号"])                     # 接单并到页面的表上；编号按列名记一次
+        self.assertIn("派单", [k["name"] for k in kids if k["type"] == "modal"])      # 不叫 BX-001
+        self.assertIn("确认接单", [k["name"] for k in kids if k["type"] == "modal"])
+
+
 class 谁做的动作(unittest.TestCase):
     def test_括号第一段是谁_后面是说明(self):
         from backend.arch_ops import _needs_button

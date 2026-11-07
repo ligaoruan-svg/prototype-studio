@@ -716,7 +716,7 @@ _TEMPLATE = r'''
     // 光看页面上的链接，别的分组下面的页面全漏了（展开里只剩几个一级分组，自检也只点了这几页）
     // （这里的 navItems 是桥自己的函数，取不到外壳的同名函数，所以直接读 NAV：分组里套页面，也认扁平写法）
     try{if(typeof NAV!=='undefined'&&Array.isArray(NAV))for(const g of NAV.flat()){for(const i of (g&&Array.isArray(g.items)?g.items:[g])){
-      if(!i||typeof i.key!=='string'||!i.key)continue;const h='#'+i.key;if(seen.has(h))continue;
+      if(!i||typeof i.key!=='string'||!i.key||i.hide)continue;const h='#'+i.key;if(seen.has(h))continue;
       seen.add(h);out.push({hash:h,title:String(i.label||i.key).replace(/\s+/g,' ').trim().slice(0,30)});if(out.length>=60)return out;}}}catch{}
     for(const a of document.querySelectorAll('a[href^="#"]')){
       const h=a.getAttribute('href')||'';if(h.length<2||seen.has(h))continue;

@@ -230,7 +230,7 @@ def _needs_button(action: str, roles: list[str]) -> bool:
     """这个动作要不要后台里有个按钮：系统自动做的不要；写了是谁做、而那个人不是这个后台的角色（业主在小程序里评价）也不要"""
     # 括号里第一段才是谁做的，后面是补充说明（「客服，需填原因」「客服，超时要标红」）；「客服」也算「物业客服」
     inner = re.findall(r"[（(]([^（）()]*)[）)]", action)
-    who = re.split(r"[，,；;、\s]", inner[0].strip(), 1)[0] if inner else ""
+    who = re.split(r"[，,；;、\s]", inner[0].strip(), maxsplit=1)[0] if inner else ""
     if AUTO.search(who) or AUTO.search(action.split("：", 1)[0]):
         return False
     if who and roles:
@@ -240,7 +240,7 @@ def _needs_button(action: str, roles: list[str]) -> bool:
 
 def _verb(action: str) -> str:
     """「派单：待派单→处理中（客服）」→「派单」"""
-    return re.split(r"[:：（(]", action, 1)[0].strip()
+    return re.split(r"[:：（(]", action, maxsplit=1)[0].strip()
 
 
 # 外壳自带的占位名；不用写「点了以后」的按钮

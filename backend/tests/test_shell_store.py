@@ -113,7 +113,8 @@ class 列表页模板(unittest.TestCase):
         with sync_playwright() as p:
             b = p.chromium.launch(); pg = b.new_page(); errs = []; pg.on('pageerror', lambda e: errs.append(str(e)))
             pg.goto(Path(f.name).as_uri() + '#orders'); pg.wait_for_timeout(300)
-            self.assertEqual(pg.locator('.lp-tab').all_inner_texts(), ['待派单1', '处理中1'])
+            self.assertEqual(pg.locator('.lp-tab').all_inner_texts(), ['待派单', '处理中'])        # 数字用 CSS 画，不进文字（读架构时页签名不带数）
+            self.assertEqual(pg.eval_on_selector_all('.lp-tab', 'els=>els.map(e=>e.dataset.n)'), ['1', '1'])
             pg.click('.lp-ops button:has-text("派单")'); pg.click('#modalConfirm')
             self.assertIn('请填写维修工', pg.inner_text('#toastHost'))           # 必填拦下
             pg.select_option('#activeModal select', '张三'); pg.click('#modalConfirm'); pg.wait_for_timeout(100)
@@ -129,4 +130,7 @@ class 列表页模板(unittest.TestCase):
             pg.evaluate("Pages.bad=()=>ListPage({title:'坏的',data:'没有的',columns:[]});NAV[NAV.length-1].items.push({key:'bad',label:'坏'});location.hash='#bad'")
             pg.wait_for_timeout(200)
             self.assertTrue(any("Store 里没有「没有的」" in m for m in msgs), msgs)   # 配置写错报到控制台，自检能收到
+            pg.evaluate("Pages.bad=()=>ListPage({title:'漏写',data:'工单',columns:[],actions:[{label:'派单',run:()=>{}}]});Router.render()")
+            pg.wait_for_timeout(100)
+            self.assertTrue(any("要写 flow:'派单'" in m for m in msgs), msgs)          # 流转按钮没写 flow：每个状态都会出现
             b.close()
