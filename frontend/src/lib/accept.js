@@ -13,7 +13,9 @@ export function parseAction(text, roles = []) {
   const [, action, from, to, note = ''] = m.map(x => (x || '').trim())
   // 括号里第一段才是谁做的，后面是补充说明（「客服，需填原因」）；「客服」也算「物业客服」
   const who = note.split(/[，,；;、\s]/)[0]
-  const ui = !AUTO.test(who) && !AUTO.test(action) && (!who || !roles.length || roles.some(r => r && (who.includes(r) || r.includes(who))))
+  // 先认角色：写全了的算人（系统管理员）；简称（客服 → 物业客服）也算，但简称本身是「系统」这类不算
+  const isRole = !!who && roles.some(r => r && (who.includes(r) || (r.includes(who) && !AUTO.test(who))))
+  const ui = isRole || (!AUTO.test(who) && !AUTO.test(action) && (!who || !roles.length))
   return { action, from: from.split(/[/、,，|]|或/).map(x => x.trim()).filter(Boolean), to, who, ui }
 }
 

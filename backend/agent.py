@@ -8,7 +8,7 @@ import logging
 from typing import Any
 
 from .deepseek_client import chat, DeepSeekError
-from .patcher import apply_operations, verify_source, PatchError, regions, outline, new_issues
+from .patcher import apply_operations, verify_source, PatchError, regions, outline, new_issues, shell_add
 from . import storage
 from .transactions import stage
 from .errors import WorkError, error_payload
@@ -16,6 +16,7 @@ from .experience import element_name, tool_label, compact_once, changed_targets,
 from .conversation import resolve_intent, is_continue, discussion_result, history_context, chat_display
 from . import components, memory, page_check, skills, skill_digest
 from . import architecture as arch_mod
+from . import arch_gen
 # 工具清单、读源码、拼背景拆在旁边三个文件里；下面这些名字在这里也能用（测试和别的模块按 agent.xxx 取）
 from .agent_tools import TOOL_SPECS, OPERATION_ACTIONS
 from .agent_source import READ_CAP, read_budget, inspect_output, expand_components, locate_lines, lines_text, _num, _slice_lines, _search_source  # noqa: F401
@@ -175,6 +176,19 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
     # 代码地图和预取片段：实测一页 23 轮里 16 轮只在读——搜一个名字、看到行号、再搜下一个，每轮重发全部上下文。
     # 程序先把「什么在第几行」和用户点名的那几处原文给它，第一轮就能直接读那一小段或者动手
     fresh_shell = is_fresh_shell(working_source)
+    # 按架构做：页面树、共用数据、流程和统一规则都放进背景。放在第一条消息里，做完一步重开时也还在
+    arch = arch_mod.load(project_id) if architecture and not read_only else None
+    # 3C：页面还是空外壳——带表格的菜单页程序直接照画布写成 ListPage 配置，AI 只补演示数据、手写页和规则（以前全靠 AI 手写，十几分钟、容易断）
+    generated = None
+    if arch and fresh_shell and not repairing:
+        gen = arch_gen.generate(arch)
+        if gen["made"]:
+            emit({"type": "step_start", "id": "arch_gen", "label": "按画布生成列表页", "tool": "arch_gen"})
+            working_source, generated, fresh_shell = shell_add(working_source, nav=gen["nav"], pages=gen["pages"], script=gen["script"]), gen, False
+            emit({"type": "step_done", "id": "arch_gen", "tool": "arch_gen",
+                  "detail": "程序写好：" + "、".join(gen["made"]) + "\n交给 AI：演示数据（" + "、".join(gen["data"]) + "）"
+                            + ("、手写页（" + "、".join(gen["left"]) + "）" if gen["left"] else "") + "、规则校验",
+                  "label": "按画布生成了 %d 个列表页：" % len(gen["made"]) + "、".join(gen["made"][:6]) + ("…" if len(gen["made"]) > 6 else "")})
     def source_block(src: str, prefetch_ok: bool = True) -> str:
         out = ""
         source_map = code_map(src)
@@ -195,8 +209,9 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
         shell_fresh = working_source
         background += ("\n这一页是按项目风格刚建好的空外壳，还没写内容。" + SHELL_NOTE
                        + "\n外壳现成的组件和样式类：" + json.dumps(shell_api(working_source), ensure_ascii=False))
-    # 按架构做：页面树、共用数据、流程和统一规则都放进背景。放在第一条消息里，做完一步重开时也还在
-    arch = arch_mod.load(project_id) if architecture and not read_only else None
+    if generated:
+        background += (arch_gen.handoff(generated) + "\n" + SHELL_NOTE
+                       + "\n外壳现成的组件和样式类：" + json.dumps(shell_api(working_source), ensure_ascii=False))
     if arch:
         background += "\n\n" + arch_mod.brief(arch)
         # 一页一步做完整个架构要的轮次比改一处多得多：每页按 4 轮算，进度照常按「有没有推进」放宽
@@ -237,7 +252,7 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
     stepped = reset_pending = False   # 模型用 finish_step 自己报进度后，就不再按「改了一次」自动推计划
     incomplete = None
     read_regions, report, question, discussion = set(), None, None, None
-    changed, final_text = repairing, ""
+    changed, final_text = repairing or bool(generated), ""
     # 只读工具的调用指纹，用来识别"同一段又读一遍"；以及连续多少轮只看不动。
     read_seen, idle_rounds = set(), 0
     nudged = text_nudges = 0   # 「只读不改」的提醒发过几次；只说不调工具被催过几次

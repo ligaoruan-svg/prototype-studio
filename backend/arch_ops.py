@@ -231,11 +231,12 @@ def _needs_button(action: str, roles: list[str]) -> bool:
     # 括号里第一段才是谁做的，后面是补充说明（「客服，需填原因」「客服，超时要标红」）；「客服」也算「物业客服」
     inner = re.findall(r"[（(]([^（）()]*)[）)]", action)
     who = re.split(r"[，,；;、\s]", inner[0].strip(), maxsplit=1)[0] if inner else ""
+    # 写全了角色名的算人（系统管理员）；只写了简称的（客服 → 物业客服）也算，但简称本身是「系统」这类就不算
+    if who and roles and any(r and (r in who or (who in r and not AUTO.search(who))) for r in roles):
+        return True                   # 先认角色：「系统管理员」是角色，不是系统自动
     if AUTO.search(who) or AUTO.search(action.split("：", 1)[0]):
         return False
-    if who and roles:
-        return any(r and (r in who or who in r) for r in roles)
-    return True
+    return not (who and roles)
 
 
 def _verb(action: str) -> str:

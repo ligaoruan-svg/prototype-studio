@@ -19,6 +19,8 @@ test('动作写法：从、到、谁；多个起点；系统和外部角色不�
   const close = parseAction('关闭：待派单→已关闭（客服，需填原因；超时的标红）', ['物业客服'])
   assert.deepEqual([close.who, close.ui], ['客服', true])   // 后面是说明，「客服」就是「物业客服」
   assert.equal(parseAction('评价：待评价→已完成（业主在小程序评价后自动更新）', ['物业客服']).ui, false)
+  assert.equal(parseAction('启用：停用→在岗（系统管理员）', ['主管', '系统管理员']).ui, true)   // 角色名里带「系统」也是人
+  assert.equal(parseAction('自动完成：待评价→已完成（系统，满 7 天）', ['主管', '系统管理员']).ui, false)
 })
 
 test('清单只从确认过的梳理来，写不成「动作：从→到」的跳过', () => {

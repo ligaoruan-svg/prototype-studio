@@ -740,6 +740,8 @@ class 谁做的动作(unittest.TestCase):
         self.assertTrue(_needs_button("关闭：待派单→已关闭（客服，需填原因；超时的标红）", ["物业客服", "维修工"]))
         self.assertFalse(_needs_button("评价：待评价→已完成（业主在小程序评价后自动更新）", ["物业客服"]))
         self.assertFalse(_needs_button("超时升级：待派单→待派单（系统）", ["物业客服"]))
+        self.assertTrue(_needs_button("启用：停用→在岗（系统管理员）", ["主管", "系统管理员"]))
+        self.assertFalse(_needs_button("自动完成：待评价→已完成（系统，满 7 天）", ["主管", "系统管理员"]))
 
 
 class 第一轮真实测试的毛病(unittest.TestCase):
