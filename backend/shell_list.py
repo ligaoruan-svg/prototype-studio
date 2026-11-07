@@ -10,7 +10,7 @@ from __future__ import annotations
 MARK = "const ListPage="
 
 LIST_JS = r"""// ===== 列表页模板（ListPage）：写清楚这一页有什么，模板负责画、接数据和流转、校验、翻页 =====
-// Pages.repairs=()=>ListPage('repairs',{title:'报修工单',data:'工单',tabs:['待派单','处理中'],filters:[…],columns:[…],actions:[…],toolbar:[…],detail:{…}})
+// Pages 里写 repairs(){return ListPage({title:'报修工单',data:'工单',tabs:['待派单','处理中'],filters:[…],columns:[…],actions:[…],toolbar:[…],detail:{…}})}
 // 行上的按钮写 flow:'派单' 就按 Store.can 出现、点了 Store.move；带 form 先弹窗填写（required 必填），check(值,行) 返回文字就拦下
 const ListPage=(()=>{
   const reg={},state={};
@@ -66,9 +66,11 @@ const ListPage=(()=>{
   const visible=(cfg,a,r)=>(!a.flow||Store.can(cfg.data,r.id,a.flow))&&(!a.show||a.show(r));
   const btn=(a,key,r)=>`<button type="button" class="${r?'lnk':'btn'}${a.primary?' primary':''}${a.danger?' danger':''}" data-lp="act" data-a="${key}"${r?` data-id="${esc(String(r.id))}"`:''}>${esc(a.label)}</button>`;
   function render(k,cfg){
+    if(k&&typeof k==='object')cfg=k;
+    k=Router.current();   // 页面 key 以路由为准：写成 ListPage('别的名',…) 也不会串页
     if(!document.getElementById('lp-css')){const s=document.createElement('style');s.id='lp-css';s.textContent=STYLE;document.head.appendChild(s)}
     if(!reg[k]&&typeof PageEvents!=='undefined')PageEvents.on(k,'click','[data-lp],[data-page-go]',el=>handle(k,el));
-    reg[k]=cfg;
+    reg[k]=cfg;lint(cfg);
     const tabs=cfg.tabs||[],st=state[k]||(state[k]={tab:tabs[0]||'',filter:{},page:1});
     let rows=Store.all(cfg.data);if(cfg.where)rows=rows.filter(cfg.where);
     const counts={};for(const t of tabs)counts[t]=t==='全部'?rows.length:rows.filter(r=>r.status===t).length;
@@ -85,6 +87,14 @@ const ListPage=(()=>{
       :`<tr><td colspan="${cols.length+(acts.length?1:0)}">${ZeroUI.Empty({title:'暂无数据',text:'当前条件下没有数据。',action:''})}</td></tr>`;
     const table=Card({title:cfg.listTitle||cfg.title+'列表',desc:`共 ${rows.length} 条`,body:`<div class="tw"><table class="data-table" style="min-width:${minW}px"><thead>${head}</thead><tbody>${body}</tbody></table></div>${ZeroUI.Pager({total:rows.length,page:st.page,pageSize:size})}`});
     return pageShell(cfg.title,cfg.desc||'',tabBar+filter+table+(cfg.extra?cfg.extra():''),(cfg.toolbar||[]).map((a,i)=>btn(a,'t'+i,null)).join(''));
+  }
+  // 配置写错了报到控制台（自检、check_page 会收到），页面照样能打开
+  const said=new Set();
+  function lint(cfg){
+    const say=m=>{if(!said.has(m)){said.add(m);console.error(m)}};
+    if(!Store.names().includes(cfg.data)){say(`ListPage「${cfg.title}」：Store 里没有「${cfg.data}」，先 Store.define('${cfg.data}',[…])`);return}
+    const flow=Store.flow(cfg.data)||{};
+    for(const a of [...(cfg.actions||[]),...(cfg.toolbar||[])])if(a.flow&&!(a.flow in flow))say(`ListPage「${cfg.title}」的按钮「${a.label}」写了 flow:'${a.flow}'，但 Store.flow('${cfg.data}') 里没有这个动作`);
   }
   function handle(k,el){
     const cfg=reg[k],st=state[k];if(!cfg)return;
@@ -159,3 +169,19 @@ const ListPage=(()=>{
   return render;
 })();
 """
+
+# 给 AI 的用法：shell_api（start_from_shell 返回）、内置风格 SKILL.md 都用这一份
+LIST_GUIDE = [
+    "列表类页面（页签 + 筛选 + 表格 + 行按钮 + 弹窗 + 详情）不用手写 HTML 和 bindPage：pages 里写 orders(){return ListPage({...})}，"
+    "模板负责画、接 Store 数据和流转、必填校验、翻页；统计页、看板、大屏、向导、复杂表单还是手写 pageShell(...)，两种可以混用",
+    "配置：title、desc、data:'Store 名'、tabs:['待派单','处理中',…]（按 status 分，可加 '全部'）、"
+    "filters:[{key,label,type:'select'|'check'|'daterange',options,text}]（不写 type 是文字搜索，keys:[…] 多字段搜）、"
+    "columns:[{key,label,width,tag:true 或 {值:'success'},money:true,bool:['紧急','普通'],value:r=>…}]、"
+    "actions:[行按钮]、toolbar:[顶部按钮]、detail:{title,fields:[写法同 columns]}、rowClass:r=>'danger'（标红）",
+    "按钮：{label:'查看',detail:true}；{label:'派单',flow:'派单',form:[{key:'worker',label:'维修工',type:'select',required:true,"
+    "options:()=>Store.all('维修工').map(w=>({value:w.id,label:w.name}))}]}（flow 按 Store.can 出现，填完点确定就 Store.move）；"
+    "{label:'接单',flow:'接单',confirm:'确认接单？'}；{label:'编辑',edit:true,form:[…]}；{label:'删除',remove:true}；"
+    "顶部 {label:'新增工单',primary:true,add:true,defaults:{status:'待派单'},form:[…]}；跳页 {label:'看合同',go:'#contracts'}",
+    "表单字段 type：text / select / textarea / date / datetime / number / money / file / check；required 必填，readonly 只读带出，value:r=>默认值；"
+    "规则写成 check:(值,行)=>'不通过的提示'（返回文字就拦下），顺带要记的写 patch:(行,值)=>({dispatchAt:'…'})",
+]

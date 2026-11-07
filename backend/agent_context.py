@@ -6,6 +6,7 @@ from __future__ import annotations
 import re
 
 from .patcher import SHELL_HOME_PAGE
+from .shell_list import LIST_GUIDE
 
 CONTEXT_KEYS = ("in_modal", "in_subpage", "modal_trail", "view_route")
 
@@ -57,7 +58,8 @@ SHELL_NOTE = ("外壳里样式、布局、菜单、路由、弹窗、Toast 都�
                                        "nav 是菜单分组，pages 是页面方法，bind 是 bindPage 里的代码，script 是数据、状态和辅助函数；外壳的「首页」占位会自动删掉。\n"
                                        "要改外壳本身的某一处时才用 replace_source_text。三处的含义：\n"
                                        "1. /*PA:NAV*/ 后面那行菜单配置 → 这次要的一级分组和二级页面（key 就是 URL hash）\n"
-                                       "2. /*PA:PAGES*/ 后面的 home(){...} → 每个二级页面一个方法，返回 pageShell(标题, 说明, 内容HTML, 右上按钮HTML)\n"
+                                       "2. /*PA:PAGES*/ 后面的 home(){...} → 每个二级页面一个方法，返回 pageShell(标题, 说明, 内容HTML, 右上按钮HTML)；"
+                                       "列表类页面直接 return ListPage({...}) 写配置（见 api.list），不用写 HTML 和 bind\n"
                                        "3. /*PA:BIND*/ 函数体 → 按 page 绑定这一页的按钮、筛选、行操作（或 PageEvents.on(page, …)；不要 document.addEventListener，会串页）\n"
                                        "组件直接用 ZeroUI.Button / Tag / Field / Pager / Empty / Toast / Modal / ConfirmModal / Drawer / openModal / openDrawer 和 Card()，"
                                        "签名见系统提示里的要点。样式类沿用外壳里的（card、metric-grid、data-table、lnk、tw 等），不要另写一套 CSS。"
@@ -81,6 +83,7 @@ def shell_api(shell: str) -> dict:
                       + [f"ZeroUI.{n}({sig(a)})" for n, a in plain if not n.startswith("_")],
             "helpers": [f"{n}({{{sig(a)}}})" for n, a in helpers] + [f"{n}({a})" for n, a in funcs if n in {"pageShell", "bindPage"}],
             "events": "PageEvents.on('页面key','click','选择器',(el,e)=>{...})：只在那一页触发",
+            "list": LIST_GUIDE if "const ListPage=" in shell else [],
             "store": ["业务数据只放一份：script 里 Store.define('工单',[{status:'待派单',…}])，所有页面从 Store 读，切页不重置",
                       "读：Store.all(名) / where(名,fn) / get(名,id) / count(名,fn) / sum(名,字段,fn)——统计数字现算，不要写死",
                       "改：Store.add(名,行) / update(名,id,改动) / remove(名,id)，改完当前页自动重画（列表、统计、别的页都跟着变）",

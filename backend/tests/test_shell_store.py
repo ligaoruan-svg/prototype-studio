@@ -34,6 +34,9 @@ class 统一数据层(unittest.TestCase):
 
     def test_交给AI的外壳说明里有写法(self):
         self.assertTrue(any('Store.flow' in s for s in shell_api(STYLE)['store']))
+        self.assertTrue(any('ListPage' in s for s in shell_api(STYLE)['list']))
+        skill = (ROOT / 'prompts/styles/企业蓝/SKILL.md').read_text(encoding='utf-8')
+        self.assertIn('## 列表页模板 ListPage', skill)
 
     @unittest.skipIf(shutil.which('node') is None, '没装 node')
     def test_状态流转和自动重画(self):
@@ -99,7 +102,7 @@ class 列表页模板(unittest.TestCase):
         import tempfile
         old = STYLE.replace(STORE_JS.strip(), '').replace('const ListPage=', 'const 旧模板=')
         page = shell_add(old, nav="{key:'w',label:'工单',items:[{key:'orders',label:'工单管理'}]}",
-                         pages="""orders(){return ListPage('orders',{title:'工单管理',data:'工单',tabs:['待派单','处理中'],
+                         pages="""orders(){return ListPage({title:'工单管理',data:'工单',tabs:['待派单','处理中'],
   columns:[{key:'no',label:'编号'},{key:'status',label:'状态',tag:true}],
   actions:[{label:'查看',detail:true},{label:'派单',flow:'派单',form:[{key:'who',label:'维修工',type:'select',options:['张三'],required:true}]}],
   toolbar:[{label:'新增',add:true,defaults:{status:'待派单'},form:[{key:'no',label:'编号',required:true}]}]})}""",
@@ -122,4 +125,8 @@ class 列表页模板(unittest.TestCase):
             pg.fill('#activeModal [data-lpf="no"]', 'GD-3'); pg.click('#modalConfirm'); pg.wait_for_timeout(100)
             self.assertEqual(pg.evaluate("Store.all('工单')[0].no+Store.all('工单')[0].status"), 'GD-3待派单')
             self.assertEqual(errs, [])
+            msgs = []; pg.on('console', lambda m: msgs.append(m.text) if m.type == 'error' else None)
+            pg.evaluate("Pages.bad=()=>ListPage({title:'坏的',data:'没有的',columns:[]});NAV[NAV.length-1].items.push({key:'bad',label:'坏'});location.hash='#bad'")
+            pg.wait_for_timeout(200)
+            self.assertTrue(any("Store 里没有「没有的」" in m for m in msgs), msgs)   # 配置写错报到控制台，自检能收到
             b.close()

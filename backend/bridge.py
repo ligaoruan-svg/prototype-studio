@@ -600,7 +600,8 @@ _TEMPLATE = r'''
   async function closeAll(base){
     for(let i=0;i<5;i++){
       const L=topOpen(base);if(!L)return true;const title=keyOf(L);
-      const btn=[...L.querySelectorAll('[data-cx="m-x"],[data-action*="close"],[class*=close],[aria-label*="关闭"],[aria-label*="lose"],button,.btn')].find(b=>vis(b)&&(b.matches('[data-cx="m-x"],[data-action*="close"],[class*=close],[aria-label*="关闭"],[aria-label*="lose"]')||CLOSE_TEXT.test((b.innerText||'').trim())));
+      // 弹窗本身不算（标题叫「关闭」的弹窗 aria-label 也是关闭）
+      const btn=[...L.querySelectorAll('[data-cx="m-x"],[data-action*="close"],[class*=close],[aria-label*="关闭"],[aria-label*="lose"],button,.btn')].find(b=>vis(b)&&!b.matches('[role=dialog],[aria-modal],section,dialog')&&(b.matches('[data-cx="m-x"],[data-action*="close"],[class*=close],[aria-label*="关闭"],[aria-label*="lose"]')||CLOSE_TEXT.test((b.innerText||'').trim())));
       if(btn)btn.click();else document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
       await sleep(90);
       if(L.isConnected&&shown(L)&&keyOf(L)===title&&topOpen(base)===L){L.classList.remove('show','open','active','visible','in','is-open');await sleep(60);if(topOpen(base)===L)return false;}

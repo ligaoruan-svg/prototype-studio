@@ -71,6 +71,8 @@
   Store.flow('工单',{派单:['待派单','处理中'],…}) 写状态流转（有业务梳理就照里面的动作写）；页面从 Store 读，统计数字用 Store.count / sum 现算；
   新增 / 编辑 / 删除用 Store.add / update / remove，按状态出现的按钮用 Store.can 判断，点了用 Store.move。改完当前页自动重画，
   别的页面下次打开也是新的——不要每页各写一份数据，不要自己拼 DOM 去改状态文字。
+  **列表类页面用 ListPage 写配置**（外壳自带）：页签 + 筛选 + 表格 + 行按钮 + 弹窗 + 详情，pages 里 return ListPage({...}) 就是一整页，
+  不用写 HTML 和 bindPage，写法见 start_from_shell 返回的 api.list；统计页、看板、大屏、向导、复杂表单还是手写。一页配置一般几百字，一次 shell_add 能写好几页。
   外壳页面的内容是脚本渲染的，不用 verify_page 查元素（静态 HTML 里本来就没有）；写完用 check_page（click:true）把每页按钮点一遍，没问题再 report_result。
   从零做页面时，如果有 start_from_shell 这个工具，**先调它**：程序把规范的页面外壳（样式、布局、菜单、路由、弹窗、Toast）整份放进来，
   你只写菜单配置、每页内容、交互绑定三处，组件用外壳里现成的函数和样式类，不要再抄一遍 CSS 和组件代码。

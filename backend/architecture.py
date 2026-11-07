@@ -398,7 +398,8 @@ def brief(arch: dict, limit: int = 16000) -> str:
                      "改完程序会照梳理逐个流转去页面上点来验收，所以：Store 的数据名就用梳理里的对象名（Store.define('工单',…)），状态字段叫 status、"
                      "状态和动作的名字跟梳理一字不差，每个状态都有几条演示数据，每条有编号或名称并显示在列表里：")
         lines.append(spec_text(arch["spec"]))
-    lines.append("\n页面树（缩进是层级）：")
+    lines.append("\n页面树（缩进是层级）。外壳有 ListPage 时，带表格的菜单页照树写成配置：页签 → tabs，筛选 → filters，表格列 → columns，"
+                 "按钮（出现：状态是…时）→ actions 的 flow，弹窗字段 → form，抽屉 → detail：")
     for item, depth, _ in walk(arch.get("nodes") or []):
         lines.append("  " * depth + "- " + _node_line(item))
     if arch.get("entities"):

@@ -17,7 +17,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from backend.shell_store import STORE_JS  # noqa: E402  统一数据层，和 shell_add 补进去的是同一份
-from backend.shell_list import LIST_JS  # noqa: E402  列表页模板，同上
+from backend.shell_list import LIST_GUIDE, LIST_JS  # noqa: E402  列表页模板，同上
 OUT = ROOT / "prompts" / "styles"
 
 SKELETON = r"""<!doctype html>
@@ -727,6 +727,7 @@ COMMON_RULES = """\
 - 样式只用外壳里的类和 CSS 变量（var(--primary) 等），不要另写一套颜色、字号、圆角；确实要加样式，也引用这些变量。
 - 不要僵尸交互：分页、筛选、开关、按钮、行操作都要有真实效果，至少 ZeroUI.Toast 一句。提交时按钮进 loading 防止重复点。
 - 示例数据用中性的名字和编号（张三、李四、王五；SO-20261018-0012），不用真实人名。
+- 业务数据放 Store（Store.define / flow / can / move），列表类页面用 ListPage 写配置，见下面「列表页模板」。
 
 ## 体验底线
 - 每页先想清楚「用户来这页干什么」：最重要的数字或操作放在最显眼的位置，其余往后放。
@@ -768,7 +769,7 @@ def build(style: dict) -> tuple[str, str]:
     skill = (f"---\nname: {style['name']}\ndescription: {style['description']}\n"
              f"tagline: {TAGLINES.get(style['name'], '')}\ncategory: {category}\norder: {order}\nlayout: {style['layout']}\n"
              f"primary: \"{style['primary']}\"\nbackground: \"{style['background']}\"\nside: \"{tokens['side-bg']}\"\n---\n"
-             f"# {style['name']}\n\n{style['rules']}\n{COMMON_RULES}")
+             f"# {style['name']}\n\n{style['rules']}\n{COMMON_RULES}\n## 列表页模板 ListPage\n" + "".join(f"- {line}\n" for line in LIST_GUIDE))
     return skill, shell
 
 
