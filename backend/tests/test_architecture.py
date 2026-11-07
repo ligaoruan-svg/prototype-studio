@@ -459,10 +459,13 @@ class 业务梳理(unittest.TestCase):
         self.assertEqual(len(spec["questions"]), 1)                       # 只有一个选项的问题不算
         self.assertIsNone(S.parse("没有 JSON"))
         self.assertIn("动作：派单：待派单→处理中（客服）", S.to_text(spec))
-        for yes in ("可以", "好的，画吧", "就这样", "直接画", "确认"):
-            self.assertTrue(S.CONFIRM.match(yes), yes)
-        for no in ("租户这次不做", "可以再加一个角色吗"):
-            self.assertFalse(S.CONFIRM.match(no), no)
+        for yes in ("可以", "好的，画吧", "就这样", "直接画", "确认", "好的，按这个来", "ok 画吧", "嗯，就这样", "没问题，开始"):
+            self.assertTrue(S.is_confirm(yes), yes)
+        for no in ("租户这次不做", "可以再加一个角色吗", "不行", "好的，但是费用要做"):
+            self.assertFalse(S.is_confirm(no), no)
+        # 模型常犯的 JSON 小毛病：注释、多余的逗号
+        loose = '{"roles": [{"name": "客服", "does": "看 http://x"},], // 角色\n "objects": [{"name": "工单",}],}'
+        self.assertEqual(S.parse(loose)["roles"][0]["does"], "看 http://x")
 
     def test_贴需求先梳理_改一句_确认了再画(self):
         self.answer(SPEC_REPLY)
@@ -639,6 +642,53 @@ class 架构小改不冲掉刚读进来的(unittest.TestCase):
         names = [n["name"] for n in A.load(self.pid)["nodes"]]
         self.assertIn("巡检记录", names)
         self.assertIn("统计分析", names)
+
+
+class 架构AI的小毛病(unittest.TestCase):
+    def test_该走哪条路(self):
+        from backend import arch_chat as C
+        cur = A.normalize({"nodes": [{"type": "module", "name": "报修管理", "children": [{"type": "page", "name": "报修工单"}, {"type": "page", "name": "费用单"}]}]})
+        cases = [("这个设计架构合理吗？", "ask"), ("能帮我出个架构吗？", "spec"), ("帮我梳理下架构", "spec"), ("分析一下架构", "ask"),
+                 ("1. 加一个维修工页到报修管理\n2. 删掉费用单\n3. 报修工单改名为工单管理", "edit"),          # 一行一条的修改是小改
+                 ("物业系统需求：\n业主报修，客服派单\n维修工上门处理\n主管看统计", "spec")]
+        for text, want in cases:
+            self.assertEqual(C.stage_of(text, None, cur, None), want, text)
+        self.assertEqual(C.arch_mode("继续画完", "draw", False), "edit")
+
+    def test_改动行的各种写法都认(self):
+        from backend import arch_ops as O
+        _, kind, body = O.split_reply("说明：改了\n## 改动\n1. + 在「报修管理」下面新增：\n    维修工 [菜单页]\n2. - 删除「费用单」\n"
+                                      "3. ~ “报修工单”改成“工单管理”\n- ~ 「统计」重命名为「统计分析」\n4. > 把「统计分析」移到「报修管理」下面\n5. * 修改「报修管理」：介绍：报修全流程")
+        self.assertEqual(kind, "ops")
+        self.assertEqual([o["op"] for o in O.parse_ops(body)], ["add", "remove", "rename", "rename", "move", "set"])
+
+    def test_系统自动和别的端做的动作不要求按钮(self):
+        from backend import arch_ops as O
+        arch = A.normalize({"nodes": [{"type": "page", "name": "报修工单", "children": [{"type": "button", "name": "派单"}]}]})
+        arch["spec"] = {"roles": [{"name": "客服"}, {"name": "维修工"}], "objects": [{"name": "报修工单", "actions": [
+            "派单：待派单→处理中（客服）", "超时升级：处理中→已超时（系统自动）", "报修：→待派单（业主，小程序）", "评价：待评价→已完成（业主）",
+            "完工：处理中→待评价（维修工）", "关闭：待派单→已关闭"]}], "scope": {"out": ["业主小程序"]}}
+        self.assertEqual(O.problems(arch), ["「报修工单」的「完工」这个动作没有按钮", "「报修工单」的「关闭」这个动作没有按钮"])
+
+    def test_确认时问题定下来_生成原型时带上梳理(self):
+        from backend import arch_spec as S
+        spec = S.normalize({"roles": [{"name": "客服"}], "objects": [{"name": "工单", "states": ["待派单", "处理中"]}], "rules": ["紧急 30 分钟内派单"],
+                            "questions": [{"q": "维修工要登录后台吗？", "options": ["要", "不要"]}, {"q": "费用要结算吗？", "options": ["只记录", "要结算"]}]})
+        done = S.settle(spec, "按业务梳理画架构\n问题回答：\n- 维修工要登录后台吗？：不要")
+        self.assertEqual(done["questions"], [])
+        self.assertIn("维修工要登录后台吗？——不要", done["assumptions"])
+        self.assertIn("费用要结算吗？——只记录（按推荐）", done["assumptions"])
+        brief = A.brief(A.normalize({"nodes": [{"type": "page", "name": "工单"}], "spec": {**done, "status": "confirmed"}}))
+        self.assertIn("紧急 30 分钟内派单", brief)
+        self.assertIn("状态流转做成按状态出现的按钮", brief)
+        self.assertNotIn("业务梳理", A.brief(A.normalize({"nodes": [{"type": "page", "name": "工单"}], "spec": spec})))   # 草稿不带
+
+    def test_截断了说出来_还能接着画(self):
+        from backend import arch_chat as C
+        summary, nodes, notes = C._apply_reply({"nodes": []}, "说明：画了。\n\n【页面】\n报修管理 [模块]\n  报修工单 [菜单页]\n  维修工管", {"finish_reason": "length"})
+        self.assertEqual([n["name"] for n in nodes[0]["children"]], ["报修工单"])          # 半截的最后一行不要
+        self.assertIn(C.TRUNCATED, notes)
+        self.assertEqual(C._limit(C.MAX_TOKENS, 65536), 65536)                               # 设置里调大了就用设置的
 
 
 class 表格起名(unittest.TestCase):

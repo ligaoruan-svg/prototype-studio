@@ -48,11 +48,21 @@ EDIT_FORMAT = """回复格式：第一行以「说明：」开头，一句话说
 GENERIC = {"列表", "表格", "明细", "明细表", "数据表", "筛选 / 表单", "表单区"}
 CLEAR = {"去掉", "（去掉）", "(去掉)", "无", "删掉", "清空"}
 
-OP_ADD = re.compile(r"^\+\s*在(?:「(?P<path>[^」]+)」下面|(?P<root>最外层))\s*[:：]?\s*$")
-OP_DEL = re.compile(r"^-\s*删掉?\s*「(?P<path>[^」]+)」")
-OP_REN = re.compile(r"^~\s*「(?P<path>[^」]+)」\s*改名(?:为|成)\s*「(?P<name>[^」]+)」")
-OP_MOV = re.compile(r"^>\s*把\s*「(?P<path>[^」]+)」\s*挪到(?:「(?P<to>[^」]+)」下面|(?P<root>最外层))")
-OP_SET = re.compile(r"^\*\s*改\s*「(?P<path>[^」]+)」\s*[:：]\s*(?P<rest>.+)$")
+# 动词换个说法也认：删除 / 去掉、改成 / 重命名为、移到 / 放到、修改；「下面」也可以是「下 / 里」
+UNDER = r"(?:下面|下|里面|里)"
+OP_ADD = re.compile(r"^\+\s*在(?:「(?P<path>[^」]+)」" + UNDER + r"|(?P<root>最外层))\s*(?:加|新增|增加|添加)?\s*[:：]?\s*$")
+OP_DEL = re.compile(r"^-\s*(?:删掉?|删除|去掉|移除)\s*「(?P<path>[^」]+)」")
+OP_REN = re.compile(r"^~\s*「(?P<path>[^」]+)」\s*(?:改名(?:为|成)|改成|改为|重命名为|更名为)\s*「(?P<name>[^」]+)」")
+OP_MOV = re.compile(r"^>\s*(?:把\s*)?「(?P<path>[^」]+)」\s*(?:挪到|移到|移动到|放到)(?:「(?P<to>[^」]+)」" + UNDER + r"|(?P<root>最外层))")
+OP_SET = re.compile(r"^\*\s*(?:改|修改)\s*「(?P<path>[^」]+)」\s*[:：]\s*(?P<rest>.+)$")
+
+
+def _tidy(line: str) -> str:
+    """一行改动的外衣去掉：前面的编号（1. / 1、）、多套的列表符号（「- ~ …」）；“”『』"" 都当「」"""
+    line = re.sub(r"^\s*(?:\d+[.、)）]|[(（]\d+[)）])\s*", "", line.strip())
+    line = re.sub(r"^[-*•]\s+(?=[+\-~>*]\s)", "", line)
+    line = line.replace("“", "「").replace("”", "」").replace("『", "「").replace("』", "」")
+    return re.sub(r'"([^"]+)"', r"「\1」", line)
 
 
 def split_reply(reply: str) -> tuple[str, str, str]:
@@ -60,8 +70,9 @@ def split_reply(reply: str) -> tuple[str, str, str]:
     text = re.sub(r"```\w*", "", reply or "").strip()
     m = re.match(r"^\s*说明[:：]\s*(.+?)\s*(?:\n|$)", text)
     summary, body = (m.group(1).strip(), text[m.end():].strip()) if m else ("", text)
-    if re.search(r"^\s*【改动】", body, re.M):
-        return summary, "ops", body.split("【改动】", 1)[1]
+    head = re.search(r"^\s*(?:【改动】|#+\s*改动|改动[:：])\s*$", body, re.M)
+    if head:
+        return summary, "ops", body[head.end():]
     if re.search(r"^\s*【(?:页面|页面树)】", body, re.M):
         return summary, "tree", body
     return summary, "", body
@@ -73,7 +84,7 @@ def parse_ops(body: str) -> list[dict]:
     lines = (body or "").replace("\r\n", "\n").split("\n")
     i = 0
     while i < len(lines):
-        line = lines[i].strip()
+        line = _tidy(lines[i])
         i += 1
         if not line:
             continue
@@ -81,7 +92,7 @@ def parse_ops(body: str) -> list[dict]:
         if m:
             base = _indent(lines[i - 1])
             block = []
-            while i < len(lines) and (not lines[i].strip() or (_indent(lines[i]) > base and not re.match(r"^[+\-~>*]\s", lines[i].strip()))):
+            while i < len(lines) and (not lines[i].strip() or (_indent(lines[i]) > base and not re.match(r"^[+\-~>*]\s", _tidy(lines[i])))):
                 block.append(lines[i])
                 i += 1
             nodes = _tree(block)
@@ -212,6 +223,19 @@ def apply_ops(nodes: list[dict], ops: list[dict]) -> tuple[list[dict], list[str]
     return tree, done, failed
 
 
+AUTO = re.compile(r"系统|自动|定时|超时|到期")
+
+
+def _needs_button(action: str, roles: list[str]) -> bool:
+    """这个动作要不要后台里有个按钮：系统自动做的不要；写了是谁做、而那个人不是这个后台的角色（业主在小程序里评价）也不要"""
+    who = " ".join(re.findall(r"[（(]([^（）()]*)[）)]", action))
+    if AUTO.search(who) or AUTO.search(action.split("：", 1)[0]):
+        return False
+    if who and roles:
+        return any(r and r in who for r in roles)
+    return True
+
+
 def _verb(action: str) -> str:
     """「派单：待派单→处理中（客服）」→「派单」"""
     return re.split(r"[:：（(]", action, 1)[0].strip()
@@ -232,6 +256,7 @@ def problems(arch: dict) -> list[str]:
         skip = " ".join((scope.get("out") or []) + (scope.get("external") or []))
         text = " ".join(n["name"] + " " + (n.get("desc") or "") for n, _ in flat)
         buttons = [n["name"] for n, _ in flat if n.get("type") in ("button", "feature")]
+        roles = [r.get("name", "") for r in spec.get("roles") or []]
         for obj in spec.get("objects") or []:
             name = obj["name"]
             if name in skip:
@@ -241,7 +266,7 @@ def problems(arch: dict) -> list[str]:
                 continue
             for action in obj.get("actions") or []:
                 verb = _verb(action)
-                if verb and not any(verb in b or (len(b) >= 2 and b in verb) for b in buttons):
+                if verb and _needs_button(action, roles) and not any(verb in b or (len(b) >= 2 and b in verb) for b in buttons):
                     out.append(f"「{name}」的「{verb}」这个动作没有按钮")
     seen: list[str] = []
     for p in out:

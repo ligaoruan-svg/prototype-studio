@@ -51,9 +51,16 @@ DRAW_RULES = """按业务梳理画页面树的规则：
 8. 名字要具体：表格叫「工单列表」「巡检记录」，不要叫「列表」「表格」；按钮用动词开头。
 9. 规则（校验、时限、联动）写进对应按钮的「确认后」、弹窗字段或页面介绍里，不要丢。"""
 
-# 确认梳理、开始画：卡片上的按钮发的话，或者你直接说「可以 / 就这样 / 直接画」
+# 确认梳理、开始画：卡片上的按钮发的话，或者你直接说「可以 / 好的，按这个来 / 就这样 / 直接画」
 DRAW_HEAD = "按业务梳理画架构"
-CONFIRM = re.compile(r"^\s*(?:好的?|可以|行|没问题|确认|对|就这样|就按这个|按这个|直接|开始)[，,\s]*(?:画|出|生成|做)?(?:吧|架构|页面树)?[。！!~\s]*$")
+_CONFIRM = re.compile(r"^(?:好的?|好啊|好嘞|可以|行|没问题|确认|对|嗯|是的|ok|okay)?(?:就|那就)?(?:直接)?(?:按|照)?(?:这个|这样|它|这版|这一版|你的)?"
+                      r"(?:来|画|出|生成|做|开始|吧|了|啊|呗|吧|架构|页面树)*$")
+
+
+def is_confirm(text: str) -> bool:
+    """短短一句、只是点头（「好的，按这个来」「ok 画吧」「嗯，就这样」）；带了别的内容就是要改梳理"""
+    t = re.sub(r"[\s，,。.!！~、]+", "", (text or "").lower())
+    return 0 < len(t) <= 12 and bool(_CONFIRM.match(t))
 
 
 def _s(value: Any, limit: int) -> str:
@@ -107,10 +114,20 @@ def parse(reply: str) -> dict | None:
     start, end = text.find("{"), text.rfind("}")
     if start < 0 or end <= start:
         return None
-    try:
-        return normalize(json.loads(text[start:end + 1]))
-    except ValueError:
-        return None
+    raw = text[start:end + 1]
+    for attempt in (raw, _loosen(raw)):
+        try:
+            return normalize(json.loads(attempt))
+        except ValueError:
+            continue
+    return None
+
+
+def _loosen(raw: str) -> str:
+    """模型常犯的 JSON 小毛病：// 和 /* */ 注释、最后一项后面多个逗号"""
+    raw = re.sub(r"/\*.*?\*/", "", raw, flags=re.S)
+    raw = re.sub(r"(?<![:\"'\\])//[^\n]*", "", raw)
+    return re.sub(r",\s*([}\]])", r"\1", raw)
 
 
 def to_text(spec: dict) -> str:
@@ -146,3 +163,21 @@ def headline(spec: dict, revised: bool = False) -> str:
     head = "按你的意思改了梳理" if revised else "先把业务梳理了一下"
     tail = f"有 {n('questions')} 处要你定，" if n("questions") else ""
     return f"{head}：{n('roles')} 个角色、{n('objects')} 个业务对象、{n('rules')} 条规则。{tail}确认后我按它画架构。"
+
+
+def settle(spec: dict, message: str) -> dict:
+    """确认时把问题定下来：卡片上选了的照选的，没选（直接说「可以」）就按推荐的那个；定下来的写进假设，问题清空。
+    不然画完以后再改架构，AI 不知道当初是怎么定的"""
+    picked = {}
+    for line in (message or "").splitlines():
+        m = re.match(r"^\s*[-*•]\s*(.+?)[：:]\s*(.+?)\s*$", line)
+        if m:
+            picked[m.group(1).strip()] = m.group(2).strip()
+    out = {**spec, "assumptions": list(spec.get("assumptions") or []), "questions": []}
+    for q in spec.get("questions") or []:
+        answer = picked.get(q["q"]) or next((v for k, v in picked.items() if k in q["q"] or q["q"] in k), "")
+        text = f"{q['q']}——{answer or q['options'][0]}" + ("" if answer else "（按推荐）")
+        if text not in out["assumptions"]:
+            out["assumptions"].append(text)
+    out["assumptions"] = out["assumptions"][:9]
+    return out

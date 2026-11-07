@@ -15,7 +15,7 @@ import uuid
 from typing import Any, Iterator
 
 from . import storage
-from .arch_spec import normalize as normalize_spec
+from .arch_spec import normalize as normalize_spec, to_text as spec_text
 from .atomicio import write_atomic
 
 NODE_TYPES = {"module": "模块", "page": "菜单页", "tab": "页签", "drill": "下钻页", "modal": "弹窗", "drawer": "抽屉",
@@ -392,6 +392,10 @@ def brief(arch: dict, limit: int = 16000) -> str:
         lines.append(arch["summary"])
     if arch.get("roles"):
         lines.append("角色：" + "、".join(arch["roles"]))
+    if (arch.get("spec") or {}).get("status") == "confirmed":
+        lines.append("\n业务梳理（用户确认过）。做页面时照着做：状态流转做成按状态出现的按钮，点了状态真的变、列表和统计跟着变；"
+                     "规则做成校验、提示或标红；「这次不做」的不做页面，「外部系统」只生成它回传的数据：")
+        lines.append(spec_text(arch["spec"]))
     lines.append("\n页面树（缩进是层级）：")
     for item, depth, _ in walk(arch.get("nodes") or []):
         lines.append("  " * depth + "- " + _node_line(item))

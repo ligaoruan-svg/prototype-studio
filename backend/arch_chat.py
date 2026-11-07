@@ -15,7 +15,7 @@ import re
 from typing import Any, Callable
 
 from . import arch_ops, arch_spec, architecture, storage
-from .conversation import ASK_HARD, NO_WRITE, chat_display, discussion_result, is_continue, looks_like_brief, resolve_intent
+from .conversation import ASK_HARD, EDIT_WORDS, NO_WRITE, chat_display, discussion_result, is_continue, looks_like_brief, resolve_intent
 from .arch_text import from_outline, keep_ids, to_outline
 from .deepseek_client import DeepSeekError, chat
 from .errors import WorkError
@@ -85,17 +85,36 @@ def _history(project_id: str, page_id: str) -> tuple[list[dict], str]:
 
 
 # 「出 / 生成 / 梳理 / 跑出架构」：要画，就算句子是问句（「能帮我出个架构吗」）
-ARCH_MAKE = re.compile(r"(?:(?<![指看找说提列])出|生成|画|梳理|跑|设计|搭|整理|规划)(?:一下|一个|一份|一版|个|份|出|系统|产品|整体|完整的?|新的?|的){0,3}"
+ARCH_MAKE = re.compile(r"(?:(?<![指看找说提列])出|生成|画|梳理|跑|设计|搭|整理|规划)(?:一下|下|一个|一份|一版|个|份|出|系统|产品|整体|完整的?|新的?|的){0,3}"
                        r"(?:架构|页面树|菜单结构|信息架构|功能架构|页面结构)")
+
+
+GO_ON = re.compile(r"^\s*(?:继续|接着)(?:画|补|做|写)?(?:完|全|齐)?(?:吧|呀|啊)?[。!！~\s]*$")
+EVAL = re.compile(r"合理|怎么样|好不好|对不对|有没有问题|有什么问题|哪里不|为什么|是否|评价|分析|看看|行不行|够不够|缺不缺|缺什么")
+# 一行一条的修改（「1. 加维修工页 / 2. 删掉费用单」）：每行都是动词开头、说的是画布上已有的东西
+LINE_EDIT = re.compile(r"^(?:请|把|将|给)?\s*(?:加|新增|增加|添加|删|去掉|改|挪|移|换|拆|合并|补|调整)")
+
+
+def _instructions(text: str, nodes: list[dict]) -> bool:
+    lines = [re.sub(r"^\s*(?:[-*•]|\d+[.、)）])\s*", "", x).strip() for x in text.splitlines() if x.strip()]
+    if not lines or not nodes:
+        return False
+    names = {n["name"] for n, _, _ in architecture.walk(nodes) if len(n["name"]) >= 2}
+    verbs = [x for x in lines if LINE_EDIT.match(x) or EDIT_WORDS.search(x)]
+    named = [x for x in verbs if any(name in x for name in names)]
+    return len(verbs) >= 0.6 * len(lines) and len(named) >= 0.5 * len(verbs)
 
 
 def arch_mode(message: str, previous: str | None, empty: bool) -> str:
     """架构模式里这句是在问（只回答）还是要画 / 改（改页面树）。
     和「自动」一样的规则，再加三条：贴进来一大段需求、明说要出架构、画布还空着时说了个系统——都是要画"""
     text = (message or "").strip()
-    if previous in ("discuss", "edit") and is_continue(text):
-        return previous
+    if previous in ("discuss", "edit", "draw", "spec") and (is_continue(text) or GO_ON.match(text)):
+        return "discuss" if previous == "discuss" else "edit"     # 「继续画完」：在现在的树上接着补
     if NO_WRITE.search(text):
+        return "discuss"
+    # 问的是好不好（「这个设计架构合理吗」「架构有没有问题」）：就算句子里有「设计 / 梳理架构」，也是在问
+    if EVAL.search(text) and ASK_HARD.search(text) and not looks_like_brief(text):
         return "discuss"
     # 分了好几行的就是一段需求（哪怕不到一百字），照着画
     if ARCH_MAKE.search(text) or looks_like_brief(text) or len([x for x in text.splitlines() if x.strip()]) >= 3:
@@ -170,7 +189,7 @@ def _pending_spec(project_id: str, page_id: str, current: dict) -> dict | None:
 def stage_of(message: str, previous: str | None, current: dict, pending: dict | None) -> str:
     """这句话走哪条路：spec 梳理、draw 按梳理画、edit 直接改、ask 只回答"""
     text = (message or "").strip()
-    if pending and (text.startswith(arch_spec.DRAW_HEAD) or arch_spec.CONFIRM.match(text)):
+    if pending and (text.startswith(arch_spec.DRAW_HEAD) or arch_spec.is_confirm(text)):
         return "draw"
     # 梳理卡还没确认：明摆着的问句才只回答（「为什么要分这么多对象？」），别的都是在改梳理（「费用这次不做」）
     if pending:
@@ -179,6 +198,9 @@ def stage_of(message: str, previous: str | None, current: dict, pending: dict | 
     if mode == "discuss":
         return "ask"
     big = ARCH_MAKE.search(text) or looks_like_brief(text) or len([x for x in text.splitlines() if x.strip()]) >= 3
+    # 画布上已经有东西、一行一条说要改哪几处：是小改，不是一段新需求
+    if big and not ARCH_MAKE.search(text) and _instructions(text, current.get("nodes") or []):
+        return "edit"
     if pending or big or not current.get("nodes"):
         return "spec"
     return "edit"
@@ -208,10 +230,16 @@ def run(project_id: str, page_id: str, message: str, key: str, model: str, base_
     basis = f"业务梳理（{'用户已确认' if spec and spec.get('status') == 'confirmed' else '草稿'}）：\n{arch_spec.to_text(spec)}\n\n" if spec else ""
     if stage == "spec":
         system, label, limit = arch_spec.SPEC_SYSTEM, "AI 正在梳理业务", 8000
-        ask_for = (f"上一版梳理（JSON）：\n{json.dumps(pending, ensure_ascii=False)}\n\n用户要改的：{message}\n只改用户说的地方，别的照旧，输出改好的完整 JSON。"
-                   if pending else f"用户的需求：\n{message}")
+        if pending:
+            ask_for = f"上一版梳理（JSON）：\n{json.dumps(pending, ensure_ascii=False)}\n\n用户要改的：{message}\n只改用户说的地方，别的照旧，输出改好的完整 JSON。"
+        elif spec:   # 以前确认过一版：在它上面接着梳理，别从零来、把确认过的丢了
+            ask_for = (f"之前确认过的业务梳理（JSON）：\n{json.dumps(spec, ensure_ascii=False)}\n\n用户这次说：\n{message}\n"
+                       "在它的基础上梳理：用户没提的保持原样，用户提到的照着改，输出完整 JSON。")
+        else:
+            ask_for = f"用户的需求：\n{message}"
         prompt = clue + tree + ask_for
     elif stage == "draw":
+        pending = arch_spec.settle(pending, message)   # 问题定下来，写进假设
         system, label, limit = SYSTEM + "\n\n" + arch_spec.DRAW_RULES, "AI 正在按梳理画页面树", MAX_TOKENS
         prompt = (clue + tree + f"业务梳理（用户已确认）：\n{arch_spec.to_text(pending)}\n\n用户确认时说：{message}\n\n"
                   "按这份梳理画出完整的页面树：现在页面树里已经有的保留（名字不变），按梳理补全和调整。")
@@ -220,7 +248,10 @@ def run(project_id: str, page_id: str, message: str, key: str, model: str, base_
         prompt = clue + basis + tree + f"用户问：{message}"
     else:
         system, label, limit = EDIT_SYSTEM, "AI 正在改页面树", MAX_TOKENS
-        prompt = clue + basis + tree + f"这次要改的：{message}"
+        ask_for = message
+        if GO_ON.match(message) or is_continue(message):   # 上一次画到一半被截断：对着梳理把没画的补上
+            ask_for = "上一次画到一半被截断了。对照业务梳理，把还没画出来的模块、页面、弹窗、按钮补上（只写要加的）。"
+        prompt = clue + basis + tree + f"这次要改的：{ask_for}"
     messages = [{"role": "system", "content": system}, *history, {"role": "user", "content": prompt}]
     on_event({"type": "progress", "label": label})
     written = [0, 0]
@@ -231,7 +262,7 @@ def run(project_id: str, page_id: str, message: str, key: str, model: str, base_
             written[1] = written[0]
             on_event({"type": "progress", "label": f"{label} · 已写 {written[0]} 字"})
     try:
-        resp = chat(key, model, messages, None, base_url=base_url, max_tokens=min(limit, max(4000, int(max_tokens or 16000))),
+        resp = chat(key, model, messages, None, base_url=base_url, max_tokens=_limit(limit, max_tokens),
                     on_delta=on_delta if stream else None, should_stop=should_stop)
     except DeepSeekError as exc:
         if exc.code == "stopped":
@@ -277,12 +308,26 @@ def run(project_id: str, page_id: str, message: str, key: str, model: str, base_
         current["roles"] = [r["name"] for r in pending.get("roles", [])] or current.get("roles", [])
     architecture.save(project_id, current)
     summary = summary or "页面树改好了"
+    if TRUNCATED in failed:
+        failed = [f for f in failed if f != TRUNCATED]
+        summary += "\n\n" + TRUNCATED
     if failed:
         summary += "\n\n有 {0} 处没对上，跳过了：{1}".format(len(failed), "；".join(failed[:5]))
     content = summary + ("\n\n" + check_note if check_note else "")
     storage.append_chat(project_id, "assistant", content, {"page_id": page_id, "changed": False, "intent": "architecture", "arch_mode": mode,
                                                            "arch_changed": True, "arch_check": check, "usage": usage})
     return {"changed": False, "intent": "architecture", "content": content, "architecture_changed": True, "arch_check": check, "usage": usage}
+
+
+def _limit(stage_limit: int, setting: int | None) -> int:
+    """这一步最多写多少：画整棵树、改树至少给 MAX_TOKENS，设置里调得更大就用设置的（思考型模型思考也算在里面）；梳理、回答用不了那么多"""
+    setting = int(setting or 16000)
+    if stage_limit >= MAX_TOKENS:
+        return max(MAX_TOKENS, min(setting, 65536))
+    return min(stage_limit, max(4000, setting))
+
+
+TRUNCATED = "AI 这次写得太长被截断了，后面一部分没画出来。说「继续画完」我接着补。"
 
 
 def _apply_reply(current: dict, reply: str, choice: dict) -> tuple[str, list[dict], list[str]]:
@@ -293,7 +338,11 @@ def _apply_reply(current: dict, reply: str, choice: dict) -> tuple[str, list[dic
         if ops:
             nodes, _done, failed = arch_ops.apply_ops(current.get("nodes") or [], ops)
             return summary, architecture.normalize({"nodes": nodes})["nodes"], failed   # 新加的发编号，检查要用
-    fresh = from_outline(body if kind else reply)
+    text = body if kind else reply
+    cut_off = choice.get("finish_reason") in ("length", "max_tokens")
+    if cut_off:   # 截断了：最后一行多半是半截的，不要它；能用的先用上，回复里说一声
+        text = text.rsplit("\n", 1)[0]
+    fresh = from_outline(text)
     if not fresh.get("nodes"):
         cut = "（输出被截断了）" if choice.get("finish_reason") in ("length", "max_tokens") else ""
         raise WorkError("arch_unreadable", "AI 给的页面树读不出来" + cut + "，换个说法再试一次")
@@ -301,7 +350,7 @@ def _apply_reply(current: dict, reply: str, choice: dict) -> tuple[str, list[dic
     flags = {n["id"]: {k: n[k] for k in ("proto", "seen") if n.get(k)} for n, _, _ in architecture.walk(current["nodes"])}
     for n, _, _ in architecture.walk(fresh["nodes"]):
         n.update(flags.get(n.get("id"), {}))
-    return summary, architecture.normalize({"nodes": fresh["nodes"]})["nodes"], []
+    return summary, architecture.normalize({"nodes": fresh["nodes"]})["nodes"], [TRUNCATED] if cut_off else []
 
 
 def _check_and_fix(current: dict, nodes: list[dict], basis: str, key: str, model: str, base_url: str, max_tokens: int,
