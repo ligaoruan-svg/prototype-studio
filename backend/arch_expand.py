@@ -431,8 +431,8 @@ def replay(tree: list[dict], ops: list[dict]) -> list[dict]:
                 target.insert(min(op["index"], len(target)), node)
         elif op["op"] == "add":
             target = _list_of(tree, op["parent"])
-            if target is None:
-                target = tree
+            if target is None:            # 挂在哪儿已经找不到了（那一页原型里没了 / 以前读错了）：跳过，不要堆到最外层
+                continue
             same = _match(target, op["node"])
             if same:
                 _graft(same, op["node"])

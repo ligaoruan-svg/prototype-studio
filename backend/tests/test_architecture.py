@@ -691,6 +691,17 @@ class 架构AI的小毛病(unittest.TestCase):
         self.assertEqual(C._limit(C.MAX_TOKENS, 65536), 65536)                               # 设置里调大了就用设置的
 
 
+class 重放找不到位置的改动(unittest.TestCase):
+    def test_挂的地方没了就跳过_不堆到最外层(self):
+        from backend.arch_expand import replay
+        tree = [{"id": "m1", "type": "module", "name": "基础设置", "children": []}]
+        ops = [{"op": "add", "parent": "gone", "index": 0, "node": {"id": "x", "type": "table", "name": "分类列表", "children": []}},
+               {"op": "add", "parent": "m1", "index": 0, "node": {"id": "y", "type": "page", "name": "材料价目", "children": []}}]
+        out = replay(tree, ops)
+        self.assertEqual([n["name"] for n in out], ["基础设置"])
+        self.assertEqual([n["name"] for n in out[0]["children"]], ["材料价目"])
+
+
 class 读列表页模板做的页面(unittest.TestCase):
     def test_页签不带数_同样的表只记一次_编号弹窗用按钮名(self):
         from backend.arch_expand import _fill
