@@ -11,7 +11,7 @@ import re
 from .arch_fields import parse_field
 
 CJK = re.compile(r"[一-鿿]")
-MONEY = re.compile(r"(费|金额|价|总额|合计)(（元）)?$")
+MONEY = re.compile(r"(费|费用|金额|价|总额|合计)(（元）)?$")
 ADD = re.compile(r"^(新增|添加|新建|登记|创建)")
 FORM = {"select": "select", "radio": "select", "multi": "select", "person": "select", "textarea": "textarea", "note": "textarea",
         "date": "date", "daterange": "date", "datetime": "datetime", "number": "number", "money": "money",
@@ -106,7 +106,7 @@ def _form(fields: list[str], data: str = "") -> list[dict]:
     for raw in fields:
         f = parse_field(raw)
         item = {"key": key_of(f["name"]), "label": label_of(f["name"]), "type": FORM.get(f["type"], "text")}
-        if _real(f["options"]):
+        if _real(f["options"]) and item["type"] == "select":     # 金额写的「（按用料明细汇总，只读）」不是选项
             item["options"] = f["options"]
         elif item["type"] == "select" and data:
             item["options"] = _pick(data, item["key"])
@@ -169,8 +169,9 @@ def _button(b: dict, page: dict, verbs: dict, first: str, row: bool, data: str =
     if not CJK.search(name) or b.get("action") == "jump":     # 点编号跳详情页：详情页是手写的，留给 AI
         return None
     item: dict = {"label": name}
-    if row and name in verbs:
-        item["flow"] = name
+    verb = name if name in verbs else next((v for v in verbs if name.startswith(v) and len(name) <= len(v) + 3), "")   # 「完工填报」走「完工」
+    if row and verb:
+        item["flow"] = verb
     elif row and _states(b.get("when", "")):
         item["show"] = JS(f"r=>{js(_states(b['when']))}.includes(r.status)")
     target = b.get("target") or ""
@@ -255,7 +256,7 @@ def list_page(page: dict, spec: dict, flow_map: dict) -> dict | None:
 def generate(arch: dict, only: set[str] | None = None) -> dict:
     """整棵树 → shell_add 要的 {nav, pages, script} + 交给 AI 的事。only：只生成这几页（原型里还没有的）"""
     spec, flow_map = arch.get("spec") or {}, flows(arch.get("spec") or {})
-    groups, pages, made, left, used, keys = [], [], [], [], set(), {}
+    groups, pages, made, left, used, keys, by_data = [], [], [], [], set(), {}, {}
     n = 0
     for i, mod in enumerate(arch.get("nodes") or []):
         members = [mod] if mod["type"] == "page" else [p for p in mod.get("children") or [] if p["type"] == "page"] if mod["type"] == "module" else []
@@ -270,6 +271,7 @@ def generate(arch: dict, only: set[str] | None = None) -> dict:
             cfg = list_page(p, spec, flow_map)
             if cfg:
                 used.add(cfg["data"])
+                by_data.setdefault(cfg["data"], []).append(cfg)
                 name = key if re.fullmatch(r"[A-Za-z_]\w*", key) else json.dumps(key)   # order-fee 这种带 - 的要加引号
                 pages.append(f"{name}(){{return ListPage({js(cfg)})}}")
                 made.append(p["name"])
@@ -277,9 +279,12 @@ def generate(arch: dict, only: set[str] | None = None) -> dict:
                 left.append(p["name"])
         if items:
             groups.append({"key": f"g{i + 1}", "label": mod["name"] if mod["type"] == "module" else "", "items": items})
-    script = "\n".join(f"Store.flow({js(name)},{js(fl)});" for name, fl in flow_map.items() if name != "_new")
+    from .arch_demo import demo     # 演示数据也照这些配置生成（放这里：arch_demo 要用本文件的 js）
+    data_js, texts = demo(by_data, spec, keys)
+    script = "\n".join(f"Store.flow({js(name)},{js(fl)});" for name, fl in flow_map.items() if name != "_new") + "\n" + data_js
     return {"nav": ",\n  ".join(js(g) for g in groups), "pages": ",\n  ".join(pages), "script": script,
-            "made": made, "left": left, "keys": keys, "data": sorted(used | set(flow_map) - {"_new"})}
+            "made": made, "left": left, "keys": keys, "data": sorted(by_data), "texts": texts,
+            "more": sorted(set(flow_map) - {"_new"} - set(by_data))}
 
 
 def handoff(gen: dict) -> str:
@@ -287,7 +292,9 @@ def handoff(gen: dict) -> str:
     left = "、".join(f"{n}（key: {gen['keys'][n]}）" for n in gen["left"]) or "没有"
     return ("\n\n程序已经照画布把这些列表页写好了（Pages 里的 ListPage 配置；菜单 NAV、状态流转 Store.flow 也写好了）："
             + "、".join(gen["made"]) + "。这几页不要整页重写，要改就用 replace_source_text 小改。你接着做（用 shell_add）：\n"
-            "1. 演示数据：script 里 Store.define 这几份：" + "、".join(gen["data"]) + "。字段名就用各页 columns / form / detail 里的 key（中文名），"
-            "状态字段叫 status，每个状态 2–3 条，编号唯一、日期围绕今天；引用别的数据的（维修工、分类）要在那份数据里真有；\n"
+            "1. 演示数据程序也生成好了（" + "、".join(gen["data"]) + "：每个状态都有，编号、日期、金额、人名、引用都填了），别再 Store.define 同一份。"
+            "只有文字是占位：用 replace_source_text 把 const Demo={text:{…}} 里的占位（" + "、".join(gen["texts"][:12]) + ("…" if len(gen["texts"]) > 12 else "")
+            + "）换成贴合业务的话，每项 3 条；"
+            + ("还缺的数据（" + "、".join(gen["more"]) + "）照列名补 Store.define；" if gen["more"] else "") + "\n"
             "2. 手写这几页（pages 里加同名 key 的方法）：" + left + "；\n"
             "3. 业务梳理里的规则：能在按钮上校验的，给对应 ListPage 按钮加 check:(值,行)=>'不通过的提示'；按钮只是提示演示的（run 弹 Toast）照业务接上真实行为。")

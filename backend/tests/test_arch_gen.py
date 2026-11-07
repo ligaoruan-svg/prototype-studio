@@ -55,7 +55,17 @@ class 画布直接生成列表页(unittest.TestCase):
             {"type": "modal", "name": "生成对账单", "fields": ["账期月份*（下拉：2026-10/2026-11）"]}]}]
         gen = arch_gen.generate({"nodes": tree, "spec": spec})
         self.assertIn('add:true,primary:true,defaults:{status:"待核对"}', gen["pages"])
-        self.assertNotIn("生成", gen["script"])               # 新建不是流转
+        self.assertNotIn('"生成"', gen["script"])             # 新建不是流转
+
+    def test_演示数据也照配置生成(self):
+        gen = arch_gen.generate({"nodes": TREE, "spec": SPEC})
+        script = gen["script"]
+        self.assertIn('Store.define("报修工单",[', script)
+        for want in ['status:"待派单"', 'status:"待接单"', 'status:"已关闭"', '"工单编号":"WO20261101"', '"报修分类":"水电"', '"材料费":60',
+                     'Demo.at(', 'Demo.t("报修工单·派单说明",']:
+            self.assertIn(want, script)
+        self.assertIn("报修工单·派单说明", gen["texts"])            # 文字留给 AI 换成真话
+        self.assertIn("别再 Store.define 同一份", arch_gen.handoff(gen))
 
     def test_同步到空外壳时程序先生成_再交给AI补(self):
         tmp = tempfile.TemporaryDirectory()

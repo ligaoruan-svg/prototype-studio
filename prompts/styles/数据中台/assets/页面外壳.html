@@ -300,7 +300,10 @@ const Store=(()=>{
   const same=(a,b)=>String(a)===String(b);
   const redraw=()=>{clearTimeout(timer);timer=setTimeout(()=>{if(typeof Router!=='undefined'&&document.getElementById('content'))Router.render()},0)};
   return{
-    define(n,rows=[]){if(!data[n]){data[n]=rows.map((r,i)=>({id:r.id??`${n}-${i+1}`,...r}));seq[n]=data[n].length}return data[n]},
+    // 先被 Store.all 读过（还是空的）也照样定义
+    define(n,rows=[]){if(!data[n]||!data[n].length){data[n]=rows.map((r,i)=>({id:r.id??`${n}-${i+1}`,...r}));seq[n]=data[n].length}
+      else if(rows.length)console.error(`Store.define('${n}') 已经定义过了，这次的数据没用上：要加字段用 Store.all('${n}').forEach(r=>…)，要换数据改原来那段`);
+      return data[n]},
     all(n){return list(n)},
     get(n,id){return list(n).find(r=>same(r.id,id))},
     where(n,fn){return list(n).filter(fn)},

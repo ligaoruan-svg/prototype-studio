@@ -796,7 +796,7 @@ _TEMPLATE = r'''
   // ===== 按梳理验收：「待派单」的工单点「派单」→ Store 里真变成「处理中」、这一行的「派单」跟着消失 =====
   // Store 当裁判（页面上的字可能是写死的，Store 里的状态才是真的）。只在后台副本里跑，点了什么都不算数
   // checks：[{object,action,from:[…],to,ui}]；ui=false 是系统自动做的，不找按钮，只看流转里有没有这个动作
-  let acceptBase=null;
+  let acceptBase=null,acceptOrig=new Set();
   const isAct=(el,action)=>{const t=bare(el);return t===action||(t.startsWith(action)&&t.length<=action.length+2);};
   const CONFIRM_TEXT=/^(确定|确认|提交|保存|完成|是)/;
   function collectionOf(name){
@@ -806,8 +806,9 @@ _TEMPLATE = r'''
   // 认出页面上的这一条：它在这类数据里独一无二的字段值（编号、名称），页面上一般会显示；程序生成的 id 放最后
   // 别的条里的字跟它互相包含的不要（「空调」和「空调不制冷」），不然会认到别的行上
   function keysOf(row,rows){
-    const other=rows.filter(r=>r!==row).flatMap(r=>Object.values(r).filter(v=>typeof v==="string"&&v.length>=2));
-    return Object.entries(row).filter(([k,v])=>k!=='status'&&typeof v==='string'&&v.length>=2&&v.length<=40&&!other.some(o=>o.includes(v)||v.includes(o)))
+    // 同一个字段里互相包含才算撞（2026-11 和别的行的 2026-10 不撞；和「生成时间 2026-11-07」不同字段，不算）
+    const other=k=>rows.filter(r=>r!==row).map(r=>r[k]).filter(v=>typeof v==="string"&&v.length>=2);
+    return Object.entries(row).filter(([k,v])=>k!=='status'&&typeof v==='string'&&v.length>=2&&v.length<=40&&!other(k).some(o=>o.includes(v)||v.includes(o)))
       .sort(([a],[b])=>(a==='id')-(b==='id')).map(([,v])=>v).slice(0,6);
   }
   // 这一条所在那一行（或卡片）里的动作按钮：从按钮往上找，找到含这一条编号的那层；碰到别的行的编号就是找过头了，停
@@ -873,7 +874,8 @@ _TEMPLATE = r'''
     const flow=Store.flow(n)||{};out.inFlow=c.action in flow;
     if(c.ui===false)return {...out,ok:out.inFlow,why:out.inFlow?'':'noflow'};
     const create=!c.from.length;   // 「生成：—→待核对」：起点是空的，就是新建一条，点页面顶上的按钮
-    const rows=Store.all(n),row=create?null:rows.find(r=>c.from.includes(r.status));
+    // 优先挑原来就有的那条：前面验「生成」新加的那条字段是随手填的，认不出来
+    const rows=Store.all(n),fits=r=>c.from.includes(r.status),row=create?null:(rows.find(r=>fits(r)&&acceptOrig.has(r.id))||rows.find(fits));
     if(!create&&!row)return {...out,ok:false,why:'nofrom',states:[...new Set(rows.map(r=>r.status).filter(Boolean))]};
     let who=null;
     if(row){const keys=keysOf(row,rows);if(!keys.length)return {...out,ok:false,why:'nokey'};who={keys,others:rows.filter(r=>r!==row).flatMap(r=>keysOf(r,rows))};out.key=keys[0];}
@@ -914,7 +916,7 @@ _TEMPLATE = r'''
   }
   async function accept(checks){
     if(typeof Store==='undefined'||!Store.names)return {store:false,results:[]};
-    await sleep(50);acceptBase=snapshot();
+    await sleep(50);acceptBase=snapshot();acceptOrig=new Set(Store.names().flatMap(n=>Store.all(n).map(r=>r.id)));
     try{window.confirm=()=>true;}catch{}   // 「确定要派单吗？」点确定
     const t0=Date.now(),results=[];
     for(const c of checks){
