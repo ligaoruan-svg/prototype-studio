@@ -543,6 +543,12 @@ class 业务梳理(unittest.TestCase):
         self.assertEqual(self.mod.stage_of("统计并进首页", None, A.load(self.pid), None, plan), "plan")
         self.assertEqual(self.mod.stage_of("梳理一下架构", None, A.load(self.pid), None), "spec")
         self.assertEqual(self.mod.stage_of("这样分合理吗？", None, A.load(self.pid), None), "ask")
+        # 一段需求一行写完、画布上只有外壳自带的「业务模块 / 首页」：先梳理，不当小改去改占位模块
+        brief = "做一个物业报修系统。业主在小程序提交报修，客服审核后派单给维修工，维修工接单、上门、完工填报，业主确认并评价。主管看统计。"
+        shell = {"nodes": [{"id": "m", "type": "module", "name": "业务模块", "children": [{"id": "h", "type": "page", "name": "首页", "children": []}]}]}
+        self.assertEqual(self.mod.stage_of(brief, None, shell, None), "spec")
+        self.assertEqual(self.mod.stage_of("加一个维修工页", None, shell, None), "spec")
+        self.assertEqual(self.mod.stage_of(brief, None, A.load(self.pid), None), "spec")
 
 
 def repair_tree():

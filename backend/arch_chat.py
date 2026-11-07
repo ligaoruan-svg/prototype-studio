@@ -192,6 +192,17 @@ def _pending_plan(project_id: str, page_id: str, current: dict) -> dict | None:
     return plan if last and last.get("plan") else None
 
 
+# 一段需求一行写完也算：「做一个物业报修系统。业主……」
+BRIEF = re.compile(r"(?:做|开发|搭建?|建|设计)(?:一个|一套|个|套)?.{0,24}?(?:系统|平台|小程序|后台|App|app|网站|管理端)")
+HOME_NAMES = {"首页", "工作台"}
+
+
+def _bare(nodes: list[dict]) -> bool:
+    """画布上只有外壳自带的「业务模块 / 首页」：当空的看，贴需求先梳理，别当小改去改占位模块"""
+    return all(n["type"] != "module" or n["name"] in arch_ops.PLACEHOLDER for n, _, _ in architecture.walk(nodes)) and \
+        all(n["type"] != "page" or n["name"] in HOME_NAMES for n, _, _ in architecture.walk(nodes))
+
+
 def stage_of(message: str, previous: str | None, current: dict, pending: dict | None, plan: dict | None = None) -> str:
     """这句话走哪条路：spec 梳理、plan 定页面清单、draw 按清单展开、edit 直接改、ask 只回答"""
     text = (message or "").strip()
@@ -204,16 +215,16 @@ def stage_of(message: str, previous: str | None, current: dict, pending: dict | 
     # 梳理卡还没确认：明摆着的问句才只回答（「为什么要分这么多对象？」），别的都是在改梳理（「费用这次不做」）
     if pending:
         return "ask" if ASK_HARD.search(text) and not NO_WRITE.search(text) else "spec"
-    mode = arch_mode(text, previous, not current.get("nodes"))
+    empty = _bare(current.get("nodes") or [])
+    mode = arch_mode(text, previous, empty)
     if mode == "discuss":
         return "ask"
-    big = ARCH_MAKE.search(text) or looks_like_brief(text) or len([x for x in text.splitlines() if x.strip()]) >= 3
+    big = ARCH_MAKE.search(text) or looks_like_brief(text) or len([x for x in text.splitlines() if x.strip()]) >= 3 \
+        or (len(text) >= 60 and BRIEF.search(text))
     # 画布上已经有东西、一行一条说要改哪几处：是小改，不是一段新需求
     if big and not ARCH_MAKE.search(text) and _instructions(text, current.get("nodes") or []):
         return "edit"
-    if pending or big or not current.get("nodes"):
-        return "spec"
-    return "edit"
+    return "spec" if big or empty else "edit"
 
 
 def run(project_id: str, page_id: str, message: str, key: str, model: str, base_url: str, max_tokens: int,
