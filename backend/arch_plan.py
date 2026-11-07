@@ -143,9 +143,10 @@ def _parsed(obj: dict) -> list[dict]:
 
 
 def _filters(fields: list[dict], states: list[str], tabs: bool) -> list[str]:
-    out = [f["name"] for f in fields if CODEISH.search(f["name"]) or NAMEISH.search(f["name"])][:1]
+    key = [f for f in fields if CODEISH.search(f["name"]) or NAMEISH.search(f["name"])][:1]     # 编号 / 名称：输入框搜
+    out = [f["name"] for f in key]
     out += [f["name"] + ("（下拉：" + "/".join(f["options"]) + "）" if f["options"] and f["type"] != "ref" else "（下拉）")
-            for f in fields if f["type"] in ("select", "radio", "ref", "person") and not f["locked"]][:3]
+            for f in fields if f["type"] in ("select", "radio", "ref", "person") and not f["locked"] and f not in key][:3]
     when = next((f["name"] for f in fields if f["type"] in ("date", "datetime")), "")
     if when:
         out.append(f"{when}（日期范围）")
@@ -164,16 +165,34 @@ def _cols(fields: list[dict], states: list[str]) -> list[str]:
 
 def _modal_fields(note: str, fields: list[dict], verb: str) -> list[str]:
     """流转弹窗只放这一步要填的：动作说明里点到的字段，提到原因 / 说明的加一个多行"""
-    out = [field_text(f["name"], True, False, f["type"], f["options"]) for f in fields if f["name"] in note and not f["locked"]]
-    if re.search(r"原因", note):
+    # 「必须选维修工」「需填处理说明」才是要填的；「通知维修工」「记录接单时间」不是
+    asked = [f for f in fields if not f["locked"] and re.search(r"(?:填|选|(?<!记)录|上传|附)[^，,；;。]*?" + re.escape(f["name"]), note)]
+    out = [field_text(f["name"], True, False, f["type"], f["options"]) for f in asked]
+    named = "".join(f["name"] for f in asked)
+    if re.search(r"原因", note) and "原因" not in named:
         out.append(f"{verb}原因*（多行）")
-    elif re.search(r"说明|备注|意见", note):
+    elif re.search(r"说明|备注|意见", note) and not re.search(r"说明|备注|意见", named):
         out.append(f"{verb}说明*（多行）")
     return out
 
 
-def _object_page(page: dict, obj: dict, roles: list[str]) -> list[dict]:
-    """list / tasks / config 页：筛选、表格（行上查看 + 流转按钮）、新增、详情、流转弹窗"""
+def _sub_table(sub: dict, parent: str, editable: bool) -> dict:
+    """明细子表（一张工单下的几行材料）：去掉指回主对象的那个关联字段"""
+    fields = [f for f in _parsed(sub) if not (f["type"] == "ref" and f["options"][:1] == [parent])]
+    if editable:
+        return {"type": "table", "name": sub["name"], "fields": [field_text(f["name"], f["must"], False, f["type"], f["options"]) for f in fields if not f["locked"]]}
+    return {"type": "table", "name": sub["name"], "cols": _cols(fields, [])}
+
+
+def _mentions(note: str, name: str) -> bool:
+    """动作说明里点到了这份明细（「需填处理说明和材料明细」点到了「工单材料明细」）"""
+    return any(name[i:] in note for i in range(len(name) - 2))     # 至少三个字：「记录」太泛
+
+
+def _object_page(page: dict, obj: dict, roles: list[str], subs: list[dict] = (), logs: list[dict] = ()) -> list[dict]:
+    """list / tasks / config 页：筛选、表格（行上查看 + 流转按钮）、新增、详情、流转弹窗。
+    subs：挂在这个对象下、自己没有页面的明细（工单材料明细）——详情里一张子表，点到它的流转弹窗里也放一张；
+    logs：每做一次动作记一条的（催办 → 催办记录）——那个动作的弹窗填的就是这条记录的字段"""
     name, kind = obj["name"], page["type"]
     fields, states = _parsed(obj), obj.get("states") or []
     acts = []
@@ -196,7 +215,8 @@ def _object_page(page: dict, obj: dict, roles: list[str]) -> list[dict]:
     kids: list[dict] = [{"type": "tab", "name": t} for t in tabs]
     kids.append({"type": "block", "name": "筛选", "fields": _filters(fields, states, bool(tabs))})
     buttons = [{"type": "button", "name": "查看", "action": "open", "target": f"{name}详情"}]
-    layers = [{"type": "drawer", "name": f"{name}详情", "fields": [f["name"] for f in fields] + (["状态"] if states else [])}]
+    layers = [{"type": "drawer", "name": f"{name}详情", "fields": [f["name"] for f in fields] + (["状态"] if states else []),
+               "children": [_sub_table(x, name, False) for x in subs]}]
     editable = [f for f in fields if not f["locked"]]
     if kind == "config":
         buttons.append({"type": "button", "name": "编辑", "action": "open", "target": f"编辑{name}"})
@@ -206,10 +226,15 @@ def _object_page(page: dict, obj: dict, roles: list[str]) -> list[dict]:
             continue
         button = {"type": "button", "name": verb, "when": "状态是" + "、".join(src) + "时", "after": f"状态变为{dst}"}
         body = _modal_fields(note, fields, verb)
-        if body:
+        log = next((x for x in [*logs, *subs] if x["name"].startswith(verb)), None)
+        if log:
+            body += [field_text(f["name"], f["must"], False, f["type"], f["options"]) for f in _parsed(log)
+                     if not f["locked"] and not (f["type"] == "ref" and f["options"][:1] == [name]) and field_text(f["name"], f["must"], False, f["type"], f["options"]) not in body]
+        inner = [_sub_table(x, name, True) for x in subs if x is not log and _mentions(note, x["name"])]
+        if body or inner:
             title = verb + name if verb in ("关闭", "取消", "删除", "作废") else verb    # 弹窗只叫「关闭」读回来认不出
             button.update(action="open", target=title)
-            layers.append({"type": "modal", "name": title, "fields": body})
+            layers.append({"type": "modal", "name": title, "fields": body, "children": inner})
         else:
             button.update(action="confirm", target=f"确认{verb}？")
         buttons.append(button)
@@ -229,8 +254,10 @@ def _metric_page(page: dict, spec: dict) -> list[dict]:
     kids: list[dict] = []
     if page["type"] == "report":
         kids.append({"type": "block", "name": "筛选", "fields": [f"{d}（下拉）" for d in page.get("dims") or []] + ["统计时间（日期范围）"]})
-    if page.get("metrics"):
-        kids.append({"type": "block", "name": "指标卡", "fields": page["metrics"]})
+    if page.get("metrics"):     # 字段只放指标名，口径写进介绍：整句当字段名，会被当成字段跟字段表比
+        calibers = [m for m in page["metrics"] if re.search(r"[：:].", m)]
+        kids.append({"type": "block", "name": "指标卡", "fields": [re.split(r"[：:]", m, maxsplit=1)[0] for m in page["metrics"]],
+                     **({"desc": "口径：" + "；".join(calibers)} if calibers else {})})
     if page["type"] == "report":
         dims = page.get("dims") or []
         if dims:
@@ -248,13 +275,22 @@ def expand(plan: dict, spec: dict) -> list[dict]:
     """页面清单 → 整棵页面树（画布的节点）"""
     objects = {o["name"]: o for o in (spec or {}).get("objects") or []}
     roles = [r["name"] for r in (spec or {}).get("roles") or []]
+    paged = {p.get("object") for m in plan["modules"] for p in m["pages"]}
+    # 自己没页面、关联到别的对象的（工单材料明细 → 报修工单）：当那个对象的明细子表
+    # 有页面、也关联到别的对象的（催办记录 → 报修工单）：那个对象上同名动作（催办）的弹窗填它的字段
+    subs: dict[str, list[dict]] = {}
+    logs: dict[str, list[dict]] = {}
+    for o in objects.values():
+        ref = next((f["options"][0] for f in _parsed(o) if f["type"] == "ref" and f["options"]), "")
+        if ref in paged:
+            (logs if o["name"] in paged else subs).setdefault(ref, []).append(o)
     nodes = []
     for mod in plan["modules"]:
         pages = []
         for p in mod["pages"]:
             obj = objects.get(p.get("object"))
             if p["type"] in ("list", "tasks", "config") and obj:
-                kids = _object_page(p, obj, roles)
+                kids = _object_page(p, obj, roles, subs.get(obj["name"], []), logs.get(obj["name"], []))
             else:
                 kids = _metric_page(p, spec)
             pages.append({"type": "page", "name": p["name"], "desc": p.get("desc", ""), "who": p["who"], "children": kids})

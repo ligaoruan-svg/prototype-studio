@@ -885,3 +885,41 @@ class 从原型读得更全(unittest.TestCase):
         self.assertIn("代码地图", text)
         self.assertIn("新增账号", text)
         self.assertLess(len(text), 15_000)
+
+
+class 页面清单展开(unittest.TestCase):
+    """测试七轮（物业报修）展开后自动检查报的三处：都该由展开本身做对，不留给 AI 修"""
+    def setUp(self):
+        from backend import arch_plan as P, arch_spec as S
+        self.spec = S.normalize({"roles": [{"name": n} for n in ["物业客服", "维修工", "物业主管", "业主"]], "objects": [
+            {"name": "报修工单", "states": ["待派单", "处理中", "待确认", "已完成"],
+             "fields": "工单编号🔒、维修工（关联：维修工）、处理说明、提交时间🔒",
+             "actions": ["派单：待派单→处理中（客服，必须选维修工）", "完工填报：处理中→待确认（维修工，需填处理说明和材料明细）",
+                         "业主确认：待确认→已完成（业主小程序）", "催办：处理中→处理中（客服，记录催办次数并通知维修工）"]},
+            {"name": "工单材料明细", "fields": "所属工单*（关联：报修工单）、材料*、数量*"},
+            {"name": "催办记录", "fields": "工单*（关联：报修工单）、催办方式*（下拉：电话/短信）、催办说明"},
+            {"name": "维修工", "fields": "工号*、姓名*"}]})
+        plan = P.normalize({"modules": [
+            {"name": "首页", "pages": [{"name": "首页", "type": "dashboard", "object": "报修工单", "who": ["物业客服"],
+                                        "metrics": ["超时未派单：紧急且提交时间超过 30 分钟仍待派单"]}]},
+            {"name": "报修工单", "pages": [{"name": "工单管理", "type": "list", "object": "报修工单", "who": ["物业客服"]},
+                                        {"name": "我的任务", "type": "tasks", "object": "报修工单", "who": ["维修工"]},
+                                        {"name": "催办记录", "type": "list", "object": "催办记录", "who": ["物业客服"], "add": False}]},
+            {"name": "基础数据", "pages": [{"name": "维修工", "type": "list", "object": "维修工", "who": ["物业主管"]}]}]})
+        self.arch = A.normalize({"name": "t", "nodes": P.expand(plan, self.spec), "spec": self.spec})
+        self.text = T.to_outline(self.arch)
+
+    def test_检查不再报(self):
+        from backend import arch_ops
+        self.assertEqual(arch_ops.problems(self.arch), [])      # 业主在小程序确认不要按钮；明细有地方放；口径不当字段
+
+    def test_明细子表(self):
+        self.assertIn("报修工单详情 [抽屉]", self.text)
+        self.assertRegex(self.text, r"完工填报 \[弹窗\] \| 字段：处理说明\*\n\s+工单材料明细 \[表格\] \| 字段：材料\*、数量\*")
+
+    def test_弹窗只放要填的(self):
+        self.assertIn("派单 [弹窗] | 字段：维修工*（关联：维修工）", self.text)
+        self.assertIn("催办 [弹窗] | 字段：催办方式*（下拉：电话/短信）、催办说明", self.text)    # 填的是催办记录，不是「通知维修工」
+
+    def test_指标口径进介绍(self):
+        self.assertIn("指标卡 [区块]：口径：超时未派单：紧急且提交时间超过 30 分钟仍待派单 | 字段：超时未派单", self.text)

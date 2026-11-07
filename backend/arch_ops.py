@@ -283,6 +283,9 @@ def problems(arch: dict) -> list[str]:
         text = " ".join(n["name"] + " " + (n.get("desc") or "") for n, _ in flat)
         buttons = [n["name"] for n, _ in flat if n.get("type") in ("button", "feature")]
         roles = [r.get("name", "") for r in spec.get("roles") or []]
+        # 页面上写了谁用的：只认后台里有页面的角色（业主在小程序里确认，后台不用给他按钮）
+        users = {w for n, _ in flat if n.get("type") == "page" for w in n.get("who") or []}
+        roles = [r for r in roles if r in users] or roles if users else roles
         for obj in spec.get("objects") or []:
             name = obj["name"]
             if name in skip:
@@ -313,7 +316,10 @@ def _synonyms(nodes: list[dict], spec: dict, path: dict) -> list[str]:
         names = {key_of(parse_field(f)["name"]) for f in (obj or {}).get("fields") or []}
         if not names:
             continue
-        for n, _, _ in walk(page.get("children") or []):
+        others = {o["name"] for o in spec.get("objects") or []} - {obj["name"]}
+        for n, _, ps in walk(page.get("children") or []):
+            if n["name"] in others or any(p["name"] in others for p in ps):
+                continue      # 详情、弹窗里挂的明细子表（工单材料明细）：比它自己的字段表，不比这一页的
             for raw in (n.get("cols") or []) + (n.get("fields") or []):
                 name = key_of(parse_field(raw)["name"])
                 twin = next((f for f in names if f != name and len(min(f, name, key=len)) >= 2 and (f in name or name in f)), "")
