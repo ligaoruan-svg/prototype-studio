@@ -110,12 +110,13 @@ button.spec-head{width:100%;border:0;background:none;text-align:left;cursor:poin
 .spec-assume{margin:6px 8px;padding:6px 9px;border-radius:9px;background:var(--quiet);font-size:12px;color:#5f5a52}.spec-assume b{display:block;font-weight:500;color:var(--ink)}
 .spec-assume ul{margin:2px 0 0;padding-left:16px}.spec-assume li{margin:1px 0}
 .spec-questions{margin:6px 4px 0;padding:8px 4px 2px;border-top:1px solid #f0ede4}
-.spec-q{margin:0 4px 8px}.spec-q p{margin:0 0 5px;font-weight:500;color:var(--ink)}
-.spec-options{display:flex;flex-wrap:wrap;gap:5px;min-width:0}
-.spec-options button{flex-shrink:1;min-width:0;max-width:100%;justify-content:flex-start;gap:5px;padding:4px 10px;border:1px solid var(--line);border-radius:999px;background:#fff;font-size:12px;color:#4d4a44;white-space:normal;text-align:left}
+.spec-q{margin:0 4px 8px}.spec-q p{margin:0 0 7px;font-weight:500;color:var(--ink);line-height:1.6}
+.spec-options{display:flex;flex-direction:column;gap:6px;min-width:0}
+.spec-options button{display:flex;align-items:center;gap:8px;width:100%;min-width:0;max-width:none;padding:7px 10px;border:1px solid var(--line);border-radius:10px;background:#fff;font-size:12.5px;line-height:1.5;color:var(--ink);white-space:normal;text-align:left;justify-content:flex-start}
+.spec-options button::before{content:'';flex:none;width:12px;height:12px;border:1.5px solid #cfcbc0;border-radius:50%;box-sizing:border-box}
 .spec-options button:hover:not(:disabled){background:var(--quiet)}
-.spec-options button.on{border-color:var(--primary);background:var(--primary-soft);color:var(--primary)}
-.spec-options em{flex:none;font-style:normal;font-size:10px;padding:0 5px;border-radius:7px;background:#fff;color:var(--primary)}
+.spec-options button.on{border-color:var(--primary);background:var(--primary-soft)}.spec-options button.on::before{border:4px solid var(--primary)}
+.spec-options em{flex:none;margin-left:auto;font-style:normal;font-size:10.5px;padding:0 6px;border-radius:7px;background:#fff;color:var(--primary)}
 .spec-foot{display:flex;align-items:center;gap:6px;margin-top:4px;padding:6px 2px 0;border-top:1px solid #f0ede4}
 .spec-note{flex:1;min-width:0;height:32px;padding:0 8px;border:none;border-radius:9px;outline:none;background:none;font-size:12.5px;color:var(--ink)}.spec-note:focus{background:var(--quiet)}
 .spec-draw{flex:none;min-height:32px;padding:5px 12px;border-radius:9px;font-size:12.5px}

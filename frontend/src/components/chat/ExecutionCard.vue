@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { Check, AlertCircle, LoaderCircle, ChevronDown, Lightbulb } from 'lucide-vue-next'
 import { brief, iconOf } from '../../lib/toolIcons.js'
+import { prose } from '../../lib/prose.js'
 import ResultCard from './ResultCard.vue'
 const props = defineProps({ run: Object, locked: Boolean })
 defineEmits(['retry', 'settings', 'select', 'repair', 'dismiss', 'fill', 'stop', 'point'])
@@ -54,7 +55,7 @@ const heading = computed(() => {
       <li v-else v-show="shown(step)" :class="[step.kind === 'note' ? 'note' : step.state, step.kind === 'live' ? 'live' : step.kind === 'note' ? '' : 'tool', { foldable: step.kind !== 'note' && step.detail }]">
       <template v-if="step.kind !== 'note'"><LoaderCircle v-if="step.state === 'running'" :size="13" class="spin" /><AlertCircle v-else-if="step.state === 'error'" :size="13" /><Check v-else-if="step.kind === 'live'" :size="13" /><component :is="iconOf(step)" v-else :size="13" class="tool-icon" /></template>
       <div><button v-if="step.kind !== 'note' && step.detail" type="button" class="step-head" :aria-expanded="opened.has(step.id)" @click="toggle(step.id)">{{ $t(step.label) }}<em v-if="!opened.has(step.id) && brief(step)" class="step-brief">{{ brief(step) }}</em><ChevronDown :size="12" :class="{ open: opened.has(step.id) }" /></button><span v-else>{{ $t(step.label) }}</span><small v-if="step.error">{{ $t(step.error) }}</small><small v-else-if="step.detail && opened.has(step.id)" class="step-detail">{{ $t(step.detail) }}</small></div></li></template></ol>
-    <p v-if="run.intent === 'architecture' && run.streamText && !run.result" class="stream-text lead">{{ run.streamText }}<span v-if="!run.steps.some(s => s.kind === 'live')" class="caret"></span></p>
+    <div v-if="run.intent === 'architecture' && run.streamText && !run.result" class="stream-text lead"><div class="prose" v-html="prose(run.streamText)"></div><span v-if="!run.steps.some(s => s.kind === 'live')" class="caret"></span></div>
     <ol aria-live="polite"><template v-for="step in run.intent === 'architecture' ? run.steps.filter(x => x.kind !== 'think') : run.steps" :key="step.id"><li v-if="step.kind === 'think'" class="think" :class="{ running: thinkingNow(step) }"><LoaderCircle v-if="thinkingNow(step)" :size="13" class="spin" /><Lightbulb v-else :size="13" />
       <div><button type="button" class="step-head" :aria-expanded="opened.has(step.id)" @click="toggle(step.id)">{{ $t(...thinkLabel(step)) }}<ChevronDown :size="12" :class="{ open: opened.has(step.id) }" /></button><small v-if="opened.has(step.id)" class="think-text">{{ step.text.trim() }}</small><small v-else-if="thinkingNow(step) && thinkTail(step)" class="think-text tail">{{ thinkTail(step) }}</small></div></li>
       <li v-else v-show="shown(step)" :class="[step.kind === 'note' ? 'note' : step.state, step.kind === 'live' ? 'live' : step.kind === 'note' ? '' : 'tool', { foldable: step.kind !== 'note' && step.detail }]">
@@ -94,7 +95,7 @@ const heading = computed(() => {
 .plan-list li>i{width:12px;height:12px;border:1.5px solid #d6d1c4;border-radius:50%;flex-shrink:0}
 .plan-list li.active{color:var(--ink);font-weight:500}
 .plan-list li.done{color:var(--subtle);text-decoration:line-through;text-decoration-color:#a3a29c66}.plan-list li.done svg{color:var(--success)}
-.stream-text.lead{margin:8px 0 2px}.stream-text{margin-top:10px;font-size:13.5px;line-height:1.8;color:var(--ink);white-space:pre-wrap;overflow-wrap:anywhere}
+.stream-text.lead{margin:8px 0 2px;white-space:normal;font-size:14px;line-height:1.7}.stream-text{margin-top:10px;font-size:13.5px;line-height:1.8;color:var(--ink);white-space:pre-wrap;overflow-wrap:anywhere}
 .caret{display:inline-block;width:7px;height:7px;margin-left:4px;border-radius:50%;vertical-align:1px;background:var(--primary);animation:blink 1.1s ease-in-out infinite}
 @keyframes blink{50%{opacity:.25}}
 @media (prefers-reduced-motion: reduce){.caret{animation:none}}

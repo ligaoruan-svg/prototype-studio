@@ -121,9 +121,9 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
         kind = event.get("type")
         if kind == "think_delta" and event.get("text"):
             if trail and trail[-1].get("think") is not None:
-                trail[-1]["think"] = (trail[-1]["think"] + event["text"])[:800]
+                trail[-1]["think"] = (trail[-1]["think"] + event["text"])[:4000]
             else:
-                trail.append({"think": event["text"][:800]})
+                trail.append({"think": event["text"][:4000]})
         elif kind == "note_delta" and event.get("text"):
             if trail and trail[-1].get("note") is not None:
                 trail[-1]["note"] = (trail[-1]["note"] + event["text"])[:300]
@@ -629,7 +629,7 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
                               [{"title":str(x).strip()[:60],"status":"pending"} for x in steps]
                     if any(not p["title"] for p in plan):
                         raise PatchError("每个步骤都要有标题")
-                    brief = str(args.get("brief") or "").strip()[:800]
+                    brief = str(args.get("brief") or "").strip()[:4000]
                     emit({"type":"plan","steps":plan, **({"brief": brief} if brief else {})})
                     output = {"ok":True,"steps":plan,"note":("计划记下了，不用再调 update_plan。一步一步做：每做完一步就调 finish_step 说清这一步做了什么、定义了哪些名字；"
                                                             "可以和这一步的 apply_operations 放在同一次回复里（先改、后报），省一轮。程序会帮你把对话收拾干净再做下一步。全部做完 report_result。")}

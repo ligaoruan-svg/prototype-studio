@@ -177,7 +177,7 @@ def prototype_digest(source: str) -> str:
 def _thought(thought: list[str], began: float) -> dict:
     """推理模型想的过程跟着回复存下来：回复上面「思考过程 · 用时」点开看"""
     text = "".join(thought).strip()
-    return {"trail": [{"think": text[:800]}], "took": round(time.time() - began)} if text else {}
+    return {"trail": [{"think": text[:4000]}], "took": round(time.time() - began)} if text else {}
 
 
 def _pending_spec(project_id: str, page_id: str, current: dict) -> dict | None:

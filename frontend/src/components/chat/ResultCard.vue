@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { Check, Undo2, ChevronDown, AlertCircle, BookmarkCheck, MessageCircle, Sparkles, Lightbulb } from 'lucide-vue-next'
 import { brief, iconOf } from '../../lib/toolIcons.js'
+import { prose } from '../../lib/prose.js'
 import SpecCard from './SpecCard.vue'
 import PlanCard from './PlanCard.vue'
 // applied：这张卡上已经照着改好（并保存）的建议的 instruction，由对话记录推出来，刷新后也对
@@ -44,6 +45,9 @@ const other = ref('')
 function sendOther() { const text = other.value.trim(); if (!text || props.locked) return; other.value = ''; emit('custom', { text, discussion: discussion.value }) }
 // 回复上面一行「做了 N 步 · 用时」（参照 Claude 收起的工具调用）：点开看当时边做边说的话和每一步拿到了什么
 const showTrail = ref(false)
+// 思考过程默认露三行，点「展开全部」看完整的
+const openThink = ref(new Set())
+function toggleThink(i) { const next = new Set(openThink.value); next.has(i) ? next.delete(i) : next.add(i); openThink.value = next }
 const trail = computed(() => props.result?.trail || [])
 const toolSteps = computed(() => trail.value.filter(r => r.note == null && r.think == null).length)
 const took = computed(() => { const t = props.result?.took || 0; return t >= 60 ? ['用时 {0} 分 {1} 秒', [Math.floor(t / 60), t % 60]] : t ? ['用时 {0} 秒', [t]] : null })
@@ -53,9 +57,9 @@ const statuses = { completed: '已完成', partial: '部分完成', unprocessed:
   <div class="result-card">
     <div v-if="trail.length" class="trail" :class="{ open: showTrail }">
       <button type="button" class="trail-head" :aria-expanded="showTrail" @click="showTrail = !showTrail">{{ toolSteps ? $t('做了 {0} 步', [toolSteps]) : $t('思考过程') }}<small v-if="took">{{ $t(...took) }}</small><ChevronDown :size="12" /></button>
-      <ol v-if="showTrail"><li v-for="(r, i) in trail" :key="i" :class="{ note: r.note != null, think: r.think != null, error: r.error }"><template v-if="r.note != null">{{ r.note }}</template><template v-else-if="r.think != null"><Lightbulb :size="13" /><p>{{ r.think.trim() }}</p></template><template v-else><component :is="r.error ? AlertCircle : iconOf(r)" :size="13" /><span>{{ $t(r.label) }}<em v-if="brief(r)">{{ brief(r) }}</em></span></template></li></ol>
+      <ol v-if="showTrail"><li v-for="(r, i) in trail" :key="i" :class="{ note: r.note != null, think: r.think != null, error: r.error }"><template v-if="r.note != null">{{ r.note }}</template><template v-else-if="r.think != null"><Lightbulb :size="13" /><div class="think-body"><p :class="{ full: openThink.has(i) }">{{ r.think.trim() }}</p><button v-if="r.think.length > 80" type="button" class="text-button think-more" @click="toggleThink(i)">{{ openThink.has(i) ? $t('收起') : $t('展开全部') }}</button></div></template><template v-else><component :is="r.error ? AlertCircle : iconOf(r)" :size="13" /><span>{{ $t(r.label) }}<em v-if="brief(r)">{{ brief(r) }}</em></span></template></li></ol>
     </div>
-    <p v-if="headline" class="result-summary">{{ $t(headline) }}</p>
+    <div v-if="headline" class="result-summary prose" v-html="prose($t(headline))"></div>
     <SpecCard v-if="result.spec" :spec="result.spec" :state="specState" :locked="locked" @draw="$emit('draw-spec', $event)" @revise="$emit('revise-spec', $event)" />
     <PlanCard v-if="result.plan" :plan="result.plan" :state="planState" :confirmed="planConfirmed" :locked="locked" @draw="$emit('draw-plan', $event)" @revise="$emit('revise-plan', $event)" />
     <div v-if="result.clarification" class="clarification"><p>{{ result.clarification.question }}</p><button v-for="option in result.clarification.options" :key="option" class="outline" :disabled="locked" @click="$emit('choose', { option, clarification: result.clarification })">{{ option }}</button></div>
@@ -91,7 +95,8 @@ const statuses = { completed: '已完成', partial: '部分完成', unprocessed:
 .trail-head svg{transition:transform .15s}.trail.open .trail-head svg{transform:rotate(180deg)}
 .trail ol{list-style:none;margin:6px 0 10px 6px;padding:0 0 0 13px;border-left:1.5px solid var(--line);display:flex;flex-direction:column;gap:6px}
 .trail li{display:flex;gap:7px;line-height:1.6}.trail li svg{flex:none;margin-top:3px;color:var(--subtle)}.trail li.note{color:var(--ink)}.trail li.error,.trail li.error svg{color:#a24b37}
-.trail li.think p{margin:0;font-size:11.5px;color:var(--subtle);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap}
+.think-body{min-width:0;flex:1}.trail li.think p{margin:0;font-size:11.5px;line-height:1.7;color:var(--subtle);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap}
+.trail li.think p.full{display:block;-webkit-line-clamp:unset;max-height:360px;overflow:auto}.think-more{margin-top:2px;padding:0;font-size:11.5px}
 .trail li span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.trail li em{margin-left:6px;font-style:normal;color:var(--subtle)}
 .remembered{display:flex;align-items:flex-start;gap:7px;margin-top:10px;padding:7px 10px;border-radius:10px;background:var(--quiet);font-size:12px;color:var(--ink)}
 .remembered svg{flex-shrink:0;margin-top:3px;color:var(--primary)}
@@ -100,7 +105,7 @@ const statuses = { completed: '已完成', partial: '部分完成', unprocessed:
 .selftest{margin-top:8px;padding:7px 10px;border-radius:10px;background:#fbf4e6;font-size:12px}.selftest.ok{background:transparent;padding:0 2px;color:var(--success)}.selftest b{font-weight:500}.selftest ul{margin:6px 0 0;padding-left:0;list-style:none;display:grid;gap:4px}.selftest li{color:var(--muted);font-size:11.5px;line-height:1.6}.selftest p{margin:4px 0 0;font-size:11.5px;color:var(--muted)}.selftest em{font-style:normal;font-size:10px;padding:1px 6px;margin-right:6px;border-radius:8px;background:#f3e6cc;color:#8a5a12}
 /* 回复正文直接流在背景上；只有 diff、建议这类块才有自己的容器。 */
 .result-card{font-size:12.5px;line-height:1.7}
-.result-summary{font-size:13.5px;line-height:1.8;color:var(--ink);white-space:pre-wrap;overflow-wrap:anywhere}
+.result-summary{overflow-wrap:anywhere}
 .change-row{display:flex;align-items:center;gap:4px;margin-top:10px}
 .change-chip{min-width:0;gap:7px;padding:5px 10px 5px 6px;border:1px solid var(--line);border-radius:10px;background:#fff;font-size:12px;color:var(--ink);font-weight:500}.change-chip:hover:not(:disabled){border-color:#d6d1c4;background:#fdfcf9}.change-chip:disabled{opacity:1;cursor:default}
 .change-icon{display:grid;place-items:center;width:18px;height:18px;border-radius:6px;background:#e6f1e7;color:var(--success)}

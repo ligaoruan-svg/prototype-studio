@@ -1,6 +1,7 @@
 <script setup>
 // 从 App.vue 拆出来的一块界面：状态和函数都在 App 里，按同样的名字 inject 进来，模板原样不动
 import { computed, inject, onMounted, onUnmounted, ref } from 'vue'
+import { prose } from '../../lib/prose.js'
 import { ArrowUp, Brain, Check, CheckCheck, ChevronDown, Copy, ImagePlus, LoaderCircle, MessageCircle, MessageSquare, PanelLeftClose, Pencil, Plus, SlidersHorizontal, Sparkles, Square, SquareMousePointer, X } from 'lucide-vue-next'
 import ExecutionCard from '../chat/ExecutionCard.vue'
 import ResultCard from '../chat/ResultCard.vue'
@@ -92,7 +93,7 @@ function appliedFor(message) {
           <button v-if="!message.display && isLong(message.content)" class="text-button more-text" @click="toggleLong(message.id)">{{ openLong.has(message.id) ? $t('收起') : $t('展开全部') }}</button>
         </template>
         <ResultCard v-else-if="message.report || message.clarification || message.discussion || message.changed || message.spec || message.plan" :result="message" :applied="appliedFor(message)" :spec-state="specState(message)" :plan-state="planState(message)" :plan-confirmed="planConfirmed(message)" :selftest="selftests[message.change_id]" :locked="locked" :can-undo="page?.last_undo_id === message.change_id" @undo="undo" @choose="chooseAnswer" @apply="applySuggestion" @discuss="discussSuggestion" @custom="customSuggestion" @rephrase="useRephrase" @forget="forgetFromCard" @draw-spec="drawSpec" @revise-spec="reviseSpec" @draw-plan="drawPlan" @revise-plan="revisePlan" />
-        <p v-else class="reply">{{ message.content }}</p>
+        <div v-else class="reply prose" v-html="prose(message.content)"></div>
         <span v-if="message.role === 'user' && message.target" class="message-target"><SquareMousePointer :size="12" />{{ $t('指着：{0}', [$t(message.target)]) }}</span>
         <img v-if="message.role === 'user' && message.image" class="message-shot" loading="lazy" :src="`/api/projects/${project.id}/chat-images/${message.image}`" :alt="message.image_name || $t('参考截图缩略图')" @error="$event.target.style.display = 'none'">
         <div class="message-tools"><time>{{ formatTime(message.created_at) }}</time><button class="icon-button" :aria-label="$t('复制这条内容')" :title="$t('复制')" @click="copyMessage(message.report?.summary || message.discussion?.answer || message.content)"><Copy :size="13" /></button><button v-if="message.role === 'user'" class="icon-button" :aria-label="$t('编辑后重新发送')" :title="$t('编辑后重发')" :disabled="locked" @click="editAndResend(message)"><Pencil :size="13" /></button></div>
