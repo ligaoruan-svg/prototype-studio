@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { Check, AlertCircle, LoaderCircle, ChevronDown } from 'lucide-vue-next'
+import { Check, AlertCircle, LoaderCircle, ChevronDown, Lightbulb } from 'lucide-vue-next'
 import { brief, iconOf } from '../../lib/toolIcons.js'
 import ResultCard from './ResultCard.vue'
 const props = defineProps({ run: Object, locked: Boolean })
@@ -20,10 +20,14 @@ const discussing = computed(() => props.run.intent === 'discuss')
 // 工具一步一行（像 Claude 显示工具调用）：图标说明干的是哪类事，后面一小截灰字是它拿到了什么，点开看全；
 // 步数多了只露最近 3 步，前面的收在标题右边的「N 步」里
 const showSteps = ref(false)
-const tools = computed(() => props.run.steps.filter(s => !['note', 'live'].includes(s.kind)))
+const tools = computed(() => props.run.steps.filter(s => !['note', 'live', 'think'].includes(s.kind)))
 const toolCount = computed(() => tools.value.length)
 const recent = computed(() => new Set(tools.value.slice(-3).map(s => s.id)))
-const shown = step => ['note', 'live'].includes(step.kind) || showSteps.value || recent.value.has(step.id) || step.state === 'running' || step.state === 'error'
+// 思考：还在想的露最后两句，想完了「想了 N 秒」
+const thinkingNow = step => !step.ended && busy.value
+const thinkTail = step => { const lines = String(step.text || '').trim().split(/\n+/); return lines.slice(-2).join(' ').slice(-120) }
+const thinkLabel = step => thinkingNow(step) ? ['思考中…'] : ['想了 {0} 秒', [Math.max(1, Math.round(((step.ended || props.run.finished || now.value) - step.started) / 1000))]]
+const shown = step => ['note', 'live', 'think'].includes(step.kind) || showSteps.value || recent.value.has(step.id) || step.state === 'running' || step.state === 'error'
 // 以前不管干什么都写"修改中"：问一句"这里美观吗"也是修改中，还在读代码也是修改中。
 // 标题按当下实际在做的事说话——讨论就说在看，动过文件才叫修改。
 const heading = computed(() => {
@@ -44,12 +48,20 @@ const heading = computed(() => {
     <header><LoaderCircle v-if="busy" :size="14" class="spin" /><AlertCircle v-else :size="14" /><strong>{{ $t(heading) }}</strong><span class="grow"></span><button v-if="toolCount > 3" type="button" class="steps-toggle" :aria-expanded="showSteps" @click="showSteps = !showSteps">{{ $t('{0} 步', [toolCount]) }}<ChevronDown :size="12" :class="{ open: showSteps }" /></button><time>{{ $t(clock) }}</time></header>
     <div v-if="run.brief" class="plan-brief"><b>{{ $t('业务梳理') }}</b><p>{{ run.brief }}</p></div>
     <ol v-if="run.plan?.length" class="plan-list" :aria-label="discussing ? $t('分析步骤') : $t('修改计划')"><li v-for="(step, i) in run.plan" :key="i" :class="step.status"><Check v-if="step.status === 'done'" :size="12" /><LoaderCircle v-else-if="step.status === 'active'" :size="12" class="spin" /><i v-else></i>{{ step.title }}</li></ol>
-    <p v-if="run.intent === 'architecture' && run.streamText && !run.result" class="stream-text lead">{{ run.streamText }}<span v-if="!run.steps.some(s => s.kind === 'live')" class="caret"></span></p>
-    <ol aria-live="polite"><li v-for="step in run.steps" v-show="shown(step)" :key="step.id" :class="[step.kind === 'note' ? 'note' : step.state, step.kind === 'live' ? 'live' : step.kind === 'note' ? '' : 'tool', { foldable: step.kind !== 'note' && step.detail }]">
+
+    <ol v-if="run.intent === 'architecture' && run.steps.some(x => x.kind === 'think')" class="think-first"><template v-for="step in run.steps.filter(x => x.kind === 'think')" :key="step.id"><li v-if="step.kind === 'think'" class="think" :class="{ running: thinkingNow(step) }"><LoaderCircle v-if="thinkingNow(step)" :size="13" class="spin" /><Lightbulb v-else :size="13" />
+      <div><button type="button" class="step-head" :aria-expanded="opened.has(step.id)" @click="toggle(step.id)">{{ $t(...thinkLabel(step)) }}<ChevronDown :size="12" :class="{ open: opened.has(step.id) }" /></button><small v-if="opened.has(step.id)" class="think-text">{{ step.text.trim() }}</small><small v-else-if="thinkingNow(step) && thinkTail(step)" class="think-text tail">{{ thinkTail(step) }}</small></div></li>
+      <li v-else v-show="shown(step)" :class="[step.kind === 'note' ? 'note' : step.state, step.kind === 'live' ? 'live' : step.kind === 'note' ? '' : 'tool', { foldable: step.kind !== 'note' && step.detail }]">
       <template v-if="step.kind !== 'note'"><LoaderCircle v-if="step.state === 'running'" :size="13" class="spin" /><AlertCircle v-else-if="step.state === 'error'" :size="13" /><Check v-else-if="step.kind === 'live'" :size="13" /><component :is="iconOf(step)" v-else :size="13" class="tool-icon" /></template>
-      <div><button v-if="step.kind !== 'note' && step.detail" type="button" class="step-head" :aria-expanded="opened.has(step.id)" @click="toggle(step.id)">{{ $t(step.label) }}<em v-if="!opened.has(step.id) && brief(step)" class="step-brief">{{ brief(step) }}</em><ChevronDown :size="12" :class="{ open: opened.has(step.id) }" /></button><span v-else>{{ $t(step.label) }}</span><small v-if="step.error">{{ $t(step.error) }}</small><small v-else-if="step.detail && opened.has(step.id)" class="step-detail">{{ $t(step.detail) }}</small></div></li></ol>
+      <div><button v-if="step.kind !== 'note' && step.detail" type="button" class="step-head" :aria-expanded="opened.has(step.id)" @click="toggle(step.id)">{{ $t(step.label) }}<em v-if="!opened.has(step.id) && brief(step)" class="step-brief">{{ brief(step) }}</em><ChevronDown :size="12" :class="{ open: opened.has(step.id) }" /></button><span v-else>{{ $t(step.label) }}</span><small v-if="step.error">{{ $t(step.error) }}</small><small v-else-if="step.detail && opened.has(step.id)" class="step-detail">{{ $t(step.detail) }}</small></div></li></template></ol>
+    <p v-if="run.intent === 'architecture' && run.streamText && !run.result" class="stream-text lead">{{ run.streamText }}<span v-if="!run.steps.some(s => s.kind === 'live')" class="caret"></span></p>
+    <ol aria-live="polite"><template v-for="step in run.intent === 'architecture' ? run.steps.filter(x => x.kind !== 'think') : run.steps" :key="step.id"><li v-if="step.kind === 'think'" class="think" :class="{ running: thinkingNow(step) }"><LoaderCircle v-if="thinkingNow(step)" :size="13" class="spin" /><Lightbulb v-else :size="13" />
+      <div><button type="button" class="step-head" :aria-expanded="opened.has(step.id)" @click="toggle(step.id)">{{ $t(...thinkLabel(step)) }}<ChevronDown :size="12" :class="{ open: opened.has(step.id) }" /></button><small v-if="opened.has(step.id)" class="think-text">{{ step.text.trim() }}</small><small v-else-if="thinkingNow(step) && thinkTail(step)" class="think-text tail">{{ thinkTail(step) }}</small></div></li>
+      <li v-else v-show="shown(step)" :class="[step.kind === 'note' ? 'note' : step.state, step.kind === 'live' ? 'live' : step.kind === 'note' ? '' : 'tool', { foldable: step.kind !== 'note' && step.detail }]">
+      <template v-if="step.kind !== 'note'"><LoaderCircle v-if="step.state === 'running'" :size="13" class="spin" /><AlertCircle v-else-if="step.state === 'error'" :size="13" /><Check v-else-if="step.kind === 'live'" :size="13" /><component :is="iconOf(step)" v-else :size="13" class="tool-icon" /></template>
+      <div><button v-if="step.kind !== 'note' && step.detail" type="button" class="step-head" :aria-expanded="opened.has(step.id)" @click="toggle(step.id)">{{ $t(step.label) }}<em v-if="!opened.has(step.id) && brief(step)" class="step-brief">{{ brief(step) }}</em><ChevronDown :size="12" :class="{ open: opened.has(step.id) }" /></button><span v-else>{{ $t(step.label) }}</span><small v-if="step.error">{{ $t(step.error) }}</small><small v-else-if="step.detail && opened.has(step.id)" class="step-detail">{{ $t(step.detail) }}</small></div></li></template></ol>
     <p v-if="run.intent !== 'architecture' && run.streamText && !run.result" class="stream-text">{{ run.streamText }}<span class="caret"></span></p>
-    <p v-else-if="busy && !run.steps.some(s => s.state === 'running')" class="model-wait">{{ $t(run.label || '理解需求中') }}</p>
+    <p v-else-if="busy && !run.steps.some(s => s.state === 'running' || (s.kind === 'think' && !s.ended))" class="model-wait">{{ $t(run.label || '理解需求中') }}</p>
     <ResultCard v-if="run.status === 'checking' && run.result" :result="run.result" checking />
     <div v-if="run.error" class="run-error"><p>{{ $t(run.error.message) }}</p><details v-if="run.error.detail && run.error.detail !== run.error.message"><summary>{{ $t('查看详情') }}</summary><p>{{ $t(run.error.detail) }}</p></details><div class="run-error-actions"><button v-if="run.error.code === 'model_account'" class="outline" @click="$emit('settings')">{{ $t('打开设置') }}</button><button v-else-if="run.error.code === 'validation'" class="outline" :disabled="locked" @click="$emit('repair')">{{ $t('让 AI 修复') }}</button><button v-else-if="run.error.code === 'patch_target'" class="outline" :disabled="locked" @click="$emit('select')">{{ $t('重新点选后重试') }}</button><button v-else-if="['tool_rejected','stalled'].includes(run.error.code)" class="outline" :disabled="locked" :title="$t('没指位置时 AI 只能在源码里猜：在页面上点一下要改的地方（点了没反应的，切到交互把它点一遍），再发送')" @click="$emit('point')">{{ $t('指给它看') }}</button><button v-else-if="['output_limit','invalid_arguments','iterations'].includes(run.error.code)" class="outline" :disabled="locked" :title="$t('一次要改的太多：把要求放回输入框，删成一小步再发')" @click="$emit('fill')">{{ $t('拆小一点再发') }}</button><button v-else class="outline" :disabled="locked" @click="$emit('retry')">{{ $t('重试') }}</button><button class="quiet" @click="$emit('dismiss')">{{ run.error.code === 'validation' ? $t('放弃') : $t('关闭') }}</button></div></div>
   </section>
@@ -67,6 +79,8 @@ const heading = computed(() => {
 .execution-card ol:empty{display:none}
 .execution-card li{display:flex;gap:7px;color:var(--muted)}.execution-card li svg{margin-top:3px;flex-shrink:0}.execution-card li small{display:block;font-size:11.5px;color:#a24b37;overflow-wrap:anywhere}
 .execution-card li.tool .tool-icon{color:var(--subtle)}.execution-card li.done.tool{color:var(--muted)}
+.execution-card li.think{color:var(--muted)}.execution-card li.think svg{color:var(--subtle)}.execution-card li.think.running svg{color:var(--primary)}
+.think-text{display:block;margin-top:3px;font-size:11.5px!important;line-height:1.7;color:var(--subtle)!important;white-space:pre-wrap;max-height:240px;overflow:auto}.think-text.tail{white-space:normal;max-height:none}
 .step-brief{margin-left:6px;font-style:normal;font-size:11.5px;color:var(--subtle);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .execution-card li small.step-detail{color:var(--muted);margin-top:3px;line-height:1.7}
 .step-head{display:flex;align-items:center;gap:4px;max-width:100%;min-width:0;padding:0;min-height:0;background:none;border:0;color:inherit;font:inherit;text-align:left;cursor:pointer}

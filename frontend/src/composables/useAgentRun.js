@@ -69,6 +69,12 @@ export function useAgentRun(s) {
         if (event.type === 'model_retry') current.steps.push({ id: `retry-${event.round}-${event.attempt}`, label: event.label, state: 'done' })
         if (event.type === 'intent') { current.intent = event.intent; current.options.intent = event.intent; status.value = event.intent === 'discuss' ? '讨论中 · 不会修改文件' : '正在读页面' }
         if (event.type === 'plan') { current.plan = event.steps; if (event.brief) current.brief = event.brief }
+        // 推理模型想的过程（参照 Claude 的「思考」）：一段一行，想的时候露最后两句，想完收成「想了 N 秒」点开看
+        const thinking = current.steps.findLast(item => item.kind === 'think' && !item.ended)
+        if (event.type === 'think_delta') {
+          if (thinking) thinking.text += event.text
+          else current.steps.push({ id: 'think-' + current.steps.length, kind: 'think', text: event.text, started: Date.now() })
+        } else if (thinking && ['text_delta', 'note_delta', 'live', 'step_start', 'model_wait'].includes(event.type)) thinking.ended = Date.now()
         if (event.type === 'model_wait') { current.streamText = ''; current.round = event.round }
         if (event.type === 'text_delta') current.streamText += event.text
         if (event.type === 'note_delta') {

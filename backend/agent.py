@@ -119,7 +119,12 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
 
     def emit(event: dict) -> None:
         kind = event.get("type")
-        if kind == "note_delta" and event.get("text"):
+        if kind == "think_delta" and event.get("text"):
+            if trail and trail[-1].get("think") is not None:
+                trail[-1]["think"] = (trail[-1]["think"] + event["text"])[:800]
+            else:
+                trail.append({"think": event["text"][:800]})
+        elif kind == "note_delta" and event.get("text"):
             if trail and trail[-1].get("note") is not None:
                 trail[-1]["note"] = (trail[-1]["note"] + event["text"])[:300]
             else:
@@ -318,7 +323,7 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
         # 本轮的结论文字在工具参数里，边收边推给界面；只在有事件通道时才走流式。
         # note = 模型在动手之前说的话（它为什么要查这个）；result = 最终结论。
         # 两者混在一起的话，旁白会被当成结论显示，结论又会被下一轮擦掉。
-        on_delta = ((lambda text, kind="result": emit({"type": "note_delta" if kind == "note" else "text_delta", "text": text}))
+        on_delta = ((lambda text, kind="result": emit({"type": {"note": "note_delta", "think": "think_delta"}.get(kind, "text_delta"), "text": text}))
                     if (stream and on_event) else None)
         try:
             wrapping = wrapup_round is not None and round_no >= wrapup_round

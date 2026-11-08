@@ -49,3 +49,14 @@ class 边写边看(unittest.TestCase):
         last = {e["id"]: e["state"] for e in events if e["type"] == "live"}
         self.assertTrue(last and all(s == "done" for s in last.values()))
         self.assertIn("running", [e["state"] for e in events if e["type"] == "live"])
+
+
+class 推理模型想的过程(unittest.TestCase):
+    def test_reasoning_content_推给界面(self):
+        from backend.deepseek_client import _assemble
+        got = []
+        events = [{"choices": [{"delta": {"reasoning_content": "用户想讨论"}}]}, {"choices": [{"delta": {"reasoning": "，不改"}}]},
+                  {"choices": [{"delta": {"content": "好的"}, "finish_reason": "stop"}]}]
+        out = _assemble(events, lambda text, kind: got.append((kind, text)))
+        self.assertEqual(got, [("think", "用户想讨论"), ("think", "，不改"), ("note", "好的")])
+        self.assertEqual(out["choices"][0]["message"]["content"], "好的")       # 想的不进回复

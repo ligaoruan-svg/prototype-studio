@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from typing import Any, Callable
 
 from . import arch_ops, arch_plan, arch_spec, architecture, storage
@@ -173,6 +174,12 @@ def prototype_digest(source: str) -> str:
     return "\n".join(parts)[:DIGEST_MAX]
 
 
+def _thought(thought: list[str], began: float) -> dict:
+    """推理模型想的过程跟着回复存下来：回复上面「思考过程 · 用时」点开看"""
+    text = "".join(thought).strip()
+    return {"trail": [{"think": text[:800]}], "took": round(time.time() - began)} if text else {}
+
+
 def _pending_spec(project_id: str, page_id: str, current: dict) -> dict | None:
     """梳理卡还在等你确认：存的梳理还是草稿，而且之后没有按它画、也没有直接改过画布（中间问几句不算）"""
     spec = current.get("spec")
@@ -287,8 +294,14 @@ def run(project_id: str, page_id: str, message: str, key: str, model: str, base_
     on_event({"type": "progress", "label": label})
     live = Live(stage, on_event)     # 边写边给人看：正文一句句出来，梳理 / 清单一块块亮
 
+    thought, began = [], time.time()
+
     def on_delta(text, kind="note"):
-        live.feed(text)
+        if kind == "think":     # 推理模型想的过程：照样推给界面，前面十几秒不再一片空白；也跟着回复存下来，回头能看
+            thought.append(text)
+            on_event({"type": "think_delta", "text": text})
+        else:
+            live.feed(text)
     try:
         resp = chat(key, model, messages, None, base_url=base_url, max_tokens=_limit(limit, max_tokens),
                     on_delta=on_delta if stream else None, should_stop=should_stop)
@@ -309,7 +322,7 @@ def run(project_id: str, page_id: str, message: str, key: str, model: str, base_
         architecture.save(project_id, current)
         content = arch_spec.headline(fresh_spec, revised=bool(pending))
         storage.append_chat(project_id, "assistant", content, {"page_id": page_id, "changed": False, "intent": "architecture",
-                                                               "arch_mode": "spec", "spec": fresh_spec, "usage": usage})
+                                                               "arch_mode": "spec", "spec": fresh_spec, "usage": usage, **_thought(thought, began)})
         return {"changed": False, "intent": "architecture", "content": content, "spec": fresh_spec, "architecture_changed": False, "usage": usage}
     if stage == "plan":   # 只出页面清单卡，画布不动
         fresh = arch_plan.parse(reply)
@@ -320,7 +333,7 @@ def run(project_id: str, page_id: str, message: str, key: str, model: str, base_
         architecture.save(project_id, current)
         content = arch_plan.headline(fresh, revised=bool(plan))
         storage.append_chat(project_id, "assistant", content, {"page_id": page_id, "changed": False, "intent": "architecture",
-                                                               "arch_mode": "plan", "plan": fresh, "usage": usage})
+                                                               "arch_mode": "plan", "plan": fresh, "usage": usage, **_thought(thought, began)})
         return {"changed": False, "intent": "architecture", "content": content, "plan": fresh, "architecture_changed": False, "usage": usage}
     if stage == "ask":   # 只回答，页面树不动
         answer, suggestions = _answer(reply)
@@ -329,7 +342,7 @@ def run(project_id: str, page_id: str, message: str, key: str, model: str, base_
         except ValueError as exc:
             raise WorkError("arch_unreadable", "AI 没给出回答，换个说法再试一次") from exc
         storage.append_chat(project_id, "assistant", discussion["answer"], {"page_id": page_id, "changed": False, "intent": "architecture",
-                                                                             "arch_mode": "discuss", "discussion": discussion, "usage": usage})
+                                                                             "arch_mode": "discuss", "discussion": discussion, "usage": usage, **_thought(thought, began)})
         return {"changed": False, "intent": "architecture", "content": discussion["answer"], "discussion": discussion,
                 "architecture_changed": False, "usage": usage}
     # 模型想的这段时间里，画布可能刚从原型读完又补了东西：改动落在最新的那份上，别拿开头读的旧副本冲掉
@@ -350,7 +363,7 @@ def run(project_id: str, page_id: str, message: str, key: str, model: str, base_
         summary += "\n\n有 {0} 处没对上，跳过了：{1}".format(len(failed), "；".join(failed[:5]))
     content = summary + ("\n\n" + check_note if check_note else "")
     storage.append_chat(project_id, "assistant", content, {"page_id": page_id, "changed": False, "intent": "architecture", "arch_mode": mode,
-                                                           "arch_changed": True, "arch_check": check, "usage": usage})
+                                                           "arch_changed": True, "arch_check": check, "usage": usage, **_thought(thought, began)})
     return {"changed": False, "intent": "architecture", "content": content, "architecture_changed": True, "arch_check": check, "usage": usage}
 
 

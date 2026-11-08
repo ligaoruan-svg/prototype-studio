@@ -165,6 +165,11 @@ def _assemble(events, on_delta):
         for choice in event.get('choices') or []:
             finish = choice.get('finish_reason') or finish
             delta = choice.get('delta') or {}
+            # 推理模型先想再答（deepseek 的 reasoning_content，有的服务叫 reasoning）：想的过程也推给界面，
+            # 不然前面十几秒什么都没有，只能干等
+            thought = delta.get('reasoning_content') or delta.get('reasoning')
+            if isinstance(thought, str) and thought:
+                on_delta(thought, 'think')
             if delta.get('content'):
                 content.append(delta['content'])
                 # 模型在调工具之前说的话——它为什么要查这个。
