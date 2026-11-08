@@ -35,14 +35,21 @@ def _main(html: str) -> str:
     return re.sub(r"<aside.*?</aside>", "", html or "", flags=re.S)
 
 
-def _nav_groups(html: str, titles: list[str]) -> list[tuple[str, list[str]]]:
-    """侧边菜单里按出现顺序：不是页面名的短文字当分组（模块），页面名归到它前面那个分组"""
+def _nav_groups(html: str, titles: list[str], skip: set[str] = frozenset()) -> list[tuple[str, list[str]]]:
+    """侧边菜单里按出现顺序：不是页面名的短文字当分组（模块），页面名归到它前面那个分组。
+    skip：系统名（侧边栏顶上的「测试七轮」）不是分组——以前单独的「首页」被归到它下面，画布上多出一个叫系统名的模块"""
     aside = re.search(r"<aside.*?</aside>", html or "", re.S)
     texts = [re.sub(r"\s+", " ", t).strip() for t in re.split(r"<[^>]+>", aside.group(0) if aside else "")]
     texts = [t.strip("⌃⌄▾▸▴ ") for t in texts if t.strip("⌃⌄▾▸▴ ")]
     groups: list[tuple[str, list[str]]] = []
     current = ""
-    for t in texts:
+    for i, t in enumerate(texts):
+        if t in skip:
+            current = ""
+            continue
+        if t in titles and i + 1 < len(texts) and texts[i + 1] == t:     # 「首页」分组下只有一个「首页」：前一个是分组名
+            current = t
+            continue
         if t in titles:
             if not groups or groups[-1][0] != current:
                 groups.append((current, []))
@@ -299,7 +306,8 @@ def expand_tree(project_id: str, page_id: str) -> list[dict]:
         return []
     titles = [r.get("title") or r.get("hash") for r in routes]
     first = next((e.get("result") or {} for e in entries.values() if (e.get("result") or {}).get("page")), {})
-    groups = _nav_groups(first.get("page") or "", titles)
+    meta = storage.load_meta(project_id)
+    groups = _nav_groups(first.get("page") or "", titles, {meta.get("name") or "", "示例系统"} - {""} - set(titles))
     pages, tabs_of = {}, {}
     by_hash = {r.get("hash"): r.get("title") or r.get("hash") for r in routes}
     for r in routes:

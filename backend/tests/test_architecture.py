@@ -923,3 +923,14 @@ class 页面清单展开(unittest.TestCase):
 
     def test_指标口径进介绍(self):
         self.assertIn("指标卡 [区块]：口径：超时未派单：紧急且提交时间超过 30 分钟仍待派单 | 字段：超时未派单", self.text)
+
+
+class 读原型的菜单分组(unittest.TestCase):
+    """测试七轮：同步后画布多出一个叫系统名的模块，里面一个「首页」——侧边栏顶上的系统名被当成了分组，
+    「首页」分组下只有一个「首页」时分组名又被当成了页面"""
+    def test_系统名不是分组_同名分组认得出(self):
+        from backend.arch_expand import _nav_groups
+        html = '<aside><div>测试七轮</div><div>首页</div><a>首页</a><div>报修工单</div><a>工单管理</a><a>我的任务</a></aside>'
+        self.assertEqual(_nav_groups(html, ['首页', '工单管理', '我的任务'], {'测试七轮'}), [('首页', ['首页']), ('报修工单', ['工单管理', '我的任务'])])
+        flat = '<aside><div>测试七轮</div><a>首页</a><div>报修工单</div><a>工单管理</a></aside>'
+        self.assertEqual(_nav_groups(flat, ['首页', '工单管理'], {'测试七轮'}), [('', ['首页']), ('报修工单', ['工单管理'])])
