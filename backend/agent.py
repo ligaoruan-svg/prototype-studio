@@ -12,7 +12,7 @@ from .patcher import apply_operations, verify_source, PatchError, regions, outli
 from . import storage
 from .transactions import stage
 from .errors import WorkError, error_payload
-from .experience import element_name, tool_label, compact_once, changed_targets, result_report, scope_report, step_detail
+from .experience import element_name, tool_label, compact_once, changed_targets, result_report, scope_report, step_detail, step_diff
 from .conversation import resolve_intent, is_continue, discussion_result, history_context, chat_display
 from . import components, memory, page_check, skills, skill_digest
 from . import architecture as arch_mod
@@ -131,6 +131,7 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
                 trail.append({"note": event["text"][:300]})
         elif kind in ("step_done", "step_error") and event.get("label") and event.get("id") and event.get("tool") not in ("answer_user", "report_result", "ask_user"):
             row = {"id": str(event["id"]), "label": event["label"], "tool": event.get("tool") or "", "detail": str(event.get("detail") or "")[:400],
+                   **({"diff": event["diff"]} if event.get("diff") else {}),
                    **({"error": True} if kind == "step_error" else {})}
             trail[:] = [r for r in trail if r.get("id") != row["id"]] + [row]
         send(event)
@@ -421,6 +422,7 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
                 break
             fn = (call.get("function") or {}).get("name")
             step_id = str(len(tool_log)+1)
+            edit_diff = None     # 这一步改代码改了哪几行：跟着步骤推给界面
             try:
                 args = json.loads((call.get("function") or {}).get("arguments") or "{}")
                 if not isinstance(args, dict):
@@ -579,6 +581,7 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
                     read_seen.clear(); read_regions.clear()
                     all_operations.extend(ops); failures = 0
                     view = changes_view(before_edit, working_source)
+                    edit_diff = step_diff(before_edit, working_source)
                     todo = [p for p in plan if p["status"] != "done"]
                     output = {"ok":True,"logs":logs,"verified":True,
                               "note":("已通过结构和脚本检查，不用再调 verify_page，也不用再搜一遍核对——改到哪几行见 where。"
@@ -689,7 +692,7 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
             except Exception:
                 detail = ""
             emit({"type":"step_error" if failed else "step_done","id":step_id,"label":label,"tool":fn,
-                  "detail":detail,
+                  "detail":detail,**({"diff":edit_diff} if edit_diff and not failed else {}),
                   **({"error":{"message":output.get('error') or '检查未通过',"detail":"；".join(output.get('issues',[]))}} if failed else {})})
             if failed:
                 # 「同一个理由」按错误内容算：patch_target 是所有补丁失败共用的代码，按代码算会把三次不同的失败当成同一堵墙

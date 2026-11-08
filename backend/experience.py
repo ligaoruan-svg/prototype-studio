@@ -342,3 +342,30 @@ def scope_report(before, after, annotations):
             seen.add(label)
             places.append(label)
     return {'lines': len(stray), 'places': places[:5], 'more': max(0, len(seen) - 5)}
+
+
+def step_diff(before, after, limit=24):
+    """改代码这一步改了哪几行（参照 Claude 改文件时直接露出红绿行）：只留增删行和紧挨着的一行上下文，最多 limit 行"""
+    full = diff_source(before, after)
+    lines = []
+    for hunk in full['hunks']:
+        keep = [i for i, l in enumerate(hunk['lines']) if l['kind'] != 'context']
+        near = {j for i in keep for j in (i - 1, i, i + 1)}
+        part = [{'kind': l['kind'], 'text': l['text'][:1600], 'line': l.get('new_line') or l.get('old_line')}
+                for i, l in enumerate(hunk['lines']) if i in near and 0 <= i < len(hunk['lines'])]
+        if lines and part:
+            lines.append({'kind': 'gap', 'text': '', 'line': None})
+        lines.extend(part)
+    # 一行很长（压成一行的 HTML）、只改了中间几个字：删和加两行都截到改动那一段前后，不然只看得到行首
+    for a, b in zip(lines, lines[1:]):
+        if a['kind'] == 'removed' and b['kind'] == 'added' and max(len(a['text']), len(b['text'])) > 60:
+            x, y = a['text'], b['text']
+            head = next((i for i, (p, q) in enumerate(zip(x, y)) if p != q), min(len(x), len(y)))
+            tail = next((i for i, (p, q) in enumerate(zip(x[::-1], y[::-1])) if p != q or i >= min(len(x), len(y)) - head), 0)
+            for l, t in ((a, x), (b, y)):
+                lo, hi = max(0, head - 24), min(len(t), len(t) - tail + 24)
+                l['text'] = ('…' if lo else '') + t[lo:hi] + ('…' if hi < len(t) else '')
+    for l in lines:
+        l['text'] = l['text'][:160]
+    return {'additions': full['additions'], 'deletions': full['deletions'], 'lines': lines[:limit], 'more': len(lines) > limit}
+

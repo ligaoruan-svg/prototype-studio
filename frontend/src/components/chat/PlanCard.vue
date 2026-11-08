@@ -54,7 +54,7 @@ function primary() {
     <div v-if="!done && !folded && plan.choices?.length" class="plan-choices">
       <div v-for="(q, qi) in plan.choices" :key="q.q" class="plan-q">
         <p>{{ q.q }}</p>
-        <div><button v-for="(o, oi) in q.options" :key="o" type="button" :class="{ on: choices[qi] === oi }" :aria-pressed="choices[qi] === oi" :disabled="locked" @click="choices[qi] = oi">{{ o }}<em v-if="oi === 0">{{ $t('推荐') }}</em></button></div>
+        <div><button v-for="(o, oi) in q.options" :key="o" type="button" class="choice-row" :class="{ on: choices[qi] === oi }" :aria-pressed="choices[qi] === oi" :disabled="locked" @click="choices[qi] = oi">{{ o }}<em v-if="oi === 0">{{ $t('推荐') }}</em></button></div>
       </div>
     </div>
     <ul v-else-if="state === 'drawn' && plan.choices?.length" class="plan-decided">
@@ -68,9 +68,9 @@ function primary() {
 </template>
 
 <style scoped>
-.plan-card{margin-top:12px;border:1px solid var(--line);border-radius:14px;background:#fff;padding:8px 6px 6px;box-shadow:0 1px 2px #2b201a08;font-size:12.5px;line-height:1.6}
+.plan-card{margin-top:12px;border:1px solid var(--line);border-radius:var(--r-card);background:#fff;padding:8px 6px 6px;box-shadow:var(--chat-shadow);font-size:12.5px;line-height:1.6}
 .plan-head{display:flex;align-items:center;gap:6px;padding:2px 8px 6px;font-size:12px;font-weight:600;color:var(--ink)}.plan-head>svg{color:var(--primary)}
-button.plan-head{width:100%;border:0;background:none;text-align:left;cursor:pointer;justify-content:flex-start;border-radius:9px}button.plan-head:hover{background:var(--quiet)}
+button.plan-head{width:100%;border:0;background:none;text-align:left;cursor:pointer;justify-content:flex-start;border-radius:var(--r-item)}button.plan-head:hover{background:var(--quiet)}
 .plan-head small{font-weight:400;font-size:11px;color:var(--muted)}.plan-head .plan-state{margin-left:auto}
 .plan-fold{color:var(--subtle);transition:transform .15s}.plan-fold.up{transform:rotate(180deg)}
 .plan-head em{margin-left:auto;display:flex;align-items:center;gap:3px;font-style:normal;font-weight:500;font-size:11px;color:var(--success)}
@@ -81,20 +81,16 @@ button.plan-head{width:100%;border:0;background:none;text-align:left;cursor:poin
 .plan-dot{width:5px;height:5px;margin-left:5px;border-radius:50%;background:var(--subtle)}
 .plan-pick input{margin:0}
 .plan-module b{font-weight:500;color:var(--ink)}
-.plan-type{padding:0 6px;border-radius:8px;background:var(--quiet);font-size:11px;color:var(--muted)}
+.plan-type{padding:0 6px;border-radius:var(--r-tag);background:var(--quiet);font-size:11px;color:var(--muted)}
 .plan-type.dashboard,.plan-type.report{background:#eef3fc;color:#2f5bb5}.plan-type.tasks{background:#f2f0fb;color:#5b47a8}
 .plan-module small{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
 .plan-metrics{grid-column:2 / -1;margin:0;font-size:11.5px;color:#5f5a52}
 .plan-choices{margin:6px 4px 0;padding:8px 4px 2px;border-top:1px solid #f0ede4}
 .plan-q{margin:0 4px 8px}.plan-q p{margin:0 0 7px;font-weight:500;color:var(--ink);line-height:1.6}
 .plan-q div{display:flex;flex-direction:column;gap:6px}
-.plan-q button{display:flex;align-items:center;gap:8px;width:100%;min-width:0;max-width:none;padding:7px 10px;border:1px solid var(--line);border-radius:10px;background:#fff;font-size:12.5px;line-height:1.5;color:var(--ink);white-space:normal;text-align:left;justify-content:flex-start}
-.plan-q button::before{content:'';flex:none;width:12px;height:12px;border:1.5px solid #cfcbc0;border-radius:50%;box-sizing:border-box}
-.plan-q button.on{border-color:var(--primary);background:var(--primary-soft)}.plan-q button.on::before{border:4px solid var(--primary)}
-.plan-q em{flex:none;margin-left:auto;font-style:normal;font-size:10.5px;padding:0 6px;border-radius:7px;background:#fff;color:var(--primary)}
 .plan-decided{list-style:none;margin:2px 8px 4px;padding:6px 0 0;border-top:1px solid #f0ede4;font-size:12px}.plan-decided li{display:flex;gap:8px;padding:2px 0}.plan-decided span{color:var(--muted)}.plan-decided b{font-weight:500;color:var(--ink)}
 .plan-foot{display:flex;align-items:center;gap:6px;margin-top:4px;padding:6px 2px 0;border-top:1px solid #f0ede4}
-.plan-note{flex:1;min-width:0;height:32px;padding:0 8px;border:none;border-radius:9px;outline:none;background:none;font-size:12.5px;color:var(--ink)}.plan-note:focus{background:var(--quiet)}
-.plan-draw{flex:none;min-height:32px;padding:5px 12px;border-radius:9px;font-size:12.5px}
+.plan-note{flex:1;min-width:0;height:32px;padding:0 8px;border:none;border-radius:var(--r-item);outline:none;background:none;font-size:12.5px;color:var(--ink)}.plan-note:focus{background:var(--quiet)}
+.plan-draw{flex:none;min-height:32px;padding:5px 12px;border-radius:var(--r-item);font-size:12.5px}
 .plan-card.done{background:transparent}
 </style>

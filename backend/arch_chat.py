@@ -174,6 +174,12 @@ def prototype_digest(source: str) -> str:
     return "\n".join(parts)[:DIGEST_MAX]
 
 
+CHITCHAT = re.compile(r"^(?:你好|您好|hi|hello|hey|嗨|哈喽|在吗|在不在|谢谢|多谢|感谢|辛苦了|好的|好|ok|嗯|收到)[啊呀呢吧哈！!。.~～\s]*$", re.I)
+HELLO_REPLY = "在的。可以问我这个架构哪里不合理、还缺什么，或者直接说要加哪些页面、弹窗、字段。"
+HELLO_EMPTY = "在的。把需求贴一段过来（做什么系统、谁用、主要流程），我先梳理业务，你确认后再列页面、画架构。"
+THANKS_REPLY = "不客气。还要调整哪里，直接说。"
+
+
 def _thought(thought: list[str], began: float) -> dict:
     """推理模型想的过程跟着回复存下来：回复上面「思考过程 · 用时」点开看"""
     text = "".join(thought).strip()
@@ -247,6 +253,11 @@ def run(project_id: str, page_id: str, message: str, key: str, model: str, base_
     if chat_display(display):
         extra["display"] = chat_display(display)
     storage.append_chat(project_id, "user", message, extra)
+    # 打招呼、道谢：不用带着整棵树去问模型（以前一句「您好啊」要等十几秒），直接回一句告诉能做什么
+    if not pending and not plan and CHITCHAT.match(message.strip()):
+        content = THANKS_REPLY if re.match(r"(谢|多谢|感谢|辛苦)", message.strip()) else (HELLO_REPLY if current.get("nodes") else HELLO_EMPTY)
+        storage.append_chat(project_id, "assistant", content, {"page_id": page_id, "changed": False, "intent": "architecture", "arch_mode": "discuss"})
+        return {"changed": False, "intent": "architecture", "content": content, "architecture_changed": False, "usage": {}}
     current["name"] = current.get("name") or storage.load_meta(project_id).get("name", "")
     outline = to_outline({"name": current["name"], "nodes": current["nodes"]})
     try:

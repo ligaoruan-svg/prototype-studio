@@ -934,3 +934,25 @@ class 读原型的菜单分组(unittest.TestCase):
         self.assertEqual(_nav_groups(html, ['首页', '工单管理', '我的任务'], {'测试七轮'}), [('首页', ['首页']), ('报修工单', ['工单管理', '我的任务'])])
         flat = '<aside><div>测试七轮</div><a>首页</a><div>报修工单</div><a>工单管理</a></aside>'
         self.assertEqual(_nav_groups(flat, ['首页', '工单管理'], {'测试七轮'}), [('', ['首页']), ('报修工单', ['工单管理'])])
+
+
+class 架构模式打招呼(unittest.TestCase):
+    """「您好啊」不带整棵树去问模型（以前要等十几秒），直接回一句"""
+    def setUp(self):
+        from backend import arch_chat
+        self.mod, self.tmp = arch_chat, tempfile.TemporaryDirectory()
+        self.old_root, self.old_chat = storage.DATA_ROOT, arch_chat.chat
+        storage.DATA_ROOT = Path(self.tmp.name)
+        self.pid = storage.create_project('物业')['id']
+        arch_chat.chat = lambda *a, **k: self.fail('打招呼不该调模型')
+
+    def tearDown(self):
+        storage.DATA_ROOT, self.mod.chat = self.old_root, self.old_chat
+        self.tmp.cleanup()
+
+    def test_秒回(self):
+        out = self.mod.run(self.pid, 'p', '您好啊', 'k', 'm', 'u', 8000, lambda e: None, lambda: False)
+        self.assertTrue(out['content'].startswith('在的。把需求贴一段过来'))      # 画布空着：引导贴需求
+        out = self.mod.run(self.pid, 'p', '谢谢！', 'k', 'm', 'u', 8000, lambda e: None, lambda: False)
+        self.assertEqual(out['content'], '不客气。还要调整哪里，直接说。')
+        self.assertEqual(storage.load_meta(self.pid)['chat'][-1]['arch_mode'], 'discuss')

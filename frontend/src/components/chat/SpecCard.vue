@@ -75,7 +75,7 @@ function primary() {
     <div v-if="!done && !folded && spec.questions?.length" class="spec-questions">
       <div v-for="(q, qi) in spec.questions" :key="q.q" class="spec-q">
         <p>{{ q.q }}</p>
-        <div class="spec-options"><button v-for="(o, oi) in q.options" :key="o" type="button" :class="{ on: picks[qi] === oi }" :aria-pressed="picks[qi] === oi" :disabled="locked" @click="picks[qi] = oi">{{ o }}<em v-if="oi === 0">{{ $t('推荐') }}</em></button></div>
+        <div class="spec-options"><button v-for="(o, oi) in q.options" :key="o" type="button" class="choice-row" :class="{ on: picks[qi] === oi }" :aria-pressed="picks[qi] === oi" :disabled="locked" @click="picks[qi] = oi">{{ o }}<em v-if="oi === 0">{{ $t('推荐') }}</em></button></div>
       </div>
     </div>
     <div v-if="!done && !folded" class="spec-foot">
@@ -86,39 +86,34 @@ function primary() {
 </template>
 
 <style scoped>
-.spec-card{margin-top:12px;border:1px solid var(--line);border-radius:14px;background:#fff;padding:8px 6px 6px;box-shadow:0 1px 2px #2b201a08;font-size:12.5px;line-height:1.65}
+.spec-card{margin-top:12px;border:1px solid var(--line);border-radius:var(--r-card);background:#fff;padding:8px 6px 6px;box-shadow:var(--chat-shadow);font-size:12.5px;line-height:1.65}
 .spec-head{display:flex;align-items:center;gap:6px;padding:2px 8px 4px;font-size:12px;font-weight:600;color:var(--ink)}.spec-head>svg{color:var(--primary)}
-button.spec-head{width:100%;border:0;background:none;text-align:left;cursor:pointer;justify-content:flex-start;border-radius:9px}button.spec-head:hover{background:var(--quiet)}
+button.spec-head{width:100%;border:0;background:none;text-align:left;cursor:pointer;justify-content:flex-start;border-radius:var(--r-item)}button.spec-head:hover{background:var(--quiet)}
 .spec-fold{color:var(--subtle);transition:transform .15s}.spec-fold.up{transform:rotate(180deg)}
 .spec-head small{margin-left:auto;font-weight:400;font-size:11px;color:var(--muted)}
 .spec-head em{margin-left:auto;display:flex;align-items:center;gap:3px;font-style:normal;font-weight:500;font-size:11px;color:var(--success)}
 .spec-summary{margin:0 8px 6px;color:#4d4a44}
 .spec-sections{list-style:none;margin:0;padding:0}
-.spec-row{display:grid;grid-template-columns:auto auto 1fr auto;align-items:center;gap:7px;width:100%;padding:6px 8px;border-radius:9px;text-align:left;justify-content:stretch}
+.spec-row{display:grid;grid-template-columns:auto auto 1fr auto;align-items:center;gap:7px;width:100%;padding:6px 8px;border-radius:var(--r-item);text-align:left;justify-content:stretch}
 .spec-row:hover{background:var(--quiet)}
 .spec-row b{font-weight:500;color:var(--ink)}
-.spec-row i{font-style:normal;min-width:18px;padding:0 5px;border-radius:8px;background:var(--quiet);font-size:11px;color:var(--muted);text-align:center}
+.spec-row i{font-style:normal;min-width:18px;padding:0 5px;border-radius:var(--r-tag);background:var(--quiet);font-size:11px;color:var(--muted);text-align:center}
 .spec-row span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
 .spec-row .fold{color:var(--subtle);transition:transform .15s}.open>.spec-row .fold{transform:rotate(180deg)}
 .spec-detail{margin:0 8px 8px 10px;padding:6px 0 2px 12px;border-left:1.5px solid var(--line);color:#4d4a44}
 .spec-detail p{margin:2px 0}.spec-detail p b{font-weight:500;color:var(--ink);margin-right:6px}
 .spec-object{margin-bottom:8px}.spec-object p span{color:var(--muted)}.spec-object small{margin-left:6px;font-size:11px;color:var(--subtle)}
 .spec-fields{color:#5f5a52;font-size:12px}.spec-fields em{font-style:normal;color:var(--subtle);margin-right:6px}
-.spec-states{display:flex;flex-wrap:wrap;gap:3px;margin:3px 0}.spec-states span{display:inline-flex;align-items:center;gap:3px;padding:0 7px;border-radius:9px;background:#eef3fc;color:#2f5bb5;font-size:11.5px}
+.spec-states{display:flex;flex-wrap:wrap;gap:3px;margin:3px 0}.spec-states span{display:inline-flex;align-items:center;gap:3px;padding:0 7px;border-radius:var(--r-item);background:#eef3fc;color:#2f5bb5;font-size:11.5px}
 .spec-states i{font-style:normal;color:var(--subtle);margin-left:2px}
 .spec-actions,.spec-list{margin:2px 0 0;padding-left:16px;color:#5f5a52}.spec-actions li,.spec-list li{margin:1px 0}
-.spec-assume{margin:6px 8px;padding:6px 9px;border-radius:9px;background:var(--quiet);font-size:12px;color:#5f5a52}.spec-assume b{display:block;font-weight:500;color:var(--ink)}
+.spec-assume{margin:6px 8px;padding:6px 9px;border-radius:var(--r-item);background:var(--quiet);font-size:12px;color:#5f5a52}.spec-assume b{display:block;font-weight:500;color:var(--ink)}
 .spec-assume ul{margin:2px 0 0;padding-left:16px}.spec-assume li{margin:1px 0}
 .spec-questions{margin:6px 4px 0;padding:8px 4px 2px;border-top:1px solid #f0ede4}
 .spec-q{margin:0 4px 8px}.spec-q p{margin:0 0 7px;font-weight:500;color:var(--ink);line-height:1.6}
 .spec-options{display:flex;flex-direction:column;gap:6px;min-width:0}
-.spec-options button{display:flex;align-items:center;gap:8px;width:100%;min-width:0;max-width:none;padding:7px 10px;border:1px solid var(--line);border-radius:10px;background:#fff;font-size:12.5px;line-height:1.5;color:var(--ink);white-space:normal;text-align:left;justify-content:flex-start}
-.spec-options button::before{content:'';flex:none;width:12px;height:12px;border:1.5px solid #cfcbc0;border-radius:50%;box-sizing:border-box}
-.spec-options button:hover:not(:disabled){background:var(--quiet)}
-.spec-options button.on{border-color:var(--primary);background:var(--primary-soft)}.spec-options button.on::before{border:4px solid var(--primary)}
-.spec-options em{flex:none;margin-left:auto;font-style:normal;font-size:10.5px;padding:0 6px;border-radius:7px;background:#fff;color:var(--primary)}
 .spec-foot{display:flex;align-items:center;gap:6px;margin-top:4px;padding:6px 2px 0;border-top:1px solid #f0ede4}
-.spec-note{flex:1;min-width:0;height:32px;padding:0 8px;border:none;border-radius:9px;outline:none;background:none;font-size:12.5px;color:var(--ink)}.spec-note:focus{background:var(--quiet)}
-.spec-draw{flex:none;min-height:32px;padding:5px 12px;border-radius:9px;font-size:12.5px}
+.spec-note{flex:1;min-width:0;height:32px;padding:0 8px;border:none;border-radius:var(--r-item);outline:none;background:none;font-size:12.5px;color:var(--ink)}.spec-note:focus{background:var(--quiet)}
+.spec-draw{flex:none;min-height:32px;padding:5px 12px;border-radius:var(--r-item);font-size:12.5px}
 .spec-card.done{background:transparent}
 </style>

@@ -164,3 +164,11 @@ class 做了哪几步跟着回复存下来(unittest.TestCase):
         agent.run_agent(self.pid, self.page, '标题怎么样？', 'k', 'm', intent='discuss', stream=True, on_event=self.events.append)
         last = storage.load_meta(self.pid)['chat'][-1]
         self.assertEqual([r.get('note') or r.get('tool') for r in last['trail']], ['先查一下。', 'search_source'])
+
+    def test_改代码那一步带着改了哪几行(self):
+        self.script(msg(edit('#t', '新标题')), msg(REPORT))
+        self.run_agent()
+        done = next(e for e in self.events if e['type'] == 'step_done' and e.get('tool') == 'apply_operations')
+        self.assertEqual((done['diff']['additions'], done['diff']['deletions']), (1, 1))
+        self.assertEqual([l['kind'] for l in done['diff']['lines']], ['removed', 'added'])
+        self.assertIn('新标题', done['diff']['lines'][1]['text'])

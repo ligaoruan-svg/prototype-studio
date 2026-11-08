@@ -4,6 +4,7 @@ import { Check, AlertCircle, LoaderCircle, ChevronDown, Lightbulb } from 'lucide
 import { brief, iconOf } from '../../lib/toolIcons.js'
 import { prose } from '../../lib/prose.js'
 import ResultCard from './ResultCard.vue'
+import DiffLines from './DiffLines.vue'
 const props = defineProps({ run: Object, locked: Boolean })
 defineEmits(['retry', 'settings', 'select', 'repair', 'dismiss', 'fill', 'stop', 'point'])
 const now = ref(Date.now()); let timer
@@ -11,6 +12,14 @@ onMounted(() => { timer = setInterval(() => now.value = Date.now(), 1000) })
 onUnmounted(() => clearInterval(timer))
 const elapsed = computed(() => Math.max(0, Math.floor(((props.run.finished || now.value) - props.run.started) / 1000)))
 const clock = computed(() => `${String(Math.floor(elapsed.value / 60)).padStart(2, '0')}:${String(elapsed.value % 60).padStart(2, '0')}`)
+// 出错时下一步怎么办，说成一句人话（参照 Claude：说清发生了什么、保留了什么、点哪个按钮）
+const HINTS = { model_account: '', validation: '改出来的页面没通过检查，页面还是上一版；可以让 AI 照着报错修一遍。',
+  patch_target: '要改的那个元素找不到了（页面可能已经变了）：在页面上重新点一下要改的地方再发。',
+  tool_rejected: '没指位置时 AI 只能在代码里猜：在页面上点一下要改的地方（点了没反应的，切到交互把它点一遍），再发送。', stalled: '没指位置时 AI 只能在代码里猜：在页面上点一下要改的地方，再发送。',
+  output_limit: '一次要改的太多：把要求放回输入框，删成一小步再发。', invalid_arguments: '一次要改的太多：把要求放回输入框，删成一小步再发。', iterations: '一次要做的太多，轮次用完了：把剩下的拆成一小步再发。',
+  stopped: '已经改好的部分会保留并检查，不想要可以撤销。', busy: '模型服务这会儿忙，已经自动重试过几次；稍等一下再重试。' }
+// 报错本身已经说了怎么办的（模型账户那句）不再重复一遍
+const errorHint = computed(() => { const code = props.run.error?.code; return code in HINTS ? HINTS[code] : props.run.error ? '可能是网络或模型服务抖了一下，重试一般就好。' : '' })
 const busy = computed(() => ['running', 'checking'].includes(props.run.status))
 // 每一步的结果默认折叠。全摊开是 14 行灰字糊成一片，真正要看的（它在想什么）反而被埋了。
 // 想看某一步到底拿到什么，点那一行展开。
@@ -21,14 +30,16 @@ const discussing = computed(() => props.run.intent === 'discuss')
 // 工具一步一行（像 Claude 显示工具调用）：图标说明干的是哪类事，后面一小截灰字是它拿到了什么，点开看全；
 // 步数多了只露最近 3 步，前面的收在标题右边的「N 步」里
 const showSteps = ref(false)
-const tools = computed(() => props.run.steps.filter(s => !['note', 'live', 'think'].includes(s.kind)))
+// 交回答、汇报这几步是收尾的手续，不算「在做事」，不列出来（回看里也不存）
+const CLERICAL = new Set(['answer_user', 'report_result', 'ask_user'])
+const tools = computed(() => props.run.steps.filter(s => !['note', 'live', 'think'].includes(s.kind) && !CLERICAL.has(s.tool)))
 const toolCount = computed(() => tools.value.length)
 const recent = computed(() => new Set(tools.value.slice(-3).map(s => s.id)))
 // 思考：还在想的露最后两句，想完了「想了 N 秒」
 const thinkingNow = step => !step.ended && busy.value
 const thinkTail = step => { const lines = String(step.text || '').trim().split(/\n+/); return lines.slice(-2).join(' ').slice(-120) }
 const thinkLabel = step => thinkingNow(step) ? ['思考中…'] : ['想了 {0} 秒', [Math.max(1, Math.round(((step.ended || props.run.finished || now.value) - step.started) / 1000))]]
-const shown = step => ['note', 'live', 'think'].includes(step.kind) || showSteps.value || recent.value.has(step.id) || step.state === 'running' || step.state === 'error'
+const shown = step => !CLERICAL.has(step.tool) && (['note', 'live', 'think'].includes(step.kind) || showSteps.value || recent.value.has(step.id) || step.state === 'running' || step.state === 'error')
 // 以前不管干什么都写"修改中"：问一句"这里美观吗"也是修改中，还在读代码也是修改中。
 // 标题按当下实际在做的事说话——讨论就说在看，动过文件才叫修改。
 const heading = computed(() => {
@@ -54,17 +65,30 @@ const heading = computed(() => {
       <div><button type="button" class="step-head" :aria-expanded="opened.has(step.id)" @click="toggle(step.id)">{{ $t(...thinkLabel(step)) }}<ChevronDown :size="12" :class="{ open: opened.has(step.id) }" /></button><small v-if="opened.has(step.id)" class="think-text">{{ step.text.trim() }}</small><small v-else-if="thinkingNow(step) && thinkTail(step)" class="think-text tail">{{ thinkTail(step) }}</small></div></li>
       <li v-else v-show="shown(step)" :class="[step.kind === 'note' ? 'note' : step.state, step.kind === 'live' ? 'live' : step.kind === 'note' ? '' : 'tool', { foldable: step.kind !== 'note' && step.detail }]">
       <template v-if="step.kind !== 'note'"><LoaderCircle v-if="step.state === 'running'" :size="13" class="spin" /><AlertCircle v-else-if="step.state === 'error'" :size="13" /><Check v-else-if="step.kind === 'live'" :size="13" /><component :is="iconOf(step)" v-else :size="13" class="tool-icon" /></template>
-      <div><button v-if="step.kind !== 'note' && step.detail" type="button" class="step-head" :aria-expanded="opened.has(step.id)" @click="toggle(step.id)">{{ $t(step.label) }}<em v-if="!opened.has(step.id) && brief(step)" class="step-brief">{{ brief(step) }}</em><ChevronDown :size="12" :class="{ open: opened.has(step.id) }" /></button><div v-else-if="step.kind === 'note'" class="prose note-text" v-html="prose(step.label)"></div><span v-else>{{ $t(step.label) }}</span><small v-if="step.error">{{ $t(step.error) }}</small><small v-else-if="step.detail && opened.has(step.id)" class="step-detail">{{ $t(step.detail) }}</small></div></li></template></ol>
+      <div><button v-if="step.kind !== 'note' && (step.detail || step.diff)" type="button" class="step-head" :aria-expanded="opened.has(step.id)" @click="toggle(step.id)">{{ $t(step.label) }}<em v-if="step.diff" class="diffstat"><i class="add">+{{ step.diff.additions }}</i><i class="del">−{{ step.diff.deletions }}</i></em><em v-else-if="!opened.has(step.id) && brief(step)" class="step-brief">{{ brief(step) }}</em><ChevronDown :size="12" :class="{ open: opened.has(step.id) }" /></button><div v-else-if="step.kind === 'note'" class="prose note-text" v-html="prose(step.label)"></div><span v-else>{{ $t(step.label) }}</span><small v-if="step.error">{{ $t(step.error) }}</small><DiffLines v-else-if="step.diff && opened.has(step.id)" :diff="step.diff" /><small v-else-if="step.detail && opened.has(step.id)" class="step-detail">{{ $t(step.detail) }}</small></div></li></template></ol>
     <div v-if="run.intent === 'architecture' && run.streamText && !run.result" class="stream-text lead"><div class="prose" v-html="prose(run.streamText)"></div><span v-if="!run.steps.some(s => s.kind === 'live')" class="caret"></span></div>
     <ol aria-live="polite"><template v-for="step in run.intent === 'architecture' ? run.steps.filter(x => x.kind !== 'think') : run.steps" :key="step.id"><li v-if="step.kind === 'think'" class="think" :class="{ running: thinkingNow(step) }"><LoaderCircle v-if="thinkingNow(step)" :size="13" class="spin" /><Lightbulb v-else :size="13" />
       <div><button type="button" class="step-head" :aria-expanded="opened.has(step.id)" @click="toggle(step.id)">{{ $t(...thinkLabel(step)) }}<ChevronDown :size="12" :class="{ open: opened.has(step.id) }" /></button><small v-if="opened.has(step.id)" class="think-text">{{ step.text.trim() }}</small><small v-else-if="thinkingNow(step) && thinkTail(step)" class="think-text tail">{{ thinkTail(step) }}</small></div></li>
       <li v-else v-show="shown(step)" :class="[step.kind === 'note' ? 'note' : step.state, step.kind === 'live' ? 'live' : step.kind === 'note' ? '' : 'tool', { foldable: step.kind !== 'note' && step.detail }]">
       <template v-if="step.kind !== 'note'"><LoaderCircle v-if="step.state === 'running'" :size="13" class="spin" /><AlertCircle v-else-if="step.state === 'error'" :size="13" /><Check v-else-if="step.kind === 'live'" :size="13" /><component :is="iconOf(step)" v-else :size="13" class="tool-icon" /></template>
-      <div><button v-if="step.kind !== 'note' && step.detail" type="button" class="step-head" :aria-expanded="opened.has(step.id)" @click="toggle(step.id)">{{ $t(step.label) }}<em v-if="!opened.has(step.id) && brief(step)" class="step-brief">{{ brief(step) }}</em><ChevronDown :size="12" :class="{ open: opened.has(step.id) }" /></button><div v-else-if="step.kind === 'note'" class="prose note-text" v-html="prose(step.label)"></div><span v-else>{{ $t(step.label) }}</span><small v-if="step.error">{{ $t(step.error) }}</small><small v-else-if="step.detail && opened.has(step.id)" class="step-detail">{{ $t(step.detail) }}</small></div></li></template></ol>
+      <div><button v-if="step.kind !== 'note' && (step.detail || step.diff)" type="button" class="step-head" :aria-expanded="opened.has(step.id)" @click="toggle(step.id)">{{ $t(step.label) }}<em v-if="step.diff" class="diffstat"><i class="add">+{{ step.diff.additions }}</i><i class="del">−{{ step.diff.deletions }}</i></em><em v-else-if="!opened.has(step.id) && brief(step)" class="step-brief">{{ brief(step) }}</em><ChevronDown :size="12" :class="{ open: opened.has(step.id) }" /></button><div v-else-if="step.kind === 'note'" class="prose note-text" v-html="prose(step.label)"></div><span v-else>{{ $t(step.label) }}</span><small v-if="step.error">{{ $t(step.error) }}</small><DiffLines v-else-if="step.diff && opened.has(step.id)" :diff="step.diff" /><small v-else-if="step.detail && opened.has(step.id)" class="step-detail">{{ $t(step.detail) }}</small></div></li></template></ol>
     <p v-if="run.intent !== 'architecture' && run.streamText && !run.result" class="stream-text">{{ run.streamText }}<span class="caret"></span></p>
     <p v-else-if="busy && !run.steps.some(s => s.state === 'running' || (s.kind === 'think' && !s.ended))" class="model-wait">{{ $t(run.label || '理解需求中') }}</p>
     <ResultCard v-if="run.status === 'checking' && run.result" :result="run.result" checking />
-    <div v-if="run.error" class="run-error"><p>{{ $t(run.error.message) }}</p><details v-if="run.error.detail && run.error.detail !== run.error.message"><summary>{{ $t('查看详情') }}</summary><p>{{ $t(run.error.detail) }}</p></details><div class="run-error-actions"><button v-if="run.error.code === 'model_account'" class="outline" @click="$emit('settings')">{{ $t('打开设置') }}</button><button v-else-if="run.error.code === 'validation'" class="outline" :disabled="locked" @click="$emit('repair')">{{ $t('让 AI 修复') }}</button><button v-else-if="run.error.code === 'patch_target'" class="outline" :disabled="locked" @click="$emit('select')">{{ $t('重新点选后重试') }}</button><button v-else-if="['tool_rejected','stalled'].includes(run.error.code)" class="outline" :disabled="locked" :title="$t('没指位置时 AI 只能在源码里猜：在页面上点一下要改的地方（点了没反应的，切到交互把它点一遍），再发送')" @click="$emit('point')">{{ $t('指给它看') }}</button><button v-else-if="['output_limit','invalid_arguments','iterations'].includes(run.error.code)" class="outline" :disabled="locked" :title="$t('一次要改的太多：把要求放回输入框，删成一小步再发')" @click="$emit('fill')">{{ $t('拆小一点再发') }}</button><button v-else class="outline" :disabled="locked" @click="$emit('retry')">{{ $t('重试') }}</button><button class="quiet" @click="$emit('dismiss')">{{ run.error.code === 'validation' ? $t('放弃') : $t('关闭') }}</button></div></div>
+    <div v-if="run.error" class="run-error" role="alert">
+      <div class="run-error-head"><AlertCircle :size="14" /><b>{{ $t(run.error.message) }}</b></div>
+      <p v-if="errorHint" class="run-error-hint">{{ $t(errorHint) }}</p>
+      <details v-if="run.error.detail && run.error.detail !== run.error.message"><summary>{{ $t('查看详情') }}</summary><p>{{ $t(run.error.detail) }}</p></details>
+      <div class="run-error-actions">
+        <button v-if="run.error.code === 'model_account'" class="primary" @click="$emit('settings')">{{ $t('打开设置') }}</button>
+        <button v-else-if="run.error.code === 'validation'" class="primary" :disabled="locked" @click="$emit('repair')">{{ $t('让 AI 修复') }}</button>
+        <button v-else-if="run.error.code === 'patch_target'" class="primary" :disabled="locked" @click="$emit('select')">{{ $t('重新点选后重试') }}</button>
+        <button v-else-if="['tool_rejected','stalled'].includes(run.error.code)" class="primary" :disabled="locked" @click="$emit('point')">{{ $t('指给它看') }}</button>
+        <button v-else-if="['output_limit','invalid_arguments','iterations'].includes(run.error.code)" class="primary" :disabled="locked" @click="$emit('fill')">{{ $t('拆小一点再发') }}</button>
+        <button v-else-if="run.error.code !== 'stopped'" class="primary" :disabled="locked" @click="$emit('retry')">{{ $t('重试') }}</button>
+        <button class="quiet" @click="$emit('dismiss')">{{ run.error.code === 'validation' ? $t('放弃') : $t('关闭') }}</button>
+      </div>
+    </div>
   </section>
 </template>
 <style scoped>
@@ -73,7 +97,7 @@ const heading = computed(() => {
 .execution-card.failed header>svg{color:#a24b37}
 .execution-card strong{font-size:12.5px;font-weight:500;color:var(--ink)}
 .execution-card time{color:var(--subtle);font-size:11.5px;font-variant-numeric:tabular-nums}
-.steps-toggle{gap:3px;padding:1px 6px 1px 8px;border-radius:8px;font-size:11.5px;color:var(--muted)}.steps-toggle:hover{background:var(--quiet);color:var(--ink)}
+.steps-toggle{gap:3px;padding:1px 6px 1px 8px;border-radius:var(--r-tag);font-size:11.5px;color:var(--muted)}.steps-toggle:hover{background:var(--quiet);color:var(--ink)}
 .steps-toggle svg{transition:transform .15s}.steps-toggle svg.open{transform:rotate(180deg)}
 .execution-card .grow{flex:1}
 .execution-card ol{list-style:none;margin:8px 0 0 6px;padding:0 0 0 13px;border-left:1.5px solid var(--line);display:flex;flex-direction:column;gap:6px}
@@ -82,6 +106,7 @@ const heading = computed(() => {
 .execution-card li.tool .tool-icon{color:var(--subtle)}.execution-card li.done.tool{color:var(--muted)}
 .execution-card li.think{color:var(--muted)}.execution-card li.think svg{color:var(--subtle)}.execution-card li.think.running svg{color:var(--primary)}
 .think-text{display:block;margin-top:3px;font-size:11.5px!important;line-height:1.7;color:var(--subtle)!important;white-space:pre-wrap;max-height:240px;overflow:auto}.think-text.tail{white-space:normal;max-height:none}
+.diffstat{display:inline-flex;gap:4px;margin-left:6px;font-style:normal;font-size:11.5px;font-variant-numeric:tabular-nums}.diffstat .add{font-style:normal;color:#2f7d45}.diffstat .del{font-style:normal;color:#b0473a}
 .step-brief{margin-left:6px;font-style:normal;font-size:11.5px;color:var(--subtle);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .execution-card li small.step-detail{color:var(--muted);margin-top:3px;line-height:1.7}
 .step-head{display:flex;align-items:center;gap:4px;max-width:100%;min-width:0;padding:0;min-height:0;background:none;border:0;color:inherit;font:inherit;text-align:left;cursor:pointer}
@@ -90,7 +115,7 @@ const heading = computed(() => {
 .execution-card li.foldable:hover .step-head{color:var(--ink)}.execution-card li.error{color:#a24b37}.execution-card li.running{color:var(--ink)}.execution-card li.running svg{color:var(--primary)}
 .execution-card li>div{min-width:0;flex:1}.execution-card li.note{color:var(--ink);font-size:13px;line-height:1.75;margin:2px 0}
 .plan-list{margin-top:10px!important}
-.plan-brief{margin-top:10px;padding:8px 11px;border-radius:10px;background:var(--quiet);font-size:12px;line-height:1.7;color:#5f5a52}.plan-brief b{display:block;font-size:11.5px;color:var(--ink);margin-bottom:2px}.plan-brief p{margin:0;white-space:pre-wrap}
+.plan-brief{margin-top:10px;padding:8px 11px;border-radius:var(--r-item);background:var(--quiet);font-size:12px;line-height:1.7;color:#5f5a52}.plan-brief b{display:block;font-size:11.5px;color:var(--ink);margin-bottom:2px}.plan-brief p{margin:0;white-space:pre-wrap}
 .plan-list li{display:flex;align-items:center;gap:7px;color:var(--muted)}
 .plan-list li>i{width:12px;height:12px;border:1.5px solid #d6d1c4;border-radius:50%;flex-shrink:0}
 .plan-list li.active{color:var(--ink);font-weight:500}
@@ -100,5 +125,9 @@ const heading = computed(() => {
 @keyframes blink{50%{opacity:.25}}
 @media (prefers-reduced-motion: reduce){.caret{animation:none}}
 .model-wait{font-size:12px;color:var(--subtle);margin:6px 0 0 21px}
-.run-error{margin-top:8px;padding:10px 12px;border-radius:12px;background:#fbf1ee;overflow-wrap:anywhere;color:#7d3526}.run-error details{font-size:11.5px;color:var(--muted);margin-top:6px}.run-error summary{cursor:pointer}.run-error-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.run-error-actions button{font-size:12px;padding:5px 10px;min-height:30px;border-radius:9px}
+.run-error{margin-top:8px;padding:10px 12px 12px;border:1px solid #f0d9d2;border-radius:var(--r-card);background:#fdf5f2;overflow-wrap:anywhere;color:#7d3526}
+.run-error-head{display:flex;align-items:flex-start;gap:7px;font-size:13px;line-height:1.6}.run-error-head svg{flex:none;margin-top:3px;color:#b0473a}.run-error-head b{font-weight:600}
+.run-error-hint{margin:4px 0 0 21px;font-size:12px;line-height:1.7;color:#8a4a3c}
+.run-error details{margin:6px 0 0 21px;font-size:11.5px;color:var(--muted)}.run-error summary{cursor:pointer}
+.run-error-actions{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 0 21px}.run-error-actions button{font-size:12px;padding:5px 12px;min-height:30px;border-radius:var(--r-item)}
 </style>

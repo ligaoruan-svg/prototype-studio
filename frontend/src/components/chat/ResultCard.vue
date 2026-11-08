@@ -5,6 +5,7 @@ import { brief, iconOf } from '../../lib/toolIcons.js'
 import { prose } from '../../lib/prose.js'
 import SpecCard from './SpecCard.vue'
 import PlanCard from './PlanCard.vue'
+import DiffLines from './DiffLines.vue'
 // applied：这张卡上已经照着改好（并保存）的建议的 instruction，由对话记录推出来，刷新后也对
 const props = defineProps({ result: Object, canUndo: Boolean, locked: Boolean, checking: Boolean, selftest: Object, applied: { type: Array, default: () => [] }, specState: { type: String, default: 'open' }, planState: { type: String, default: 'open' }, planConfirmed: Object })
 const emit = defineEmits(['undo', 'choose', 'apply', 'discuss', 'custom', 'rephrase', 'forget', 'draw-spec', 'revise-spec', 'draw-plan', 'revise-plan'])
@@ -61,12 +62,12 @@ const statuses = { completed: '已完成', partial: '部分完成', unprocessed:
   <div class="result-card">
     <div v-if="trail.length" class="trail" :class="{ open: showTrail }">
       <button type="button" class="trail-head" :aria-expanded="showTrail" @click="showTrail = !showTrail">{{ toolSteps ? $t('做了 {0} 步', [toolSteps]) : $t('思考过程') }}<small v-if="took">{{ $t(...took) }}</small><ChevronDown :size="12" /></button>
-      <ol v-if="showTrail"><li v-for="(r, i) in trail" :key="i" :class="{ note: r.note != null, think: r.think != null, error: r.error }"><template v-if="r.note != null || r.think != null"><Lightbulb v-if="r.think != null" :size="13" /><div class="think-body"><p v-if="openThink.has(i)" class="full">{{ (r.think ?? r.note).trim() }}</p><p v-else>{{ clip(r.think ?? r.note) }}</p><button v-if="flat(r.think ?? r.note).length > CLIP" type="button" class="text-button think-more" @click="toggleThink(i)">{{ openThink.has(i) ? $t('收起') : $t('展开全部') }}</button></div></template><template v-else><component :is="r.error ? AlertCircle : iconOf(r)" :size="13" /><span>{{ $t(r.label) }}<em v-if="brief(r)">{{ brief(r) }}</em></span></template></li></ol>
+      <ol v-if="showTrail"><li v-for="(r, i) in trail" :key="i" :class="{ note: r.note != null, think: r.think != null, error: r.error }"><template v-if="r.note != null || r.think != null"><Lightbulb v-if="r.think != null" :size="13" /><div class="think-body"><p v-if="openThink.has(i)" class="full">{{ (r.think ?? r.note).trim() }}</p><p v-else>{{ clip(r.think ?? r.note) }}</p><button v-if="flat(r.think ?? r.note).length > CLIP" type="button" class="text-button think-more" @click="toggleThink(i)">{{ openThink.has(i) ? $t('收起') : $t('展开全部') }}</button></div></template><template v-else><component :is="r.error ? AlertCircle : iconOf(r)" :size="13" /><div class="trail-tool"><button v-if="r.diff" type="button" class="trail-row" :aria-expanded="openThink.has(i)" @click="toggleThink(i)">{{ $t(r.label) }}<em class="diffstat"><i class="add">+{{ r.diff.additions }}</i><i class="del">−{{ r.diff.deletions }}</i></em><ChevronDown :size="11" /></button><span v-else>{{ $t(r.label) }}<em v-if="brief(r)">{{ brief(r) }}</em></span><DiffLines v-if="r.diff && openThink.has(i)" :diff="r.diff" /></div></template></li></ol>
     </div>
     <div v-if="headline" class="result-summary prose" v-html="prose($t(headline))"></div>
     <SpecCard v-if="result.spec" :spec="result.spec" :state="specState" :locked="locked" @draw="$emit('draw-spec', $event)" @revise="$emit('revise-spec', $event)" />
     <PlanCard v-if="result.plan" :plan="result.plan" :state="planState" :confirmed="planConfirmed" :locked="locked" @draw="$emit('draw-plan', $event)" @revise="$emit('revise-plan', $event)" />
-    <div v-if="result.clarification" class="clarification"><p>{{ result.clarification.question }}</p><button v-for="option in result.clarification.options" :key="option" class="outline" :disabled="locked" @click="$emit('choose', { option, clarification: result.clarification })">{{ option }}</button></div>
+    <div v-if="result.clarification" class="clarification chat-card"><div class="chat-card-head"><MessageCircle :size="13" /><span>{{ $t('需要你定一下') }}</span></div><p class="clarify-q">{{ result.clarification.question }}</p><div class="clarify-options"><button v-for="option in result.clarification.options" :key="option" type="button" class="choice-row" :disabled="locked" @click="$emit('choose', { option, clarification: result.clarification })">{{ option }}</button></div></div>
     <div v-if="suggestions.length" class="suggest-box">
       <div class="suggest-head"><Sparkles :size="13" /><span>{{ $t('可以这样改') }}</span><small v-if="suggestions.length > 1">{{ $t('可以多选') }}</small></div>
       <ul class="suggest-list">
@@ -101,45 +102,48 @@ const statuses = { completed: '已完成', partial: '部分完成', unprocessed:
 .trail li{display:flex;gap:7px;line-height:1.6}.trail li svg{flex:none;margin-top:3px;color:var(--subtle)}.trail li.note{color:var(--muted)}.trail li.error,.trail li.error svg{color:#a24b37}
 .think-body{min-width:0;flex:1}.think-body p{margin:0;font-size:12px;line-height:1.7;overflow-wrap:anywhere}.trail li.think p{font-size:11.5px;color:var(--subtle)}
 .think-body p.full{white-space:pre-wrap;max-height:360px;overflow:auto}.think-more{margin-top:2px;padding:0;font-size:11.5px}
+.trail-tool{min-width:0;flex:1}.trail-row{display:inline-flex;align-items:center;gap:4px;padding:0;border:0;background:none;color:inherit;font:inherit;cursor:pointer}.trail-row:hover{color:var(--ink)}
+.diffstat{display:inline-flex;gap:4px;margin-left:2px;font-style:normal!important;font-variant-numeric:tabular-nums}.diffstat i{font-style:normal}.diffstat .add{color:#2f7d45}.diffstat .del{color:#b0473a}
 .trail li span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.trail li em{margin-left:6px;font-style:normal;color:var(--subtle)}
-.remembered{display:flex;align-items:flex-start;gap:7px;margin-top:10px;padding:7px 10px;border-radius:10px;background:var(--quiet);font-size:12px;color:var(--ink)}
+.remembered{display:flex;align-items:flex-start;gap:7px;margin-top:10px;padding:7px 10px;border-radius:var(--r-item);background:var(--quiet);font-size:12px;color:var(--ink)}
 .remembered svg{flex-shrink:0;margin-top:3px;color:var(--primary)}
 .remembered span{flex:1;min-width:0;overflow-wrap:anywhere}.remembered small{display:block;font-size:11px;color:var(--muted)}
 .remembered button{flex-shrink:0;font-size:11.5px}.remembered.gone{opacity:.6}
-.selftest{margin-top:8px;padding:7px 10px;border-radius:10px;background:#fbf4e6;font-size:12px}.selftest.ok{background:transparent;padding:0 2px;color:var(--success)}.selftest b{font-weight:500}.selftest ul{margin:6px 0 0;padding-left:0;list-style:none;display:grid;gap:4px}.selftest li{color:var(--muted);font-size:11.5px;line-height:1.6}.selftest p{margin:4px 0 0;font-size:11.5px;color:var(--muted)}.selftest em{font-style:normal;font-size:10px;padding:1px 6px;margin-right:6px;border-radius:8px;background:#f3e6cc;color:#8a5a12}
+.selftest{margin-top:8px;padding:7px 10px;border-radius:var(--r-item);background:#fbf4e6;font-size:12px}.selftest.ok{background:transparent;padding:0 2px;color:var(--success)}.selftest b{font-weight:500}.selftest ul{margin:6px 0 0;padding-left:0;list-style:none;display:grid;gap:4px}.selftest li{color:var(--muted);font-size:11.5px;line-height:1.6}.selftest p{margin:4px 0 0;font-size:11.5px;color:var(--muted)}.selftest em{font-style:normal;font-size:10px;padding:1px 6px;margin-right:6px;border-radius:var(--r-tag);background:#f3e6cc;color:#8a5a12}
 /* 回复正文直接流在背景上；只有 diff、建议这类块才有自己的容器。 */
 .result-card{font-size:12.5px;line-height:1.7}
 .result-summary{overflow-wrap:anywhere}
 .change-row{display:flex;align-items:center;gap:4px;margin-top:10px}
-.change-chip{min-width:0;gap:7px;padding:5px 10px 5px 6px;border:1px solid var(--line);border-radius:10px;background:#fff;font-size:12px;color:var(--ink);font-weight:500}.change-chip:hover:not(:disabled){border-color:#d6d1c4;background:#fdfcf9}.change-chip:disabled{opacity:1;cursor:default}
-.change-icon{display:grid;place-items:center;width:18px;height:18px;border-radius:6px;background:#e6f1e7;color:var(--success)}
+.change-chip{min-width:0;gap:7px;padding:5px 10px 5px 6px;border:1px solid var(--line);border-radius:var(--r-item);background:#fff;font-size:12px;color:var(--ink);font-weight:500}.change-chip:hover:not(:disabled){border-color:#d6d1c4;background:#fdfcf9}.change-chip:disabled{opacity:1;cursor:default}
+.change-icon{display:grid;place-items:center;width:18px;height:18px;border-radius:var(--r-tag);background:#e6f1e7;color:var(--success)}
 .change-chip em{font-style:normal;display:flex;gap:5px;font-size:11.5px;font-weight:400;font-variant-numeric:tabular-nums}.change-chip .add{font-style:normal;color:#2f7a45}.change-chip .del{font-style:normal;color:#b24a36}
 .change-chip .fold{color:var(--subtle);transition:transform .15s}.change-chip .fold.open{transform:rotate(180deg)}
-.undo-mini{gap:4px;padding:5px 8px;border-radius:9px;font-size:12px;color:var(--muted)}.undo-mini:hover:not(:disabled){background:var(--quiet);color:var(--ink)}
+.undo-mini{gap:4px;padding:5px 8px;border-radius:var(--r-item);font-size:12px;color:var(--muted)}.undo-mini:hover:not(:disabled){background:var(--quiet);color:var(--ink)}
 .result-actions{margin-top:6px}.result-actions>details{min-width:0;width:100%}.result-actions summary{list-style:none;display:flex;gap:5px;align-items:center;color:var(--muted);cursor:pointer;font-size:12px}.result-actions summary::-webkit-details-marker{display:none}
-.diff-view{overflow:auto;max-height:320px;border:1px solid var(--line);border-radius:10px;background:#fff}.diff-hunk small{display:block;padding:5px 8px;background:#f1eeed;color:var(--muted);font-size:10px}.diff-hunk pre{font:11px/1.7 ui-monospace,SFMono-Regular,monospace;margin:0;min-width:100%;width:max-content}.diff-hunk pre span{display:block;padding:0 8px;white-space:pre}.diff-hunk .added{background:#e3efe1;color:#2f6b3d}.diff-hunk .removed{background:#f7e4e0;color:#9c4034}.diff-hunk .context{color:#837a76}
+.diff-view{overflow:auto;max-height:320px;border:1px solid var(--line);border-radius:var(--r-item);background:#fff}.diff-hunk small{display:block;padding:5px 8px;background:#f1eeed;color:var(--muted);font-size:10px}.diff-hunk pre{font:11px/1.7 ui-monospace,SFMono-Regular,monospace;margin:0;min-width:100%;width:max-content}.diff-hunk pre span{display:block;padding:0 8px;white-space:pre}.diff-hunk .added{background:#e3efe1;color:#2f6b3d}.diff-hunk .removed{background:#f7e4e0;color:#9c4034}.diff-hunk .context{color:#837a76}
 .opinion-results{list-style:none;padding:0;display:flex;flex-direction:column;gap:9px;margin:12px 0}.opinion-results li{display:flex;gap:7px}.opinion-results li>span{border-radius:50%;background:var(--quiet);font-size:10px;width:18px;height:18px;text-align:center;flex-shrink:0}.opinion-results b{font-weight:500}.opinion-results small{display:block;color:var(--muted);font-size:11px}.opinion-results .completed small{color:var(--success)}.opinion-results .partial small,.opinion-results .unprocessed small{color:#906323}
-.suggest-box{margin-top:12px;border:1px solid var(--line);border-radius:14px;background:#fff;padding:8px 6px 6px;box-shadow:0 1px 2px #2b201a08}
+.suggest-box{margin-top:12px;border:1px solid var(--line);border-radius:var(--r-card);background:#fff;padding:8px 6px 6px;box-shadow:var(--chat-shadow)}
+.clarify-q{margin:0 8px 8px;font-size:13px;font-weight:500;color:var(--ink);white-space:pre-wrap}.clarify-options{display:flex;flex-direction:column;gap:6px;margin:0 4px 4px}
 .suggest-head{display:flex;align-items:center;gap:6px;padding:2px 8px 6px;font-size:12px;font-weight:600;color:var(--ink)}.suggest-head svg{color:var(--primary)}.suggest-head small{margin-left:auto;font-weight:400;font-size:11px;color:var(--muted)}
 .suggest-list{list-style:none;margin:0;padding:0}
-.suggest-list li{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:0;padding:1px 4px 1px 2px;border-radius:10px}.suggest-list li:hover{background:var(--quiet)}
+.suggest-list li{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:0;padding:1px 4px 1px 2px;border-radius:var(--r-item)}.suggest-list li:hover{background:var(--quiet)}
 .suggest-row{display:flex;align-items:center;gap:9px;min-width:0;padding:6px;cursor:pointer;font-size:12.5px;font-weight:500;color:var(--ink)}
 .suggest-row input{width:15px;height:15px;margin:0;flex-shrink:0;accent-color:var(--primary);cursor:pointer}
 .suggest-row{align-items:flex-start}.suggest-row input{margin-top:3px}
 .suggest-text{display:flex;flex-direction:column;min-width:0}
 .suggest-title{display:flex;align-items:center;gap:6px;overflow:hidden;white-space:nowrap}
-.suggest-title em{flex-shrink:0;font-style:normal;font-size:10px;font-weight:500;line-height:1;padding:3px 6px;border-radius:9px;background:var(--primary-soft);color:var(--primary)}
+.suggest-title em{flex-shrink:0;font-style:normal;font-size:10px;font-weight:500;line-height:1;padding:3px 6px;border-radius:var(--r-item);background:var(--primary-soft);color:var(--primary)}
 .suggest-text small{font-size:11.5px;font-weight:400;line-height:1.6;color:var(--muted);margin-top:1px}
 .suggest-detail b{display:block;font-size:10.5px;font-weight:600;color:var(--muted);margin-bottom:2px}
 .suggest-foot{display:flex;align-items:center;gap:6px;margin-top:6px;padding:6px 2px 0;border-top:1px solid #f0ede4}
-.suggest-other{flex:1;min-width:0;height:32px;padding:0 8px;border:none;border-radius:9px;outline:none;background:none;font-size:12.5px;color:var(--ink)}
+.suggest-other{flex:1;min-width:0;height:32px;padding:0 8px;border:none;border-radius:var(--r-item);outline:none;background:none;font-size:12.5px;color:var(--ink)}
 .suggest-other:focus{background:var(--quiet)}
 .suggest-list li.off .suggest-row{color:var(--muted)}
-.suggest-icon{width:26px;height:26px;display:grid;place-items:center;border-radius:7px;color:var(--subtle);opacity:0;transition:opacity .12s}.suggest-list li:hover .suggest-icon,.suggest-icon:focus-visible,.suggest-icon.open{opacity:1}.suggest-icon:hover:not(:disabled){background:#e9e6dc;color:var(--ink)}
+.suggest-icon{width:26px;height:26px;display:grid;place-items:center;border-radius:var(--r-tag);color:var(--subtle);opacity:0;transition:opacity .12s}.suggest-list li:hover .suggest-icon,.suggest-icon:focus-visible,.suggest-icon.open{opacity:1}.suggest-icon:hover:not(:disabled){background:#e9e6dc;color:var(--ink)}
 @media (hover:none){.suggest-icon{opacity:1}}
 .suggest-icon svg{transition:transform .15s}.suggest-icon.open svg{transform:rotate(180deg)}
-.suggest-detail{grid-column:1/-1;margin:0 0 6px;padding:7px 9px;border-radius:7px;background:var(--quiet);font-size:11.5px;line-height:1.7;color:#5f5a52}
-.suggest-apply{flex:none;min-height:32px;padding:5px 12px;border-radius:9px;font-size:12.5px}
+.suggest-detail{grid-column:1/-1;margin:0 0 6px;padding:7px 9px;border-radius:var(--r-tag);background:var(--quiet);font-size:11.5px;line-height:1.7;color:#5f5a52}
+.suggest-apply{flex:none;min-height:32px;padding:5px 12px;border-radius:var(--r-item);font-size:12.5px}
 .suggest-check{flex:none;color:var(--ok, #1f8a4c);margin-top:2px}
 li.done .suggest-title{color:var(--muted)}
 em.done-tag{background:#e7f6ee !important;color:#1f8a4c !important}

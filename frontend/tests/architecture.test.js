@@ -238,7 +238,7 @@ test('跑的时候像 Claude：架构模式边写边亮，工具一步一行带�
   const card = readFileSync(new URL('../src/components/chat/ExecutionCard.vue', import.meta.url), 'utf8')
   const result = readFileSync(new URL('../src/components/chat/ResultCard.vue', import.meta.url), 'utf8')
   assert.match(run, /event\.type === 'live'[\s\S]*?kind: 'live'/)                  // 梳理 / 清单一块一行
-  assert.match(card, /const shown = step => \['note', 'live', 'think'\]\.includes\(step\.kind\) \|\| showSteps\.value/)   // 一直露着
+  assert.match(card, /const shown = step => !CLERICAL\.has\(step\.tool\) && \(\['note', 'live', 'think'\]\.includes\(step\.kind\) \|\| showSteps\.value/)   // 一直露着
   assert.match(card, /run\.intent === 'architecture' && run\.streamText/)             // 回答一句句出来，不再只有「已写 N 字」
   assert.match(card, /<component :is="iconOf\(step\)"/)
   assert.match(card, /class="step-brief">\{\{ brief\(step\) \}\}/)                    // 拿到了什么跟在后面
@@ -248,4 +248,18 @@ test('跑的时候像 Claude：架构模式边写边亮，工具一步一行带�
   assert.match(run, /event\.type === 'think_delta'[\s\S]*?kind: 'think'/)
   assert.match(card, /\['想了 \{0\} 秒'/)
   assert.match(result, /r\.think != null/)
+})
+
+test('和 Claude 对齐：改代码那一步露出红绿行，卡片一套圆角，问你的问题和拍板一样是选项行，报错说清下一步', () => {
+  const card = readFileSync(new URL('../src/components/chat/ExecutionCard.vue', import.meta.url), 'utf8')
+  const result = readFileSync(new URL('../src/components/chat/ResultCard.vue', import.meta.url), 'utf8')
+  const css = readFileSync(new URL('../src/styles/style.css', import.meta.url), 'utf8')
+  assert.match(card, /<DiffLines v-else-if="step\.diff && opened\.has\(step\.id\)" :diff="step\.diff" \/>/)
+  assert.match(card, /class="diffstat"><i class="add">\+\{\{ step\.diff\.additions \}\}/)
+  assert.match(result, /<DiffLines v-if="r\.diff && openThink\.has\(i\)"/)                     // 回看里也能看
+  assert.match(css, /--r-card: 14px; --r-item: 10px; --r-tag: 7px/)
+  assert.match(result, /class="clarification chat-card"[\s\S]*?class="choice-row"/)
+  assert.match(card, /const errorHint = computed/)
+  assert.match(card, /class="run-error-hint"/)
+  assert.match(card, /CLERICAL = new Set\(\['answer_user', 'report_result', 'ask_user'\]\)/)      // 收尾的手续不列出来
 })

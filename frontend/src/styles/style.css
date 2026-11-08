@@ -5,6 +5,8 @@
   --surface: #fff; --shell: #faf9f5; --canvas: #f0eee6; --quiet: #f3f1ea;
   --success: #4c7a52;
   --danger: #b42318; --danger-bg: #fdf1ee; --radius: 9px;
+  /* 对话里的卡片一套规范（梳理卡、清单卡、建议、提问、报错、附件）：卡片 14、卡里的一行 / 选项 / 按钮 10、小标签 7 */
+  --r-card: 14px; --r-item: 10px; --r-tag: 7px; --chat-shadow: 0 1px 2px #2b201a08;
   --left-width: 312px; --right-width: 278px;
   font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   --font-display: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, 'Songti SC', 'Noto Serif CJK SC', serif;
@@ -279,7 +281,7 @@ input[type=color]::-webkit-color-swatch { border: none; border-radius: 2px; }
 .spin { animation: spin 1.2s linear infinite; }
 .image-dialog { width: min(760px, calc(100vw - 32px)); }
 /* 一张小卡片代替一大段字（「同步到原型」）：输入框里、对话里都一样 */
-.attach-card { position: relative; display: flex; flex-wrap: wrap; align-items: center; max-width: 100%; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.attach-card { position: relative; display: flex; flex-wrap: wrap; align-items: center; max-width: 100%; border: 1px solid var(--line); border-radius: var(--r-card); background: #fff; }
 .composer .attach-card { background: var(--shell); }
 .message.user .attach-card { width: fit-content; max-width: 88%; }
 
@@ -876,3 +878,14 @@ input[type=color]::-webkit-color-swatch { border: none; border-radius: 2px; }
 .arch-export-menu small { display: block; font-size: 11px; color: var(--muted); }
 .arch-sync-list button.mark-synced { margin-top: 6px; gap: 5px; background: none; color: var(--muted); border-top: 1px solid var(--line); border-radius: 0 0 7px 7px; padding-top: 8px; }
 .arch-sync-list button.mark-synced:hover { color: var(--ink); background: var(--quiet); }
+
+/* 拍板的选项（梳理卡、清单卡、AI 问你的问题）：一行一个，左边单选圈，推荐标在右边——参照 Claude 问你问题时的样子 */
+.choice-row { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; min-height: 0; padding: 7px 10px; border: 1px solid var(--line); border-radius: var(--r-item); background: #fff; font-size: 12.5px; line-height: 1.5; color: var(--ink); white-space: normal; text-align: left; justify-content: flex-start; }
+.choice-row::before { content: ''; flex: none; width: 12px; height: 12px; border: 1.5px solid #cfcbc0; border-radius: 50%; box-sizing: border-box; }
+.choice-row:hover:not(:disabled) { background: var(--quiet); }
+.choice-row.on { border-color: var(--primary); background: var(--primary-soft); }
+.choice-row.on::before { border: 4px solid var(--primary); }
+.choice-row em { flex: none; margin-left: auto; font-style: normal; font-size: 10.5px; padding: 0 6px; border-radius: var(--r-tag); background: #fff; color: var(--primary); }
+.chat-card { margin-top: 12px; border: 1px solid var(--line); border-radius: var(--r-card); background: #fff; padding: 8px 6px 6px; box-shadow: var(--chat-shadow); font-size: 12.5px; line-height: 1.6; }
+.chat-card-head { display: flex; align-items: center; gap: 6px; padding: 2px 8px 6px; font-size: 12px; font-weight: 600; color: var(--ink); }
+.chat-card-head svg { color: var(--primary); }
