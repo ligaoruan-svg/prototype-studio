@@ -16,6 +16,7 @@ import re
 from typing import Any, Callable
 
 from . import arch_ops, arch_plan, arch_spec, architecture, storage
+from .arch_live import Live
 from .conversation import ASK_HARD, EDIT_WORDS, NO_WRITE, chat_display, discussion_result, is_continue, looks_like_brief, resolve_intent
 from .arch_text import from_outline, keep_ids, to_outline
 from .deepseek_client import DeepSeekError, chat
@@ -284,16 +285,14 @@ def run(project_id: str, page_id: str, message: str, key: str, model: str, base_
         prompt = clue + basis + tree + f"这次要改的：{ask_for}"
     messages = [{"role": "system", "content": system}, *history, {"role": "user", "content": prompt}]
     on_event({"type": "progress", "label": label})
-    written = [0, 0]
+    live = Live(stage, on_event)     # 边写边给人看：正文一句句出来，梳理 / 清单一块块亮
 
     def on_delta(text, kind="note"):
-        written[0] += len(text)
-        if written[0] - written[1] >= 200:
-            written[1] = written[0]
-            on_event({"type": "progress", "label": f"{label} · 已写 {written[0]} 字"})
+        live.feed(text)
     try:
         resp = chat(key, model, messages, None, base_url=base_url, max_tokens=_limit(limit, max_tokens),
                     on_delta=on_delta if stream else None, should_stop=should_stop)
+        live.finish()
     except DeepSeekError as exc:
         if exc.code == "stopped":
             raise WorkError("stopped", "已停止，页面树没有改动") from exc
@@ -381,8 +380,8 @@ def _draw_plan(project_id, page_id, current, plan, message, basis, key, model, b
     current.update(nodes=check.pop("nodes"), plan=plan, summary=current.get("summary") or spec.get("summary", ""),
                    roles=[r["name"] for r in spec.get("roles", [])] or current.get("roles", []))
     architecture.save(project_id, current)
-    pages = sum(len(m["pages"]) for m in plan["modules"])
-    content = f"按页面清单展开了 {len(plan['modules'])} 个模块、{pages} 个页面。\n\n" + check_note
+    kinds = [n["type"] for n, _, _ in architecture.walk(current["nodes"])]     # 照画出来的数（单页的「首页」不算模块）
+    content = f"按页面清单展开了 {kinds.count('module')} 个模块、{kinds.count('page')} 个页面。\n\n" + check_note
     storage.append_chat(project_id, "assistant", content, {"page_id": page_id, "changed": False, "intent": "architecture", "arch_mode": "draw",
                                                            "arch_changed": True, "arch_check": check, "usage": usage})
     return {"changed": False, "intent": "architecture", "content": content, "architecture_changed": True, "arch_check": check, "usage": usage}

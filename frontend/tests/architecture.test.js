@@ -232,3 +232,16 @@ test('业务梳理卡：确认带上回答 → 页面清单卡；清单卡确认
   assert.match(plan, /props\.confirmed\?\.picked \|\|/)
   for (const c of [card, plan]) assert.match(c, /:disabled="locked \|\| drawing"/)     // 点了就不能再点，以前点两下画两遍
 })
+
+test('跑的时候像 Claude：架构模式边写边亮，工具一步一行带图标和结果，做完回复上面能点开看做了哪几步', () => {
+  const run = readFileSync(new URL('../src/composables/useAgentRun.js', import.meta.url), 'utf8')
+  const card = readFileSync(new URL('../src/components/chat/ExecutionCard.vue', import.meta.url), 'utf8')
+  const result = readFileSync(new URL('../src/components/chat/ResultCard.vue', import.meta.url), 'utf8')
+  assert.match(run, /event\.type === 'live'[\s\S]*?kind: 'live'/)                  // 梳理 / 清单一块一行
+  assert.match(card, /const shown = step => \['note', 'live'\]\.includes\(step\.kind\) \|\| showSteps\.value/)   // 一直露着
+  assert.match(card, /run\.intent === 'architecture' && run\.streamText/)             // 回答一句句出来，不再只有「已写 N 字」
+  assert.match(card, /<component :is="iconOf\(step\)"/)
+  assert.match(card, /class="step-brief">\{\{ brief\(step\) \}\}/)                    // 拿到了什么跟在后面
+  assert.match(result, /\$t\('做了 \{0\} 步', \[toolSteps\]\)/)
+  assert.match(result, /v-for="\(r, i\) in trail"/)
+})

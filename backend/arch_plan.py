@@ -109,9 +109,10 @@ def parse(reply: str) -> dict | None:
 
 def headline(plan: dict, revised: bool = False) -> str:
     pages = [p for m in plan["modules"] for p in m["pages"]]
+    mods = [m for m in plan["modules"] if not (len(m["pages"]) == 1 and m["pages"][0]["name"] == m["name"])]     # 单页的「首页」不算模块
     optional = sum(1 for p in pages if p.get("optional"))
     tail = (f"{optional} 个可选页打钩，" if optional else "") + (f"{len(plan['choices'])} 处要你定，" if plan["choices"] else "")
-    return (("按你的意思改了页面清单" if revised else "页面清单出来了") + f"：{len(plan['modules'])} 个模块、{len(pages)} 个页面。"
+    return (("按你的意思改了页面清单" if revised else "页面清单出来了") + f"：{len(mods)} 个模块、{len(pages)} 个页面。"
             + tail + "确认后程序按页面类型把整棵树展开。")
 
 

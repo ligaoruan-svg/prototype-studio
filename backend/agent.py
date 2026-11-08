@@ -113,7 +113,25 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
               stream: bool = True, should_stop=None, scene: dict | None = None, trace: list | None = None,
               start_source: str | None = None, lang: str = 'zh', live_checks: bool = False,
               architecture: bool = False, display: dict | None = None) -> dict[str, Any]:
-    emit = on_event or (lambda event: None)
+    send = on_event or (lambda event: None)
+    trail: list[dict] = []     # 这次做了哪几步（边做边说的话 + 每个工具一行）：跟着回复存下来，刷新后回复上面还能点开看
+    began = time.time()
+
+    def emit(event: dict) -> None:
+        kind = event.get("type")
+        if kind == "note_delta" and event.get("text"):
+            if trail and trail[-1].get("note") is not None:
+                trail[-1]["note"] = (trail[-1]["note"] + event["text"])[:300]
+            else:
+                trail.append({"note": event["text"][:300]})
+        elif kind in ("step_done", "step_error") and event.get("label") and event.get("id") and event.get("tool") not in ("answer_user", "report_result", "ask_user"):
+            row = {"id": str(event["id"]), "label": event["label"], "tool": event.get("tool") or "", "detail": str(event.get("detail") or "")[:400],
+                   **({"error": True} if kind == "step_error" else {})}
+            trail[:] = [r for r in trail if r.get("id") != row["id"]] + [row]
+        send(event)
+
+    def kept() -> dict:
+        return {"trail": trail[-40:], "took": round(time.time() - began)} if trail else {}
     trace = [] if trace is None else trace
     plan: list[dict] = []   # 当前计划：程序按每轮的修改自动往前推，不用模型一轮轮调 update_plan
     shell_fresh = None   # 刚放进来、还没写内容的外壳：这时候不让翻源码
@@ -760,11 +778,11 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
     if discussion:
         discussion['selection'] = selection
         if remembered: discussion['remembered'] = remembered
-        storage.append_chat(project_id,'assistant',discussion['answer'],{'page_id':page_id,'changed':False,'intent':'discuss','discussion':discussion,'usage':usage})
+        storage.append_chat(project_id,'assistant',discussion['answer'],{'page_id':page_id,'changed':False,'intent':'discuss','discussion':discussion,'usage':usage,**kept()})
         return {'changed':False,'intent':'discuss','message':discussion['answer'],'discussion':discussion,'usage':usage,'tool_log':tool_log,'remembered':remembered}
     if question:
         if remembered: question['remembered'] = remembered
-        storage.append_chat(project_id,"assistant",question['question'],{"page_id":page_id,"changed":False,"clarification":question,"usage":usage})
+        storage.append_chat(project_id,"assistant",question['question'],{"page_id":page_id,"changed":False,"clarification":question,"usage":usage,**kept()})
         return {"changed":False,"intent":intent,"message":question['question'],"clarification":question,"usage":usage,"tool_log":tool_log,"remembered":remembered}
     report = report or result_report({"summary":final_text},saved_annotations,changed)
     final_text = report['summary']
@@ -776,10 +794,10 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
         report['out_of_scope'] = scope_report(source, working_source, saved_annotations)
         candidate = stage(project_id,page_id,source,working_source,user_message,"agent",message=final_text,
                           usage=usage,annotation_ids=complete_ids,report=report,targets=targets,
-                          operation_count=len(all_operations))
+                          operation_count=len(all_operations),**kept())
         emit({"type":"candidate_ready","label":"修改已准备好，开始检查","candidate":candidate})
     else:
         candidate = {}
-        storage.append_chat(project_id,"assistant",final_text,{"page_id":page_id,"changed":False,"usage":usage,"report":report})
+        storage.append_chat(project_id,"assistant",final_text,{"page_id":page_id,"changed":False,"usage":usage,"report":report,**kept()})
     return {"message":final_text,"changed":changed,"intent":intent,"version":page.get("version",1),"tool_log":tool_log,
             "report":report,"usage":usage,"remembered":remembered,**candidate}

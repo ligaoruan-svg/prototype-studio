@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { Check, Undo2, ChevronDown, AlertCircle, BookmarkCheck, MessageCircle, Sparkles } from 'lucide-vue-next'
+import { brief, iconOf } from '../../lib/toolIcons.js'
 import SpecCard from './SpecCard.vue'
 import PlanCard from './PlanCard.vue'
 // applied：这张卡上已经照着改好（并保存）的建议的 instruction，由对话记录推出来，刷新后也对
@@ -41,10 +42,19 @@ const showDiff = ref(false)
 // 「其他」：都不想要，直接写自己的想法
 const other = ref('')
 function sendOther() { const text = other.value.trim(); if (!text || props.locked) return; other.value = ''; emit('custom', { text, discussion: discussion.value }) }
+// 回复上面一行「做了 N 步 · 用时」（参照 Claude 收起的工具调用）：点开看当时边做边说的话和每一步拿到了什么
+const showTrail = ref(false)
+const trail = computed(() => props.result?.trail || [])
+const toolSteps = computed(() => trail.value.filter(r => r.note == null).length)
+const took = computed(() => { const t = props.result?.took || 0; return t >= 60 ? ['用时 {0} 分 {1} 秒', [Math.floor(t / 60), t % 60]] : t ? ['用时 {0} 秒', [t]] : null })
 const statuses = { completed: '已完成', partial: '部分完成', unprocessed: '未处理' }
 </script>
 <template>
   <div class="result-card">
+    <div v-if="toolSteps" class="trail" :class="{ open: showTrail }">
+      <button type="button" class="trail-head" :aria-expanded="showTrail" @click="showTrail = !showTrail">{{ $t('做了 {0} 步', [toolSteps]) }}<small v-if="took">{{ $t(...took) }}</small><ChevronDown :size="12" /></button>
+      <ol v-if="showTrail"><li v-for="(r, i) in trail" :key="i" :class="{ note: r.note != null, error: r.error }"><template v-if="r.note != null">{{ r.note }}</template><template v-else><component :is="r.error ? AlertCircle : iconOf(r)" :size="13" /><span>{{ $t(r.label) }}<em v-if="brief(r)">{{ brief(r) }}</em></span></template></li></ol>
+    </div>
     <p v-if="headline" class="result-summary">{{ $t(headline) }}</p>
     <SpecCard v-if="result.spec" :spec="result.spec" :state="specState" :locked="locked" @draw="$emit('draw-spec', $event)" @revise="$emit('revise-spec', $event)" />
     <PlanCard v-if="result.plan" :plan="result.plan" :state="planState" :confirmed="planConfirmed" :locked="locked" @draw="$emit('draw-plan', $event)" @revise="$emit('revise-plan', $event)" />
@@ -75,6 +85,13 @@ const statuses = { completed: '已完成', partial: '部分完成', unprocessed:
   </div>
 </template>
 <style scoped>
+.trail{margin:0 0 8px;font-size:12px;color:var(--muted)}
+.trail-head{display:inline-flex;align-items:center;gap:5px;padding:2px 8px 2px 0;border:0;background:none;color:var(--muted);font-size:12px;cursor:pointer}.trail-head:hover{color:var(--ink)}
+.trail-head small{font-size:11.5px;color:var(--subtle)}.trail-head small::before{content:'·';margin-right:5px}
+.trail-head svg{transition:transform .15s}.trail.open .trail-head svg{transform:rotate(180deg)}
+.trail ol{list-style:none;margin:6px 0 10px 6px;padding:0 0 0 13px;border-left:1.5px solid var(--line);display:flex;flex-direction:column;gap:6px}
+.trail li{display:flex;gap:7px;line-height:1.6}.trail li svg{flex:none;margin-top:3px;color:var(--subtle)}.trail li.note{color:var(--ink)}.trail li.error,.trail li.error svg{color:#a24b37}
+.trail li span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.trail li em{margin-left:6px;font-style:normal;color:var(--subtle)}
 .remembered{display:flex;align-items:flex-start;gap:7px;margin-top:10px;padding:7px 10px;border-radius:10px;background:var(--quiet);font-size:12px;color:var(--ink)}
 .remembered svg{flex-shrink:0;margin-top:3px;color:var(--primary)}
 .remembered span{flex:1;min-width:0;overflow-wrap:anywhere}.remembered small{display:block;font-size:11px;color:var(--muted)}

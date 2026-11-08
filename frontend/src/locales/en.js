@@ -1495,4 +1495,7 @@ export default {
   "{0} 个模块 · {1} 个页面": "{0} modules · {1} pages",
   "哪里要改？直接说": "What should change? Just say it",
   "已画好": "Drawn",
+  "做了 {0} 步": "{0} steps",
+  "用时 {0} 秒": "{0}s",
+  "用时 {0} 分 {1} 秒": "{0}m {1}s",
 }

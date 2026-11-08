@@ -133,3 +133,23 @@ class 一步一步(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class 做了哪几步跟着回复存下来(unittest.TestCase):
+    """参照 Claude：回复上面「做了 N 步 · 用时」点开看每一步；刷新后还在（存在对话里）"""
+    setUp, tearDown, script, run_agent = 一步一步.setUp, 一步一步.tearDown, 一步一步.script, 一步一步.run_agent
+    def test_讨论回复带着步骤(self):
+        self.script(msg(('search_source', {'query': '标题'})),
+                    msg(('answer_user', {'answer': '标题偏小', 'suggestions': []})))
+        agent.run_agent(self.pid, self.page, '标题怎么样？', 'k', 'm', intent='discuss', stream=False, on_event=self.events.append)
+        last = storage.load_meta(self.pid)['chat'][-1]
+        self.assertEqual([r['tool'] for r in last['trail']], ['search_source'])     # 整理回答那一步不算
+        self.assertIn('找到', last['trail'][0]['detail'])
+        self.assertIn('took', last)
+
+    def test_改好的回复交给保存时也带上(self):
+        kept = {}
+        agent.stage = lambda *a, **k: kept.update(k) or {'pending_id': 'x'}
+        self.script(msg(edit('#t', '新标题')), msg(REPORT))
+        self.run_agent()
+        self.assertEqual(kept['trail'][0]['tool'], 'apply_operations')

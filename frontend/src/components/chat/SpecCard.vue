@@ -2,7 +2,7 @@
 // 业务梳理卡（参照 Claude 先给计划、你点头再动手）：出架构之前先看这一张——角色、业务对象和状态、主流程、规则、范围。
 // 每一块一行摘要，点开看全；AI 拿不准的地方带选项问你（默认选第一个，就是它推荐的）。
 // 底下一行：写了字就是「发送修改」（改梳理），没写就是确认——接着出页面清单卡
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Check, ChevronDown, ListChecks } from 'lucide-vue-next'
 
 // state：open 等你确认；confirmed 已确认、出了页面清单；drawn 已经按它画了；replaced 后面有了新版
@@ -22,6 +22,7 @@ const sections = computed(() => {
 })
 // 确认过的卡片收起来只留一行（像 Claude 做完的计划那样），点标题再展开
 const folded = ref(done.value)
+const foldable = computed(() => done.value || drawing.value)
 const opened = ref(new Set(done.value ? [] : ['objects']))
 // 字段表在卡片上只露名字和 * 🔒，控件、选项放到悬停提示里（不然一个对象占好几行）
 const short = f => String(f).replace(/\s*[（(].*$/, '')
@@ -32,6 +33,8 @@ const note = ref('')
 const answers = computed(() => (props.spec?.questions || []).map((q, i) => `${q.q}：${q.options[picks.value[i]]}`))
 // 点了「按这个画架构」就不能再点（以前点两下会画两遍）
 const drawing = ref(false)
+// 点了确认、或者后面已经出了清单 / 画好了：收起来，下面接着出的东西才看得见
+watch([done, drawing], ([d, w]) => { if (d || w) folded.value = true })
 function primary() {
   if (props.locked || drawing.value) return
   const text = note.value.trim()
@@ -42,7 +45,7 @@ function primary() {
 
 <template>
   <div class="spec-card" :class="{ done }">
-    <component :is="done ? 'button' : 'div'" class="spec-head" :type="done ? 'button' : undefined" :aria-expanded="done ? !folded : undefined" @click="done && (folded = !folded)"><ListChecks :size="14" /><span>{{ $t('业务梳理') }}</span><ChevronDown v-if="done" :size="13" class="spec-fold" :class="{ up: !folded }" /><em v-if="state === 'drawn'"><Check :size="11" />{{ $t('已按它画好架构') }}</em><em v-else-if="state === 'confirmed'"><Check :size="11" />{{ $t('已确认') }}</em><small v-else-if="state === 'replaced'">{{ $t('已更新，看下面的新版') }}</small><small v-else>{{ $t('确认后再画架构') }}</small></component>
+    <component :is="foldable ? 'button' : 'div'" class="spec-head" :type="foldable ? 'button' : undefined" :aria-expanded="foldable ? !folded : undefined" @click="foldable && (folded = !folded)"><ListChecks :size="14" /><span>{{ $t('业务梳理') }}</span><ChevronDown v-if="foldable" :size="13" class="spec-fold" :class="{ up: !folded }" /><em v-if="state === 'drawn'"><Check :size="11" />{{ $t('已按它画好架构') }}</em><em v-else-if="state === 'confirmed'"><Check :size="11" />{{ $t('已确认') }}</em><small v-else-if="state === 'replaced'">{{ $t('已更新，看下面的新版') }}</small><small v-else>{{ $t('确认后再画架构') }}</small></component>
     <p v-if="spec.summary" class="spec-summary">{{ spec.summary }}</p>
     <ul v-if="!folded" class="spec-sections">
       <li v-for="sec in sections" :key="sec.key" :class="{ open: opened.has(sec.key) }">
@@ -69,13 +72,13 @@ function primary() {
       </li>
     </ul>
     <div v-if="!folded && spec.assumptions?.length" class="spec-assume"><b>{{ $t('我先这样假设') }}</b><ul><li v-for="a in spec.assumptions" :key="a">{{ a }}</li></ul></div>
-    <div v-if="!done && spec.questions?.length" class="spec-questions">
+    <div v-if="!done && !folded && spec.questions?.length" class="spec-questions">
       <div v-for="(q, qi) in spec.questions" :key="q.q" class="spec-q">
         <p>{{ q.q }}</p>
         <div class="spec-options"><button v-for="(o, oi) in q.options" :key="o" type="button" :class="{ on: picks[qi] === oi }" :aria-pressed="picks[qi] === oi" :disabled="locked" @click="picks[qi] = oi">{{ o }}<em v-if="oi === 0">{{ $t('推荐') }}</em></button></div>
       </div>
     </div>
-    <div v-if="!done" class="spec-foot">
+    <div v-if="!done && !folded" class="spec-foot">
       <input v-model="note" class="spec-note" maxlength="600" :disabled="locked" :placeholder="$t('哪里要改？直接说')" :aria-label="$t('修改梳理')" @keydown.enter.prevent="primary">
       <button class="primary spec-draw" :disabled="locked || drawing" @click="primary">{{ note.trim() ? $t('发送修改') : drawing ? $t('正在列页面清单…') : $t('确认，列页面清单') }}</button>
     </div>

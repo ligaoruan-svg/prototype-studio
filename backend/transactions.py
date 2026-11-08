@@ -136,7 +136,8 @@ def commit(token, runtime_errors, runtime_checked):
             storage.append_chat(pid,"assistant",item['message'],{
                 "page_id":page_id,"changed":True,"usage":item.get("usage",{}),"report":item.get('report'),
                 "change_id":edit_id,"diff":storage.compact_diff(item['diff']),"targets":item.get('targets',[]),
-                "change_count":item.get('operation_count',len(item['diff']['hunks']))})
+                "change_count":item.get('operation_count',len(item['diff']['hunks'])),
+                **({"trail":item['trail'],"took":item.get('took',0)} if item.get('trail') else {})})
         del PENDING[token]
         return {"ok":True,"version":page['version'],"hash":digest(item['after']),"change_id":edit_id,
                 "undo_count":len(stack),"last_undo_id":stack[-1]['id'] if stack else ''}

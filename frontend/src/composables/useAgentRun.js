@@ -79,10 +79,16 @@ export function useAgentRun(s) {
           if (tail?.kind === 'note' && tail.round === current.round) tail.label += event.text
           else current.steps.push({ id: 'note-' + current.steps.length, kind: 'note', round: current.round, label: event.text })
         }
+        // 架构模式边写边亮的一行（角色、业务对象、每个模块的页面）：一直露着，写完打勾
+        if (event.type === 'live') {
+          const row = current.steps.find(item => item.id === event.id)
+          if (row) Object.assign(row, { label: event.text, state: event.state })
+          else current.steps.push({ id: event.id, kind: 'live', label: event.text, state: event.state })
+        }
         if (event.label) current.label = event.label
         if (event.type.startsWith('step_')) {
           let step = current.steps.find(item => item.id === event.id)
-          if (!step) { current.steps.push({ id: event.id, label: event.label }); step = current.steps[current.steps.length - 1] }
+          if (!step) { current.steps.push({ id: event.id, label: event.label, tool: event.tool }); step = current.steps[current.steps.length - 1] }
           step.state = event.type === 'step_start' ? 'running' : event.type === 'step_done' ? 'done' : 'error'
           step.error = event.error?.message || event.error?.error || ''
           if (event.detail) step.detail = event.detail

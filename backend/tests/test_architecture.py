@@ -369,7 +369,7 @@ class 架构模式对话(unittest.TestCase):
         seen = []
         def chat(key, model, messages, tools, **k):
             seen.append(messages[-1]['content'])
-            k['on_delta']('x' * 300)
+            k['on_delta']('说明：加了「维修工」菜单页。')
             return {'choices': [{'finish_reason': 'stop', 'message': {'content':
                     '说明：加了「维修工」菜单页，派单弹窗加了预计上门时间。\n\n【页面】\n报修工单 [菜单页]\n  派单 [弹窗] | 字段：指派给*（选人）、预计上门时间*\n维修工 [菜单页]：管理维修工'}}]}
         self.mod.chat = chat
@@ -377,7 +377,7 @@ class 架构模式对话(unittest.TestCase):
         out = self.mod.run(self.pid, 'p', '加一个维修工页', 'k', 'm', 'u', 8000, events.append, lambda: False)
         self.assertTrue(out['content'].startswith('加了「维修工」菜单页，派单弹窗加了预计上门时间。'))
         self.assertIn('报修工单 [菜单页]', seen[0])                        # 现在的树交给模型
-        self.assertTrue(any('已写' in e.get('label', '') for e in events))
+        self.assertEqual(''.join(e['text'] for e in events if e['type'] == 'text_delta'), '说明：加了「维修工」菜单页。')   # 边写边出字，不再是「已写 N 字」
         arch = A.load(self.pid)
         page, new = arch['nodes']
         self.assertEqual(page['id'], saved['nodes'][0]['id'])

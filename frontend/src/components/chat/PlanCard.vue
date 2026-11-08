@@ -2,7 +2,7 @@
 // 页面清单卡：梳理确认后、展开整棵树之前看一眼——每个模块下有哪些页、给谁用、管哪个对象、什么类型。
 // 可选的页（账号、日志这类）打钩，拿不准的地方单选（默认第一个，就是推荐的）；确认后程序按页面类型展开。
 // 底下一行：写了字就是「发送修改」（改清单），没写就是「按这个画架构」
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Check, ChevronDown, LayoutList } from 'lucide-vue-next'
 
 // confirmed：已经按它画了的，确认时勾了哪些、选了什么（从那条消息读回来）——刷新后照当时的样子显示
@@ -16,10 +16,14 @@ function toggle(name) { const next = new Set(picked.value); next.has(name) ? nex
 const choices = ref((props.plan?.choices || []).map(q => Math.max(0, q.options.indexOf(props.confirmed?.answers?.[q.q]))))
 // 画好以后收起来，只留「几个模块、几个页面」和当时的选择；展开时不再列没勾的可选页
 const folded = ref(done.value)
+const foldable = computed(() => done.value || drawing.value)
 const modules = computed(() => (props.plan?.modules || []).map(m => ({ ...m, pages: m.pages.filter(p => !done.value || !p.optional || picked.value.has(p.name)) })).filter(m => m.pages.length))
 const count = computed(() => modules.value.reduce((n, m) => n + m.pages.length, 0))
+// 「首页」模块下只有一个首页：展开时直接放最外层，不算模块（和画出来的数对得上）
+const moduleCount = computed(() => modules.value.filter(m => !(m.pages.length === 1 && m.pages[0].name === m.name)).length)
 const note = ref('')
 const drawing = ref(false)
+watch([done, drawing], ([d, w]) => { if (d || w) folded.value = true })
 function primary() {
   if (props.locked || drawing.value) return
   const text = note.value.trim()
@@ -31,8 +35,8 @@ function primary() {
 
 <template>
   <div class="plan-card" :class="{ done }">
-    <component :is="done ? 'button' : 'div'" class="plan-head" :type="done ? 'button' : undefined" :aria-expanded="done ? !folded : undefined" @click="done && (folded = !folded)">
-      <LayoutList :size="14" /><span>{{ $t('页面清单') }}</span><small class="plan-count">{{ $t('{0} 个模块 · {1} 个页面', [modules.length, count]) }}</small><ChevronDown v-if="done" :size="13" class="plan-fold" :class="{ up: !folded }" />
+    <component :is="foldable ? 'button' : 'div'" class="plan-head" :type="foldable ? 'button' : undefined" :aria-expanded="foldable ? !folded : undefined" @click="foldable && (folded = !folded)">
+      <LayoutList :size="14" /><span>{{ $t('页面清单') }}</span><small class="plan-count">{{ $t('{0} 个模块 · {1} 个页面', [moduleCount, count]) }}</small><ChevronDown v-if="foldable" :size="13" class="plan-fold" :class="{ up: !folded }" />
       <em v-if="state === 'drawn'"><Check :size="11" />{{ $t('已画好') }}</em><small v-else-if="state === 'replaced'" class="plan-state">{{ $t('已更新，看下面的新版') }}</small>
     </component>
     <section v-for="m in folded ? [] : modules" :key="m.name" class="plan-module">
@@ -47,7 +51,7 @@ function primary() {
         </li>
       </ul>
     </section>
-    <div v-if="!done && plan.choices?.length" class="plan-choices">
+    <div v-if="!done && !folded && plan.choices?.length" class="plan-choices">
       <div v-for="(q, qi) in plan.choices" :key="q.q" class="plan-q">
         <p>{{ q.q }}</p>
         <div><button v-for="(o, oi) in q.options" :key="o" type="button" :class="{ on: choices[qi] === oi }" :aria-pressed="choices[qi] === oi" :disabled="locked" @click="choices[qi] = oi">{{ o }}<em v-if="oi === 0">{{ $t('推荐') }}</em></button></div>
@@ -56,7 +60,7 @@ function primary() {
     <ul v-else-if="state === 'drawn' && plan.choices?.length" class="plan-decided">
       <li v-for="(q, qi) in plan.choices" :key="q.q"><span>{{ q.q }}</span><b>{{ q.options[choices[qi]] }}</b></li>
     </ul>
-    <div v-if="!done" class="plan-foot">
+    <div v-if="!done && !folded" class="plan-foot">
       <input v-model="note" class="plan-note" maxlength="600" :disabled="locked" :placeholder="$t('哪里要改？直接说')" :aria-label="$t('修改页面清单')" @keydown.enter.prevent="primary">
       <button class="primary plan-draw" :disabled="locked || drawing" :title="$t('确认后程序按页面类型展开')" @click="primary">{{ note.trim() ? $t('发送修改') : drawing ? $t('正在画架构…') : $t('按这个画架构') }}</button>
     </div>
