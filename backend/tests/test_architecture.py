@@ -966,10 +966,10 @@ class 架构模式打招呼(unittest.TestCase):
         self.assertEqual(''.join(e['text'] for e in events if e['type'] == 'text_delta'), out['content'])
         self.assertEqual(storage.load_meta(self.pid)['chat'][-1]['arch_mode'], 'discuss')
 
-    def test_模型没回上来_兜底一句(self):
+    def test_模型连不上_照常报错_不用写死的话(self):
         from backend.deepseek_client import DeepSeekError
         def boom(*a, **k):
             raise DeepSeekError('网络断了')
         self.mod.chat = boom
-        out = self.mod.run(self.pid, 'p', '谢谢！', 'k', 'm', 'u', 8000, lambda e: None, lambda: False)
-        self.assertEqual(out['content'], '不客气。还要调整哪里，直接说。')
+        with self.assertRaises(DeepSeekError):
+            self.mod.run(self.pid, 'p', '谢谢！', 'k', 'm', 'u', 8000, lambda e: None, lambda: False)

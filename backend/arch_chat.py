@@ -187,20 +187,19 @@ def _small_talk(project_id, page_id, message, current, key, model, base_url, on_
         resp = chat(key, model, [{"role": "system", "content": SMALL_TALK_SYSTEM}, {"role": "user", "content": f"{now}\n用户说：{message}"}], None,
                     base_url=base_url, max_tokens=400, on_delta=(lambda text, kind="note": live.feed(text) if kind != "think" else None) if stream else None,
                     should_stop=should_stop)
-        content = ((resp.get("choices") or [{}])[0].get("message") or {}).get("content", "").strip()
-        usage = resp.get("usage") or {}
-    except DeepSeekError:
-        content, usage = "", {}
-    content = content or (THANKS_REPLY if re.match(r"(谢|多谢|感谢|辛苦)", message.strip()) else HELLO_REPLY if mods else HELLO_EMPTY)
+    except DeepSeekError as exc:     # 连不上就照常报错（有重试按钮），不拿一句写死的话糊弄过去
+        if exc.code == "stopped":
+            raise WorkError("stopped", "已停止") from exc
+        raise
+    content = ((resp.get("choices") or [{}])[0].get("message") or {}).get("content", "").strip()
+    usage = resp.get("usage") or {}
+    if not content:
+        raise WorkError("arch_unreadable", "模型没回话，再发一次试试")
     storage.append_chat(project_id, "assistant", content, {"page_id": page_id, "changed": False, "intent": "architecture", "arch_mode": "discuss", "usage": usage})
     return {"changed": False, "intent": "architecture", "content": content, "architecture_changed": False, "usage": usage}
 
 
 CHITCHAT = re.compile(r"^(?:你好|您好|hi|hello|hey|嗨|哈喽|在吗|在不在|谢谢|多谢|感谢|辛苦了|好的|好|ok|嗯|收到)[啊呀呢吧哈！!。.~～\s]*$", re.I)
-# 模型没回上来时的兜底
-HELLO_REPLY = "在的。可以问我这个架构哪里不合理、还缺什么，或者直接说要加哪些页面、弹窗、字段。"
-HELLO_EMPTY = "在的。把需求贴一段过来（做什么系统、谁用、主要流程），我先梳理业务，你确认后再列页面、画架构。"
-THANKS_REPLY = "不客气。还要调整哪里，直接说。"
 
 
 def _thought(thought: list[str], began: float) -> dict:
