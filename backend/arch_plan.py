@@ -142,7 +142,9 @@ def _parsed(obj: dict) -> list[dict]:
     return [parse_field(f) for f in obj.get("fields") or []]
 
 
-def _filters(fields: list[dict], states: list[str], tabs: bool) -> list[str]:
+def _filters(fields: list[dict], states: list[str], tabs: bool, mine: list[str] = ()) -> list[str]:
+    """mine：这一页是谁的（维修工的「我的任务」）——指向他自己的那个关联字段（维修工）不用筛"""
+    fields = [f for f in fields if not (f["type"] == "ref" and f["options"][:1] and f["options"][0] in mine)]
     key = [f for f in fields if CODEISH.search(f["name"]) or NAMEISH.search(f["name"])][:1]     # 编号 / 名称：输入框搜
     out = [f["name"] for f in key]
     out += [f["name"] + ("（下拉：" + "/".join(f["options"]) + "）" if f["options"] and f["type"] != "ref" else "（下拉）")
@@ -157,16 +159,21 @@ def _filters(fields: list[dict], states: list[str], tabs: bool) -> list[str]:
 
 def _cols(fields: list[dict], states: list[str]) -> list[str]:
     show = [f for f in fields if f["type"] not in ("textarea", "upload", "image", "note")]
-    first = [f for f in show if CODEISH.search(f["name"]) or NAMEISH.search(f["name"])][:2]
+    # 打头的是编号和名称各一个（订单号、商品名称），别让「物流单号」挤到第二列
+    first = [f for f in (next((f for f in show if CODEISH.search(f["name"])), None), next((f for f in show if NAMEISH.search(f["name"])), None)) if f]
     rest = [f for f in show if f not in first]
     cols = [f["name"] for f in first + rest][:8]
     return cols + (["状态"] if states else [])
 
 
+def _asked(note: str, fields: list[dict]) -> list[dict]:
+    """「必须选维修工」「需填处理说明」才是要填的；「通知维修工」「记录接单时间」不是"""
+    return [f for f in fields if not f["locked"] and re.search(r"(?:填|选|(?<!记)录|上传|附)[^，,；;。]*?" + re.escape(f["name"]), note)]
+
+
 def _modal_fields(note: str, fields: list[dict], verb: str) -> list[str]:
     """流转弹窗只放这一步要填的：动作说明里点到的字段，提到原因 / 说明的加一个多行"""
-    # 「必须选维修工」「需填处理说明」才是要填的；「通知维修工」「记录接单时间」不是
-    asked = [f for f in fields if not f["locked"] and re.search(r"(?:填|选|(?<!记)录|上传|附)[^，,；;。]*?" + re.escape(f["name"]), note)]
+    asked = _asked(note, fields)
     out = [field_text(f["name"], True, False, f["type"], f["options"]) for f in asked]
     named = "".join(f["name"] for f in asked)
     if re.search(r"原因", note) and "原因" not in named:
@@ -195,7 +202,7 @@ def _object_page(page: dict, obj: dict, roles: list[str], subs: list[dict] = (),
     logs：每做一次动作记一条的（催办 → 催办记录）——那个动作的弹窗填的就是这条记录的字段"""
     name, kind = obj["name"], page["type"]
     fields, states = _parsed(obj), obj.get("states") or []
-    acts = []
+    acts, born, later = [], False, set()     # born：有人新建（梳理里写了 —→X 的动作），不是这一页的人也算；later：后面哪步才填的字段
     for raw in obj.get("actions") or []:
         m = re.match(r"^([^：:（(]+)[：:]\s*(.+?)\s*(?:→|->)\s*([^（(]+?)\s*(?:[（(](.*)[）)])?\s*$", str(raw).strip())
         if not m:
@@ -205,18 +212,23 @@ def _object_page(page: dict, obj: dict, roles: list[str], subs: list[dict] = (),
         mine = any(r and (r in who or who in r) for r in page["who"]) if who else True
         machine = re.search(r"系统|自动|定时|超时|到期", who) and not any(r and r in who for r in roles)
         src_list = [x for x in re.split(r"\s*[/、,，]\s*|或", src) if x and not re.fullmatch(r"[—\-–－]+|无|空|新建", x)]
+        born = born or not src_list
+        if src_list:
+            later |= {f["name"] for f in _asked(note, fields)}
         if mine and not machine:
             acts.append((verb, src_list, re.split(r"\s*[/／]\s*", dst)[0], rest))     # rest：括号里谁做的后面那段（选维修工、填关闭原因）
     tabs = []
     if kind == "list" and len(states) >= 3:
         tabs = list(states)
-    elif kind == "tasks":
+    elif kind == "tasks":     # 只有一种要处理的状态就不分页签（「待发货」页下面只一个「待发货」页签没意义）
         tabs = [s for s in states if any(s in a[1] for a in acts)]
+        tabs = tabs if len(tabs) >= 2 else []
     kids: list[dict] = [{"type": "tab", "name": t} for t in tabs]
-    kids.append({"type": "block", "name": "筛选", "fields": _filters(fields, states, bool(tabs))})
+    kids.append({"type": "block", "name": "筛选", "fields": _filters(fields, states if kind != "tasks" else [], bool(tabs), page["who"] if kind == "tasks" else [])})
     buttons = [{"type": "button", "name": "查看", "action": "open", "target": f"{name}详情"}]
     layers = [{"type": "drawer", "name": f"{name}详情", "fields": [f["name"] for f in fields] + (["状态"] if states else []),
-               "children": [_sub_table(x, name, False) for x in subs]}]
+               # 详情里看得到明细和历次记录（催办、跟进）；有自己状态流转的（售后单、合同）是另一件事，不往里塞
+               "children": [_sub_table(x, name, False) for x in [*subs, *(x for x in logs if not x.get("states"))]]}]
     editable = [f for f in fields if not f["locked"]]
     if kind == "config":
         buttons.append({"type": "button", "name": "编辑", "action": "open", "target": f"编辑{name}"})
@@ -224,7 +236,8 @@ def _object_page(page: dict, obj: dict, roles: list[str], subs: list[dict] = (),
     for verb, src, dst, note in acts:
         if not src:
             continue
-        button = {"type": "button", "name": verb, "when": "状态是" + "、".join(src) + "时", "after": f"状态变为{dst}"}
+        button = {"type": "button", "name": verb, "when": "状态是" + "、".join(src) + "时",
+                  **({} if src == [dst] else {"after": f"状态变为{dst}"})}     # 催办、改地址：状态不变
         body = _modal_fields(note, fields, verb)
         log = next((x for x in [*logs, *subs] if x["name"].startswith(verb)), None)
         if log:
@@ -238,14 +251,20 @@ def _object_page(page: dict, obj: dict, roles: list[str], subs: list[dict] = (),
         else:
             button.update(action="confirm", target=f"确认{verb}？")
         buttons.append(button)
-    kids.append({"type": "table", "name": ("我的" if kind == "tasks" else "") + f"{name}列表", "cols": _cols(fields, states), "children": buttons})
-    if kind != "tasks" and page.get("add") is not False:
-        kids.append({"type": "button", "name": f"新增{name}", "action": "open", "target": f"新增{name}"})
-        layers.append({"type": "modal", "name": f"新增{name}",
-                       "fields": [field_text(f["name"], f["must"], False, f["type"], f["options"]) for f in editable]})
-    for verb, src, dst, note in acts:     # 起点是空的（生成：—→待核对）：页面顶上的按钮，新建一条
-        if not src and kind != "tasks":
-            kids.append({"type": "button", "name": verb + name, "action": "confirm", "target": f"确认{verb}{name}？", "after": f"新增一条，状态是{dst}"})
+    # 我的任务页：只有一种要处理的状态就叫「待发货订单」，几种就叫「我的订单列表」（「我的」放在审批人页面上不对）
+    title = f"{name}列表" if kind != "tasks" else (tabs and f"我的{name}列表") or next((f"{a[1][0]}{name}" for a in acts if a[1]), f"我的{name}列表")
+    kids.append({"type": "table", "name": title, "cols": _cols(fields, states), "children": buttons})
+    # 新建只填一开始就有的：派单才选的维修工、完工才写的处理说明不放
+    form = [field_text(f["name"], f["must"], False, f["type"], f["options"]) for f in editable if f["name"] not in later]
+    # 新建：梳理里写了谁新建（新建：—→草稿）就照它，按钮叫「新建报销单」、新的一条是那个状态；
+    # 没写就是一般的「新增」；写了但不是这一页的人（顾客在小程序里申请）就不放
+    news = [(verb, dst) for verb, src, dst, _ in acts if not src] if kind != "tasks" else []
+    if not news and not born and kind != "tasks" and page.get("add") is not False:
+        news = [("新增", "")]
+    for verb, dst in news:
+        kids.append({"type": "button", "name": verb + name, "action": "open", "target": verb + name,
+                     **({"after": f"新增一条，状态是{dst}"} if dst else {})})
+        layers.append({"type": "modal", "name": verb + name, "fields": form})
     return kids + layers
 
 

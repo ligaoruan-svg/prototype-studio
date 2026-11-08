@@ -22,7 +22,7 @@ const ListPage=(()=>{
 .data-table tr.lp-danger td{background:var(--danger-weak)}.data-table tr.lp-danger td.t1{color:var(--danger);font-weight:600}
 .field .lp-check{display:flex;align-items:center;gap:6px;min-height:32px;margin:0;color:var(--text-2);font-weight:400}.field .lp-check input{flex:none;width:16px;height:16px;min-height:0;margin:0;padding:0}.lp-h{margin:20px 0 8px;font-size:14px;color:var(--text-1)}
 .lp-logs{margin:0;padding-left:18px;color:var(--text-2)}.lp-logs li{margin:4px 0}.lp-logs time{margin-left:8px;color:var(--text-3);font-size:12px}
-.lp-dops{margin-bottom:14px}`;
+.lp-dops{margin-bottom:14px}.lp-rows{grid-column:1/-1}.lp-rows .data-table td{padding:4px 6px}.lp-rows .data-table input,.lp-rows .data-table select{width:100%;min-width:80px}`;
   // 状态标签的颜色按字面猜：待xx 黄、xx中 蓝、完成 / 通过 绿、关闭 / 作废 灰、差异 / 超时 红；写 tag:{已签约:'success'} 可以指定
   const KIND=s=>/差异|超时|逾期|驳回|拒绝|失败|异常|告警/.test(s)?'danger':/完成|核对|通过|生效|签约|在职|正常|启用|已解决/.test(s)?'success':/关闭|取消|作废|停用|离职|过期|释放/.test(s)?'neutral':/^待/.test(s)?'warning':'info';
   const list=o=>typeof o==='function'?o():(o||[]);
@@ -114,7 +114,16 @@ const ListPage=(()=>{
       act(cfg,a,r,el);
     }
   }
+  // 明细子表：别的数据里指回这一条的几行（工单的材料明细、客户的跟进记录）；by 是对方指回来的字段，match 是这边被指的字段
+  const subRows=(t,r)=>r?Store.where(t.data,x=>String(x[t.by])===String(r[t.match])):[];
+  const subTable=(t,rows)=>`<div class="tw"><table class="data-table"><thead><tr>${t.columns.map(c=>`<th>${esc(c.label)}</th>`).join('')}</tr></thead><tbody>${rows.length?rows.map(x=>`<tr>${t.columns.map(c=>`<td>${cell(x,c)}</td>`).join('')}</tr>`).join(''):`<tr><td colspan="${t.columns.length}">暂无</td></tr>`}</tbody></table></div>`;
+  // 表单里的明细：一行一组输入，「添加一行」多填几行；确定后每行加进 f.data，指回这一条
+  function rowsControl(f){
+    const one=`<tr>${f.fields.map(s=>`<td>${control(s,'').replace(/data-lpf=/g,'data-lpr=')}</td>`).join('')}<td><button type="button" class="lnk" onclick="this.closest('tr').remove()">删除</button></td></tr>`;
+    return `<div class="lp-rows" data-lpf="${esc(f.key)}"><div class="tw"><table class="data-table"><thead><tr>${f.fields.map(s=>`<th>${esc(s.label)}${s.required?'<span class="req">*</span>':''}</th>`).join('')}<th></th></tr></thead><tbody>${one}</tbody></table></div><template>${one}</template><button type="button" class="btn" onclick="const w=this.closest('.lp-rows');w.querySelector('tbody').insertAdjacentHTML('beforeend',w.querySelector('template').innerHTML)">添加一行</button></div>`;
+  }
   function control(f,v){
+    if(f.type==='rows')return rowsControl(f);
     const attr=`data-lpf="${esc(f.key)}"${f.readonly?' disabled':''}`;
     if(f.type==='select')return `<select ${attr}><option value="">请选择</option>${list(f.options).map(o=>`<option value="${esc(String(ov(o)))}" ${String(ov(o))===String(v??'')?'selected':''}>${esc(String(ol(o)))}</option>`).join('')}</select>`;
     if(f.type==='textarea')return `<textarea ${attr} placeholder="${esc(f.placeholder||'请输入'+f.label)}">${esc(v??'')}</textarea>`;
@@ -124,6 +133,8 @@ const ListPage=(()=>{
   }
   function read(el,f){
     if(!el)return '';
+    if(f.type==='rows')return [...el.querySelectorAll('tbody tr')].map(tr=>Object.fromEntries(f.fields.map(s=>[s.key,read(tr.querySelector(`[data-lpr="${CSS.escape(s.key)}"]`),s)])))
+      .filter(x=>Object.values(x).some(v=>!blank(v)&&v!==false));
     if(f.type==='check')return el.checked;
     if(f.type==='file')return el.files&&el.files[0]?el.files[0].name:'';
     if(f.type==='money'||f.type==='number')return el.value===''?'':Number(el.value);
@@ -135,9 +146,15 @@ const ListPage=(()=>{
     if(a.run){a.run(r);return}
     if(a.detail){detail(cfg,r,el);return}
     const apply=v=>{
+      const rowsF=list(a.form).filter(f=>f.type==='rows'),more=rowsF.map(f=>{const l=v[f.key]||[];delete v[f.key];return l});
+      const res=save(v);
+      if(res!==false)rowsF.forEach((f,i)=>{const host=res&&res.id!==undefined?res:r;more[i].forEach(x=>Store.add(f.data,{...x,[f.by]:host?host[f.match]:''}))});
+      return res;
+    };
+    const save=v=>{
       if(a.patch)v={...v,...(typeof a.patch==='function'?a.patch(r,v):a.patch)};   // 顺带要记的（派单时间、操作人）
       if(a.flow)return Store.move(cfg.data,r.id,a.flow,v);
-      if(a.add){Store.add(cfg.data,{...(typeof a.defaults==='function'?a.defaults():a.defaults||{}),...v});return true}
+      if(a.add)return Store.add(cfg.data,{...(typeof a.defaults==='function'?a.defaults():a.defaults||{}),...v});
       if(a.remove){Store.remove(cfg.data,r.id);return true}
       if(r)Store.update(cfg.data,r.id,v);
       return true;
@@ -149,7 +166,7 @@ const ListPage=(()=>{
     }
     const fields=list(a.form);
     const initial=f=>typeof f.value==='function'?f.value(r):f.value!==undefined?f.value:(a.edit&&r?r[f.key]:'');
-    const body=`<div class="form-grid">${fields.map(f=>`<div class="field${f.type==='textarea'||f.full?' full':''}" data-lpw="${esc(f.key)}"><label>${esc(f.label)}${f.required?'<span class="req">*</span>':''}</label>${control(f,initial(f))}${f.hint?`<div class="hint">${esc(f.hint)}</div>`:''}</div>`).join('')}</div>`;
+    const body=`<div class="form-grid">${fields.map(f=>`<div class="field${f.type==='textarea'||f.type==='rows'||f.full?' full':''}" data-lpw="${esc(f.key)}"><label>${esc(f.label)}${f.required?'<span class="req">*</span>':''}</label>${control(f,initial(f))}${f.hint?`<div class="hint">${esc(f.hint)}</div>`:''}</div>`).join('')}</div>`;
     UI.openModal(UI.Modal({title:a.title||a.label,body,confirm:a.ok||'确定',wide:fields.length>6}),close=>{
       const v={},miss=[];
       for(const f of fields){
@@ -168,7 +185,8 @@ const ListPage=(()=>{
     const d=cfg.detail||{},fields=d.fields||cfg.columns||[];
     const acts=(cfg.actions||[]).map((a,i)=>!a.detail&&visible(cfg,a,r)?btn(a,'r'+i,r):'').join('');
     const logs=(r.logs||[]).length?`<h4 class="lp-h">流转记录</h4><ol class="lp-logs">${r.logs.map(l=>`<li><b>${esc(l.action)}</b>：${esc(l.from)} → ${esc(l.to)}<time>${esc(l.at)}</time></li>`).join('')}</ol>`:'';
-    UI.openDrawer(UI.Drawer({title:d.title||cfg.data+'详情',body:`${acts?`<div class="ops lp-dops">${acts}</div>`:''}<dl class="kv">${fields.map(c=>`<dt>${esc(c.label)}</dt><dd>${cell(r,c)}</dd>`).join('')}</dl>${logs}`,footer:'none'}),null,el);
+    const subs=(d.tables||[]).map(t=>`<h4 class="lp-h">${esc(t.title)}</h4>${subTable(t,subRows(t,r))}`).join('');
+    UI.openDrawer(UI.Drawer({title:d.title||cfg.data+'详情',body:`${acts?`<div class="ops lp-dops">${acts}</div>`:''}<dl class="kv">${fields.map(c=>`<dt>${esc(c.label)}</dt><dd>${cell(r,c)}</dd>`).join('')}</dl>${subs}${logs}`,footer:'none'}),null,el);
   }
   return render;
 })();
@@ -181,11 +199,11 @@ LIST_GUIDE = [
     "配置：title、desc、data:'Store 名'、tabs:['待派单','处理中',…]（按 status 分，可加 '全部'）、"
     "filters:[{key,label,type:'select'|'check'|'daterange',options,text}]（不写 type 是文字搜索，keys:[…] 多字段搜）、"
     "columns:[{key,label,width,tag:true 或 {值:'success'},money:true,bool:['紧急','普通'],value:r=>…}]、"
-    "actions:[行按钮]、toolbar:[顶部按钮]、detail:{title,fields:[写法同 columns]}、rowClass:r=>'danger'（标红）",
+    "actions:[行按钮]、toolbar:[顶部按钮]、detail:{title,fields:[写法同 columns],tables:[{title:'材料明细',data:'工单材料明细',by:'所属工单',match:'工单编号',columns:[…]}]}、rowClass:r=>'danger'（标红）",
     "按钮：{label:'查看',detail:true}；{label:'派单',flow:'派单',form:[{key:'worker',label:'维修工',type:'select',required:true,"
     "options:()=>Store.all('维修工').map(w=>({value:w.id,label:w.name}))}]}（flow 按 Store.can 出现，填完点确定就 Store.move）；"
     "{label:'接单',flow:'接单',confirm:'确认接单？'}；自己写弹窗用 run:r=>…，流转按钮照样写 flow（只管按状态出现，run 里自己 Store.move）；{label:'编辑',edit:true,form:[…]}；{label:'删除',remove:true}；"
     "顶部 {label:'新增工单',primary:true,add:true,defaults:{status:'待派单'},form:[…]}；跳页 {label:'看合同',go:'#contracts'}",
-    "表单字段 type：text / select / textarea / date / datetime / number / money / file / check；required 必填，readonly 只读带出，value:r=>默认值；"
+    "表单字段 type：text / select / textarea / date / datetime / number / money / file / check / rows（明细几行：{key:'材料明细',label:'材料明细',type:'rows',data:'工单材料明细',by:'所属工单',match:'工单编号',fields:[…]}，确定后每行加进 data）；required 必填，readonly 只读带出，value:r=>默认值；"
     "规则写成 check:(值,行)=>'不通过的提示'（返回文字就拦下），顺带要记的写 patch:(行,值)=>({dispatchAt:'…'})",
 ]

@@ -15,6 +15,7 @@ PERSON = re.compile(r"(姓名|人|业主|客服|主管|员|工)$")
 NAME = re.compile(r"(姓名|名称|名字)$")
 MONTH = re.compile(r"(月份|账期)$")
 CODE = re.compile(r"(编号|单号|工号|编码|代码)$")
+MONEY = re.compile(r"^(?!是否).*(费|费用|金额|价|总额|合计|小计)$")     # 「是否收费」不是钱
 
 
 def _fields(cfgs: list[dict]) -> dict[str, dict]:
@@ -37,7 +38,7 @@ def _fields(cfgs: list[dict]) -> dict[str, dict]:
             add(f["key"], f.get("type", ""), f.get("options"))
         for a in (cfg.get("actions") or []) + (cfg.get("toolbar") or []):
             for f in a.get("form") or []:
-                if not f.get("readonly"):
+                if not f.get("readonly") and f.get("type") != "rows":     # 明细几行存在别的数据里
                     add(f["key"], f.get("type", ""), f.get("options"))
         for f in (cfg.get("detail") or {}).get("fields") or []:
             add(f["key"], "money" if f.get("money") else "")
@@ -82,7 +83,7 @@ def demo(cfgs_by_data: dict[str, list[dict]], spec: dict, keys: dict) -> tuple[s
                 meta["type"] = f["type"]
                 if f["options"] and f["type"] in ("select", "radio", "multi") and not meta["options"]:
                     meta["options"] = f["options"]
-        namefield[data] = name_key(objects[data]) if objects.get(data) else \
+        namefield[data] = name_key(objects[data], data) if objects.get(data) else \
             next((f for f in fields if NAME.search(f)), next((f for f in fields if CODE.search(f)), ""))
     # 别的数据里写了选项的同名字段（业主评价的「报修分类」）：照用那些选项
     shared = {f: m["options"] for fs in fields_by.values() for f, m in fs.items() if m["options"]}
@@ -106,7 +107,7 @@ def demo(cfgs_by_data: dict[str, list[dict]], spec: dict, keys: dict) -> tuple[s
                 kind, options = meta["type"], meta["options"] or shared.get(f, [])
                 ref = next((d for d in cfgs_by_data if d != data and (f == d or f in d or d in f) and namefield.get(d)), "")
                 if meta.get("ref"):     # 关联：从对方那份数据里取名字
-                    row[f] = JS(f"Demo.pick({js(meta['ref'])},{js(namefield.get(meta['ref']) or name_key(objects.get(meta['ref'], [])))},{i})")
+                    row[f] = JS(f"Demo.pick({js(meta['ref'])},{js(namefield.get(meta['ref']) or name_key(objects.get(meta['ref'], []), meta['ref']))},{i})")
                 elif CODE.search(f) and owner.get(f, data) != data:
                     row[f] = JS(f"Demo.pick({js(owner[f])},{js(f)},{i})")
                 elif CODE.search(f):
@@ -119,7 +120,7 @@ def demo(cfgs_by_data: dict[str, list[dict]], spec: dict, keys: dict) -> tuple[s
                     row[f] = JS(f"Demo.at({-(i % 9)},{8 + i % 10},{(i * 13) % 60})")
                 elif kind == "date" or f.endswith("日期"):
                     row[f] = JS(f"Demo.at({-(i % 9)}).slice(0,10)")
-                elif kind == "money" or re.search(r"(费|费用|金额|价|总额|合计)$", f):
+                elif kind == "money" or MONEY.search(f):
                     row[f] = round(60 + (i * 37) % 420 + (i % 3) * 0.5, 2)
                 elif kind == "number" or re.search(r"(数|次数|数量)$", f):
                     row[f] = 1 + (i * 3) % 9
@@ -151,7 +152,18 @@ def demo(cfgs_by_data: dict[str, list[dict]], spec: dict, keys: dict) -> tuple[s
             "return `${t.getFullYear()}-${p(t.getMonth()+1)}-${p(t.getDate())} ${p(h)}:${p(m)}`},\n"
             "  t(k,i){const l=this.text[k]||[];return l.length?l[i%l.length]:''},\n"
             "  pick(n,f,i){const l=(Store.all(n)||[]).map(r=>r[f]).filter(Boolean);return l.length?l[i%l.length]:''}};")
-    # 被别人引用的先定义（维修工先于工单），Demo.pick 才取得到
-    order = sorted(rows_by, key=lambda d: -sum(1 for o in rows_by if o != d and any(isinstance(v, JS) and f"Demo.pick({js(d)}" in v for r in rows_by[o] for v in r.values())))
+    # 被引用的先定义（维修工、报修分类先于工单，工单先于材料明细），Demo.pick 才取得到；互相引用的照原样
+    uses = {o: {d for d in rows_by if d != o and any(isinstance(v, JS) and f"Demo.pick({js(d)}" in v for r in rows_by[o] for v in r.values())}
+            for o in rows_by}
+    order: list[str] = []
+
+    def put(d, path=()):
+        if d in order or d in path:
+            return
+        for x in sorted(uses[d]):
+            put(x, path + (d,))
+        order.append(d)
+    for d in rows_by:
+        put(d)
     body = "\n".join(f"Store.define({js(d)},[\n  " + ",\n  ".join(js(r) for r in rows_by[d]) + "\n]);" for d in order)
     return head + "\n" + body, sorted(texts)

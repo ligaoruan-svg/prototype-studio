@@ -11,7 +11,7 @@ import re
 from .arch_fields import parse_field
 
 CJK = re.compile(r"[一-鿿]")
-MONEY = re.compile(r"(费|费用|金额|价|总额|合计)(（元）)?$")
+MONEY = re.compile(r"^(?!是否).*(费|费用|金额|价|总额|合计|小计)(（元）)?$")     # 「是否收费」不是钱
 ADD = re.compile(r"^(新增|添加|新建|登记|创建)")
 FORM = {"ref": "select", "select": "select", "radio": "select", "multi": "select", "person": "select", "textarea": "textarea", "note": "textarea",
         "date": "date", "daterange": "date", "datetime": "datetime", "number": "number", "money": "money",
@@ -73,7 +73,8 @@ def _object(page: dict, table: dict, spec: dict) -> dict | None:
     names = _grams(page["name"]) | _grams(table["name"])
     best, score = None, 0
     for o in (spec or {}).get("objects") or []:
-        s = 10 * len(tabs & set(o.get("states") or [])) + len(names & _grams(o["name"])) + (5 if o["name"] in (page["name"], table["name"]) else 0)
+        s = 10 * len(tabs & set(o.get("states") or [])) + len(names & _grams(o["name"])) + (5 if o["name"] in (page["name"], table["name"]) else 0) \
+            + (3 if o["name"] in page["name"] + "｜" + table["name"] else 0)     # 「商品管理」是商品，不是订单商品
         if s > score:
             best, score = o, s
     return best
@@ -105,17 +106,22 @@ NAMEISH = re.compile(r"(姓名|名称|名字)$")
 CODEISH = re.compile(r"(编号|单号|工号|编码|代码)$")
 
 
-def name_key(fields: list[str]) -> str:
-    """一个对象里认得出是哪一条的字段：先名字，再编号"""
+def name_key(fields: list[str], obj: str = "") -> str:
+    """一个对象里认得出是哪一条的字段：带着对象名的名称、编号优先（报修工单认「工单编号」，不认「联系人姓名」），再是名字、编号"""
     names = [key_of(parse_field(f)["name"]) for f in fields]
-    return next((n for n in names if NAMEISH.search(n)), next((n for n in names if CODEISH.search(n)), names[0] if names else ""))
+    own = lambda n: any(obj[i:i + 2] in n for i in range(len(obj) - 1))
+    for test in (lambda n: NAMEISH.search(n) and own(n), lambda n: CODEISH.search(n) and own(n), NAMEISH.search, CODEISH.search):
+        hit = next((n for n in names if test(n)), "")
+        if hit:
+            return hit
+    return names[0] if names else ""
 
 
 class Kb:
     """这一页管的对象，和梳理里所有对象的字段表：页面上没写类型、选项的字段照字段表补，关联字段从对方那份数据里选"""
 
     def __init__(self, data: str, spec: dict):
-        self.data = data
+        self.data, self.spec = data, spec
         self.objects = {o["name"]: o.get("fields") or [] for o in (spec or {}).get("objects") or []}
         self.fields = {key_of(parse_field(f)["name"]): parse_field(f) for f in self.objects.get(data, [])}
 
@@ -128,10 +134,19 @@ class Kb:
             f = {**f, "type": base["type"] if f["guessed"] else f["type"], "options": f["options"] or base["options"]}
         return f
 
+    def of(self, data: str) -> "Kb":
+        return Kb(data, self.spec)
+
+    def sub(self, table: dict) -> dict | None:
+        """弹窗、抽屉里挂的明细表（工单材料明细）：是哪份数据、它哪个字段指回这一条、指的是这边哪个字段"""
+        by = next((f["name"] for f in map(parse_field, self.objects.get(table["name"]) or [])
+                   if f["type"] == "ref" and f["options"][:1] == [self.data]), "")
+        return {"data": table["name"], "by": key_of(by), "match": name_key(self.objects.get(self.data, []), self.data)} if by else None
+
     def options(self, f: dict, key: str):
         if f["type"] == "ref" and f["options"]:
             target = f["options"][0]
-            nk = name_key(self.objects.get(target, []))
+            nk = name_key(self.objects.get(target, []), target)
             return JS(f"()=>Store.all({js(target)}).map(r=>r[{js(nk)}]).filter(Boolean)") if nk else _pick(self.data, key)
         return f["options"] if _real(f["options"]) else _pick(self.data, key)
 
@@ -212,7 +227,9 @@ def _button(b: dict, page: dict, verbs: dict, first: str, row: bool, kb: Kb, mad
     if (layer and layer["type"] == "drawer") or (not layer and row and re.match(r"^(查看|详情)", name)):   # 没画抽屉的「查看」：详情放字段表
         item["detail"] = True
     elif layer:
-        item["form"] = _form(layer.get("fields") or [], kb)
+        item["form"] = _form(layer.get("fields") or [], kb) + [
+            {**sub, "key": t["name"], "label": t["name"], "type": "rows", "fields": _form(t.get("fields") or [], kb.of(t["name"]))}
+            for t in layer.get("children") or [] if t["type"] == "table" and (sub := kb.sub(t))]
         if layer["name"] != name:
             item["title"] = layer["name"]
         if not row and (ADD.match(name) or new_as):
@@ -285,6 +302,10 @@ def list_page(page: dict, spec: dict, flow_map: dict) -> dict | None:
         if fields:
             cfg["detail"] = {"title": layer["name"] if layer else data + "详情",
                              "fields": [{"key": key_of(f), "label": label_of(f), **({"tag": True} if f == "状态" else {})} for f in fields]}
+            tables = [{"title": t["name"], **sub, "columns": _columns(t.get("cols") or [], kb.of(t["name"]))}
+                      for t in (layer or {}).get("children") or [] if t["type"] == "table" and (sub := kb.sub(t))]
+            if tables:
+                cfg["detail"]["tables"] = tables
     return cfg
 
 
