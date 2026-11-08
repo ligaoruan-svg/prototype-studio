@@ -459,6 +459,24 @@ CHAT_KEEP = 200
 
 
 @_locked
+def drop_turn(project_id: str, message_id: str) -> None:
+    """「换一个回答」：拿掉最后这一问一答（这条回复、和紧挨在它前面的你的话），再用同样的话重跑。
+    只认这一页最后一条、而且没改动页面 / 画布的回复——改过的要先撤销，不能悄悄换掉"""
+    meta = load_meta(project_id)
+    chat = meta.get("chat", [])
+    at = next((i for i, m in enumerate(chat) if m.get("id") == message_id), -1)
+    if at < 0 or chat[at].get("role") != "assistant" or chat[at].get("changed") or chat[at].get("arch_changed"):
+        raise ValueError("这条回复不能重新生成")
+    page = chat[at].get("page_id")
+    if any(m.get("page_id") == page for m in chat[at + 1:]):
+        raise ValueError("只能重新生成最后一条回复")
+    start = at
+    while start > 0 and chat[start - 1].get("role") == "user" and chat[start - 1].get("page_id") == page:
+        start -= 1
+    meta["chat"] = chat[:start] + chat[at + 1:]
+    save_meta(meta)
+
+
 def append_chat(project_id: str, role: str, content: str, extra: dict[str, Any] | None = None) -> None:
     meta = load_meta(project_id)
     # seq 一直往上数：project.json 里只留最近 CHAT_KEEP 条，记忆整理靠它知道「上次整理到哪了」

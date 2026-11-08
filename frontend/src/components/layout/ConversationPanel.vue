@@ -1,13 +1,19 @@
 <script setup>
 // 从 App.vue 拆出来的一块界面：状态和函数都在 App 里，按同样的名字 inject 进来，模板原样不动
-import { computed, inject, onMounted, onUnmounted, ref } from 'vue'
+import { computed, inject, onMounted, onUnmounted, ref, watch } from 'vue'
 import { prose } from '../../lib/prose.js'
-import { ArrowUp, Brain, Check, CheckCheck, ChevronDown, Copy, ImagePlus, LoaderCircle, MessageCircle, MessageSquare, PanelLeftClose, Pencil, Plus, SlidersHorizontal, Sparkles, Square, SquareMousePointer, X } from 'lucide-vue-next'
+import { ArrowUp, Brain, Check, CheckCheck, ChevronDown, Copy, ImagePlus, LoaderCircle, MessageCircle, MessageSquare, PanelLeftClose, Pencil, Plus, SlidersHorizontal, Sparkles, Square, SquareMousePointer, X, RotateCcw } from 'lucide-vue-next'
 import ExecutionCard from '../chat/ExecutionCard.vue'
 import ResultCard from '../chat/ResultCard.vue'
 import AttachCard from '../chat/AttachCard.vue'
 // 很长的一条（以前程序替你发的那种详细指令）：先只露几行，点「展开全部」再看
 const openLong = ref(new Set())
+// 长对话只摆最近一段（几百条全摆出来，滚动和每次重画都慢），上面「显示更早的」一次多摆 40 条
+const STEP = 40
+const limit = ref(STEP)
+const shownMessages = computed(() => messages.value.slice(Math.max(0, messages.value.length - limit.value)))
+watch(() => [project.value?.id, page.value?.id], () => { limit.value = STEP })
+const hiddenCount = computed(() => Math.max(0, messages.value.length - limit.value))
 const isLong = text => String(text || '').length > 160 || String(text || '').split('\n').length > 5
 const preview = text => String(text || '').replace(/\s+/g, ' ').slice(0, 90).trim() + '…'
 function toggleLong(id) { const next = new Set(openLong.value); next.has(id) ? next.delete(id) : next.add(id); openLong.value = next }
@@ -18,7 +24,7 @@ const {
   locked, memoryCount, messages, model, modelMenu, openDialog, openMemory, page,
   pasteImage, pendingRef, pendingUser, pendingDisplay, syncAttach, pointAt, project, projects, reference, rightOpen,
   runAgent, saveNote, selected, selectionPlace, setMode, showChat, showGuide, showPanel,
-  smallerRequest, stopAgent, switchModel, switchingModel, toAI, tool, undo, useRephrase, drawSpec, reviseSpec, drawPlan, revisePlan
+  smallerRequest, stopAgent, say, regenerate, canRegenerate, switchModel, switchingModel, toAI, tool, undo, useRephrase, drawSpec, reviseSpec, drawPlan, revisePlan
 } = inject('studio')
 // 对话方式：参照 Claude，收进输入框左下角一个小菜单，不再单独占一行
 const modes = computed(() => [{ value: 'auto', label: '自动', tip: '提问先聊，指令再改' }, { value: 'discuss', label: '只讨论', tip: '只聊，不改代码' }, { value: 'edit', label: '直接改', tip: '直接动手局部修改' },
@@ -86,7 +92,8 @@ function appliedFor(message) {
     <!-- 参照 Claude：不写「你」「设计助手」；你的话是右边一个气泡，AI 的回复直接铺在背景上；复制、重发、时间悬停才出来 -->
     <div ref="chatBox" class="messages" aria-live="polite">
       <div v-if="!messages.length && !pendingUser && showGuide" class="conversation-empty compact-guide"><span class="empty-mark"><Sparkles :size="18" /></span><h2>{{ $t('先聊清楚，再动手。') }}</h2><p>{{ $t('可以一起评价设计、比较方案；确定方向后，只改需要调整的位置。') }}</p><div class="prompt-chips"><button v-for="suggestion in ['现在的设计怎么样？', '有哪些地方值得优化？', selected ? '调整选中区域的对齐' : '检查一下交互有没有漏的']" :key="suggestion" class="prompt-suggestion" :disabled="!page" @click="input = suggestion; toAI()">{{ $t(suggestion) }}</button></div><button class="text-button dismiss-guide" @click="hideGuide">{{ $t('不再显示') }}</button></div>
-      <article v-for="message in messages" :key="message.id" class="message" :class="message.role">
+      <button v-if="hiddenCount" type="button" class="text-button older-messages" @click="limit += STEP">{{ $t('显示更早的 {0} 条', [Math.min(STEP, hiddenCount)]) }}</button>
+      <article v-for="message in shownMessages" :key="message.id" class="message" :class="message.role">
         <template v-if="message.role === 'user'">
           <AttachCard v-if="message.display" :kind="message.display.kind" :title="message.display.title" :items="message.display.items" />
           <p v-if="bubbleText(message)" class="bubble">{{ bubbleText(message) }}</p>
@@ -96,7 +103,7 @@ function appliedFor(message) {
         <div v-else class="reply prose" v-html="prose(message.content)"></div>
         <span v-if="message.role === 'user' && message.target" class="message-target"><SquareMousePointer :size="12" />{{ $t('指着：{0}', [$t(message.target)]) }}</span>
         <img v-if="message.role === 'user' && message.image" class="message-shot" loading="lazy" :src="`/api/projects/${project.id}/chat-images/${message.image}`" :alt="message.image_name || $t('参考截图缩略图')" @error="$event.target.style.display = 'none'">
-        <div class="message-tools"><time>{{ formatTime(message.created_at) }}</time><button class="icon-button" :aria-label="$t('复制这条内容')" :title="$t('复制')" @click="copyMessage(message.report?.summary || message.discussion?.answer || message.content)"><Copy :size="13" /></button><button v-if="message.role === 'user'" class="icon-button" :aria-label="$t('编辑后重新发送')" :title="$t('编辑后重发')" :disabled="locked" @click="editAndResend(message)"><Pencil :size="13" /></button></div>
+        <div class="message-tools"><time>{{ formatTime(message.created_at) }}</time><button class="icon-button" :aria-label="$t('复制这条内容')" :title="$t('复制')" @click="copyMessage(message.report?.summary || message.discussion?.answer || message.content)"><Copy :size="13" /></button><button v-if="canRegenerate(message)" class="icon-button" :aria-label="$t('换一个回答')" :title="$t('换一个回答')" :disabled="locked" @click="regenerate(message)"><RotateCcw :size="13" /></button><button v-if="message.role === 'user'" class="icon-button" :aria-label="$t('编辑后重新发送')" :title="$t('编辑后重发')" :disabled="locked" @click="editAndResend(message)"><Pencil :size="13" /></button></div>
       </article>
       <article v-if="pendingUser && !messages.some(m => m.role === 'user' && m.content === pendingUser && m === messages[messages.length - 1])" class="message user"><template v-if="pendingDisplay"><AttachCard :kind="pendingDisplay.kind" :title="pendingDisplay.title" :items="pendingDisplay.items" /><p v-if="pendingDisplay.note" class="bubble">{{ pendingDisplay.note }}</p></template><p v-else class="bubble">{{ isLong(pendingUser) ? preview(pendingUser) : pendingUser }}</p><img v-if="pendingRef" class="message-shot" :src="pendingRef.data_url" :alt="$t(pendingRef.name)"></article>
       <ExecutionCard v-for="run in currentRuns" :key="run.id" :run="run" :locked="locked" @retry="runAgent(run.request, '', run.options)" @repair="repairRun(run)" @settings="openDialog('settings')" @select="setMode('select')" @fill="smallerRequest(run)" @point="pointAt(run)" @dismiss="run.status = 'dismissed'" @stop="stopAgent" />
@@ -111,13 +118,14 @@ function appliedFor(message) {
           <div v-if="reference" class="reference-attachment"><button class="reference-open" @click="openDialog('image')"><img :src="reference.data_url" :alt="$t('参考截图缩略图')"><span>{{ $t(reference.name) }}<small :class="{ warn: !model.supports_vision }">{{ !model.supports_vision ? $t('当前模型看不了图片') : reference.regions.length ? reference.regions.length + $t(' 个框选区域 · 点开修改') : $t('参考整张图 · 点开可圈选') }}</small></span></button><button class="icon-button" :aria-label="$t('移除参考截图')" :disabled="locked" @click="reference = null"><X :size="13" /></button></div>
           <div v-if="selected" class="selection-context"><SquareMousePointer :size="14" /><span>{{ elementLabel(selected) }}<small v-if="selectionPlace">{{ $t(selectionPlace) }}</small></span><button class="icon-button" :aria-label="$t('清除选中目标')" @click="closeSelection"><X :size="12" /></button></div>
         </div>
-        <textarea ref="composer" v-model="input" rows="1" @paste="pasteImage" :aria-label="$t('对话内容')" :placeholder="busy ? $t('可以先写好下一条消息…') : syncAttach ? $t('可以补一句（不写也行，直接发送）') : composerIntent === 'architecture' ? $t('说说要加哪些菜单、页面、弹窗和字段') : selected ? $t('聊聊这个位置，或者告诉我怎么改…') : $t('说说想怎么改，或者问问这个设计…')"></textarea>
+        <textarea ref="composer" v-model="input" rows="1" @paste="pasteImage" :aria-label="$t('对话内容')" :placeholder="activeRun ? $t('补充一句，AI 下一步照着调整…') : busy ? $t('可以先写好下一条消息…') : syncAttach ? $t('可以补一句（不写也行，直接发送）') : composerIntent === 'architecture' ? $t('说说要加哪些菜单、页面、弹窗和字段') : selected ? $t('聊聊这个位置，或者告诉我怎么改…') : $t('说说想怎么改，或者问问这个设计…')"></textarea>
         <div class="composer-actions">
           <button class="icon-button" :title="model.supports_vision ? $t('加截图：也可以直接粘贴（⌘/Ctrl + V）或拖进输入框') : $t('加截图（当前模型看不了图片，发送前要在设置里换模型）')" :aria-label="$t('添加参考截图')" :disabled="locked" @click="imageInput.click()"><ImagePlus :size="17" /></button>
           <button type="button" class="mode-button" :class="composerIntent" :aria-expanded="modeMenu" :title="$t(currentMode.tip)" :disabled="busy" @click.stop="modeMenu = !modeMenu; modelMenu = false">{{ $t(currentMode.label) }}<ChevronDown :size="12" /></button>
           <span class="composer-spacer"></span>
           <button v-if="selected" class="quiet" :disabled="locked || !input.trim()" @click="saveNote">{{ $t('先记下') }}</button>
           <button class="model-pick" :aria-expanded="modelMenu" :title="lastResult?.usage?.total_tokens ? $t('切换模型 · 上次用了 {0} tokens', [lastResult.usage.total_tokens.toLocaleString()]) : $t('切换模型')" @click.stop="modeMenu = false; model.has_key ? (modelMenu = !modelMenu) : openDialog('settings')"><span class="status-dot" :class="{ connected: model.has_key }"></span><span class="model-name">{{ $t(modelName) }}</span><ChevronDown :size="12" /></button>
+          <button v-if="activeRun && input.trim()" type="button" class="send-button say-run" :aria-label="$t('补充给 AI')" :title="$t('补充一句：下一步交给 AI，它照着调整（⌘ / Ctrl ↵）')" @click="say"><ArrowUp :size="16" /></button>
           <button v-if="activeRun" type="button" class="send-button stop-run" :disabled="!activeRun.runId || activeRun.stopping" :aria-label="$t('停止')" :title="$t('停在下一步之前；已经改好的部分会保留并检查，可以撤销')" @click="stopAgent"><Square :size="11" fill="currentColor" /></button>
           <button v-else class="send-button direct-modify" :disabled="locked || (!input.trim() && !annotations.length && !syncAttach) || !page" :aria-label="composerIntent === 'edit' ? $t('执行修改') : $t('发送消息')" :title="$t('发送 · ⌘ / Ctrl ↵')" @click="runAgent()"><LoaderCircle v-if="busy" :size="15" class="spin" /><ArrowUp v-else :size="16" /></button>
         </div>

@@ -18,6 +18,8 @@ export function useAgentRun(s) {
     return { route: previewRoute.value || '', clicks: recentClicks.value.filter(c => c.at >= since).map(({ at, ...c }) => c), errors: runtimeErrors.value.slice(-5) }
   }
   async function runAgent(text = '', runtimeFeedback = '', options = {}) {
+    // AI 正在跑、输入框里写了话：这是插话，不是新的一轮
+    if (!text && activeRun.value && input.value.trim()) return say()
     // 输入框上挂着「同步到原型」的卡片：发的是卡片里那一大段，输入框里写的当补充；对话里只显示成卡片
     const attach = !(typeof text === 'string' && text) ? syncAttach.value : null
     const note = attach ? input.value.trim() : ''
@@ -61,7 +63,7 @@ export function useAgentRun(s) {
     reference.value = null
     lastResult.value = null; status.value = intent === 'edit' ? '正在读页面' : intent === 'architecture' ? '正在看页面树' : '思考中'; leftOpen.value = true
     try {
-      const response = await fetch('/api/projects/' + project.value.id + '/agent/stream', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ page_id: pageId.value, message, selection: target, runtime_feedback: runtimeFeedback, reference: sentRef, scene: previewScene(), intent, include_annotations: options.includeAnnotations !== false, repair_pending: options.repairPending || '', lang: locale.value, architecture: !!options.architecture || (s.archOpen.value && intent !== 'architecture' && !!s.arch.value?.nodes?.length), display }) })
+      const response = await fetch('/api/projects/' + project.value.id + '/agent/stream', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ page_id: pageId.value, message, selection: target, runtime_feedback: runtimeFeedback, reference: sentRef, scene: previewScene(), intent, include_annotations: options.includeAnnotations !== false, repair_pending: options.repairPending || '', lang: locale.value, regenerate: options.regenerate || '', architecture: !!options.architecture || (s.archOpen.value && intent !== 'architecture' && !!s.arch.value?.nodes?.length), display }) })
       const result = await consumeAgentStream(response, event => {
         if (event.type === 'started' && event.run_id) current.runId = event.run_id
         if (event.type === 'page_check') s.runPageCheck(event)   // AI 要真跑一下页面：不等它跑完，接着收别的事件
@@ -76,6 +78,9 @@ export function useAgentRun(s) {
           else current.steps.push({ id: 'think-' + current.steps.length, kind: 'think', text: event.text, started: Date.now() })
         } else if (thinking && ['text_delta', 'note_delta', 'live', 'step_start', 'model_wait'].includes(event.type)) thinking.ended = Date.now()
         if (event.type === 'model_wait') { current.streamText = ''; current.round = event.round }
+        // 插的话：后台这一轮开头交给了模型（user_aside），或者跑完了没来得及交（aside_left，跑完接着发）
+        if (event.type === 'user_aside') { const a = current.steps.find(x => x.kind === 'aside' && x.state === 'sent' && x.label === event.text); if (a) a.state = 'taken' }
+        if (event.type === 'aside_left') for (const t of event.texts) { const a = current.steps.find(x => x.kind === 'aside' && x.label === t); if (a) a.state = 'queued'; (current.queued ||= []).push(t) }
         if (event.type === 'text_delta') current.streamText += event.text
         if (event.type === 'note_delta') {
           // 模型的旁白按轮次接在步骤列表里，和它接下来做的事排在一起。
@@ -171,7 +176,21 @@ export function useAgentRun(s) {
       current.finished = Date.now(); busy.value = false; pendingUser.value = ''; pendingDisplay.value = null; pendingRef.value = null
       await nextTick(); if (chatBox.value) chatBox.value.scrollTop = chatBox.value.scrollHeight
       if (followUp) setTimeout(() => runAgent(followUp, followFeedback, followOptions || { intent: 'edit', includeAnnotations: false, selection: null, selfReview: followRound, display: followDisplay }), 0)
+      // 跑的时候补的话没交进去（架构模式一次就答完、或者补在最后一步之后）：跑完接着发；还有自动修要跑就放回输入框
+      else if (current.queued?.length && current.status !== 'stopped') setTimeout(() => runAgent(current.queued.join('\n'), '', { intent: current.intent === 'architecture' ? 'architecture' : current.options.intent }), 0)
+      else if (current.queued?.length && !input.value.trim()) input.value = current.queued.join('\n')
     }
+  }
+  // 插话（参照 Claude 干活时可以补一句）：交给后台，下一轮开头给模型；架构模式一次请求插不进去，记下来跑完接着发
+  async function say() {
+    const run = activeRun.value, text = input.value.trim()
+    if (!run || !text) return
+    input.value = ''
+    const step = { id: 'aside-' + run.steps.length, kind: 'aside', label: text, state: 'sent' }
+    run.steps.push(step)
+    const queue = () => { step.state = 'queued'; (run.queued ||= []).push(text) }
+    if (run.intent === 'architecture' || !run.runId) return queue()
+    try { const r = await post(`/api/projects/${project.value.id}/agent/say`, { run_id: run.runId, text }); if (!r.ok) queue() } catch { queue() }
   }
   // 停止：告诉后台在下一步之前停下。已经改好的部分照常检查、保存，可以一键撤销；还没改就什么都不动
   const activeRun = computed(() => [...runs.value].reverse().find(r => r.status === 'running') || null)
@@ -231,6 +250,26 @@ export function useAgentRun(s) {
   async function copyMessage(text) {
     try { await navigator.clipboard.writeText(text); toast('已复制') } catch { toast('复制失败，请手动选中') }
   }
+  // 「换一个回答」（参照 Claude 的重新生成）：最后一条没改页面的回复，拿掉这一问一答，用同样的话重跑一遍
+  const canRegenerate = message => {
+    const all = s.messages.value
+    return message.role === 'assistant' && !message.changed && !message.arch_changed && message === all[all.length - 1] && !!askedBy(message)
+  }
+  function askedBy(message) {
+    const all = s.messages.value, at = all.indexOf(message)
+    const asked = all.slice(0, at).reverse().find(m => m.role === 'user' && !m.aside)
+    return asked && !asked.target && !asked.image ? asked : null    // 当时指着位置 / 带着截图的，重跑拿不回来，不给换
+  }
+  async function regenerate(message) {
+    const asked = askedBy(message)
+    if (!asked || locked.value) return
+    const chat = project.value.chat || [], at = chat.indexOf(message)
+    let start = at
+    while (start > 0 && chat[start - 1].role === 'user' && chat[start - 1].page_id === message.page_id) start--
+    project.value.chat = chat.slice(0, start).concat(chat.slice(at + 1))     // 先在界面上拿掉，后台同时删
+    await runAgent(asked.content, '', { intent: message.intent === 'architecture' ? 'architecture' : asked.intent || 'auto', display: asked.display || null,
+      includeAnnotations: false, selection: null, regenerate: message.id })
+  }
   async function editAndResend(message) {
     input.value = message.content
     await s.toAI()
@@ -249,6 +288,6 @@ export function useAgentRun(s) {
     s.setMode(clicky ? 'interact' : 'select')
     toast(clicky ? '先在预览里把出问题的操作点一遍，再按发送：AI 能看到你点了什么、有没有报错' : '在页面上点一下要改的地方，再按发送')
   }
-  return { selftests, runAgent, activeRun, stopAgent, repairRun, chooseAnswer, applySuggestion, customSuggestion, discussSuggestion,
+  return { selftests, runAgent, activeRun, stopAgent, say, regenerate, canRegenerate, repairRun, chooseAnswer, applySuggestion, customSuggestion, discussSuggestion,
     commentToAI, useRephrase, copyMessage, editAndResend, smallerRequest, pointAt, drawSpec, reviseSpec, drawPlan, revisePlan }
 }

@@ -79,7 +79,8 @@ body.resizing-side iframe { pointer-events: none; }
 .messages { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 18px 24px; scrollbar-width: thin; }
 /* AI 的话里常有一长串不带空格的代码（`${a}${b}.replace(...)`）：以前把整张卡片撑到七八百像素宽，
    对话栏出现横向滚动、看不全也拉不回来。长串在哪都能折行，对话栏不横向滚动 */
-.messages { overflow-x: hidden; overflow-wrap: anywhere; }
+.messages { overflow-x: hidden; overflow-wrap: anywhere; container-type: inline-size; }
+.older-messages { display: block; margin: 0 auto 14px; font-size: 12px; color: var(--muted); }
 .messages pre, .messages code { white-space: pre-wrap; overflow-wrap: anywhere; }
 .conversation-empty { padding-top: 30px; text-align: center; }
 .empty-mark { display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 11px; background: var(--primary-soft); color: var(--primary); margin-bottom: 12px; }
@@ -889,3 +890,13 @@ input[type=color]::-webkit-color-swatch { border: none; border-radius: 2px; }
 .chat-card { margin-top: 12px; border: 1px solid var(--line); border-radius: var(--r-card); background: #fff; padding: 8px 6px 6px; box-shadow: var(--chat-shadow); font-size: 12.5px; line-height: 1.6; }
 .chat-card-head { display: flex; align-items: center; gap: 6px; padding: 2px 8px 6px; font-size: 12px; font-weight: 600; color: var(--ink); }
 .chat-card-head svg { color: var(--primary); }
+
+/* 对话区拉窄（不到 340px）：卡片收紧——内边距、字号小一档，清单里「对象 · 谁用」那行折到页面名下面 */
+@container (max-width: 340px) {
+  .messages .message { font-size: 13.5px; }
+  .messages .spec-card, .messages .plan-card, .messages .suggest-box, .messages .chat-card { padding: 6px 3px 4px; font-size: 12px; }
+  .messages .plan-card .plan-module li { grid-template-columns: 16px auto 1fr; row-gap: 0; }
+  .messages .plan-card .plan-module li small { grid-column: 2 / -1; }
+  .messages .choice-row { padding: 6px 8px; font-size: 12px; }
+  .messages .run-error-actions, .messages .run-error-hint, .messages .run-error details { margin-left: 0; }
+}

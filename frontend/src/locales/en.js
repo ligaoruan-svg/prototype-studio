@@ -1510,4 +1510,12 @@ export default {
   "已经改好的部分会保留并检查，不想要可以撤销。": "Anything already changed is kept and checked; undo it if you don't want it.",
   "模型服务这会儿忙，已经自动重试过几次；稍等一下再重试。": "The model service is busy and was retried a few times — wait a moment and retry.",
   "可能是网络或模型服务抖了一下，重试一般就好。": "Probably a network or model hiccup — retrying usually works.",
+  "显示更早的 {0} 条": "Show {0} earlier",
+  "补充给 AI": "Add to the running task",
+  "补充一句：下一步交给 AI，它照着调整（⌘ / Ctrl ↵）": "Add a note: the AI picks it up at its next step (⌘ / Ctrl ↵)",
+  "补充一句，AI 下一步照着调整…": "Add a note — the AI adjusts at its next step…",
+  "已交给 AI，接着按这个做": "Handed to the AI",
+  "这一轮插不进去，跑完接着发": "Will send when this run finishes",
+  "下一步交给 AI": "Goes to the AI at its next step",
+  "换一个回答": "Regenerate",
 }

@@ -238,7 +238,7 @@ test('跑的时候像 Claude：架构模式边写边亮，工具一步一行带�
   const card = readFileSync(new URL('../src/components/chat/ExecutionCard.vue', import.meta.url), 'utf8')
   const result = readFileSync(new URL('../src/components/chat/ResultCard.vue', import.meta.url), 'utf8')
   assert.match(run, /event\.type === 'live'[\s\S]*?kind: 'live'/)                  // 梳理 / 清单一块一行
-  assert.match(card, /const shown = step => !CLERICAL\.has\(step\.tool\) && \(\['note', 'live', 'think'\]\.includes\(step\.kind\) \|\| showSteps\.value/)   // 一直露着
+  assert.match(card, /const shown = step => !CLERICAL\.has\(step\.tool\) && \(\['note', 'live', 'think', 'aside'\]\.includes\(step\.kind\) \|\| showSteps\.value/)   // 一直露着
   assert.match(card, /run\.intent === 'architecture' && run\.streamText/)             // 回答一句句出来，不再只有「已写 N 字」
   assert.match(card, /<component :is="iconOf\(step\)"/)
   assert.match(card, /class="step-brief">\{\{ brief\(step\) \}\}/)                    // 拿到了什么跟在后面
@@ -262,4 +262,21 @@ test('和 Claude 对齐：改代码那一步露出红绿行，卡片一套圆角
   assert.match(card, /const errorHint = computed/)
   assert.match(card, /class="run-error-hint"/)
   assert.match(card, /CLERICAL = new Set\(\['answer_user', 'report_result', 'ask_user'\]\)/)      // 收尾的手续不列出来
+})
+
+test('像 Claude：跑的时候能插话、最后一条能换一个回答、长对话只摆最近一段、窄了卡片收紧', () => {
+  const run = readFileSync(new URL('../src/composables/useAgentRun.js', import.meta.url), 'utf8')
+  const panel = readFileSync(new URL('../src/components/layout/ConversationPanel.vue', import.meta.url), 'utf8')
+  const card = readFileSync(new URL('../src/components/chat/ExecutionCard.vue', import.meta.url), 'utf8')
+  const css = readFileSync(new URL('../src/styles/style.css', import.meta.url), 'utf8')
+  assert.match(run, /if \(!text && activeRun\.value && input\.value\.trim\(\)\) return say\(\)/)      // 跑的时候回车 = 插话
+  assert.match(run, /agent\/say`, \{ run_id: run\.runId, text \}/)
+  assert.match(run, /if \(run\.intent === 'architecture' \|\| !run\.runId\) return queue\(\)/)        // 架构模式插不进去：跑完接着发
+  assert.match(run, /current\.queued\?\.length && current\.status !== 'stopped'/)
+  assert.match(card, /<li v-if="step\.kind === 'aside'" class="aside">/)
+  assert.match(panel, /v-if="activeRun && input\.trim\(\)" type="button" class="send-button say-run"/)
+  assert.match(run, /regenerate: options\.regenerate \|\| ''/)
+  assert.match(panel, /v-if="canRegenerate\(message\)"/)
+  assert.match(panel, /v-for="message in shownMessages"/)
+  assert.match(css, /@container \(max-width: 340px\)/)
 })

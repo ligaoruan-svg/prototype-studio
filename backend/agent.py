@@ -112,7 +112,7 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
               on_event=None, intent: str = 'auto', include_annotations: bool = True,
               stream: bool = True, should_stop=None, scene: dict | None = None, trace: list | None = None,
               start_source: str | None = None, lang: str = 'zh', live_checks: bool = False,
-              architecture: bool = False, display: dict | None = None) -> dict[str, Any]:
+              architecture: bool = False, display: dict | None = None, inbox=None) -> dict[str, Any]:
     send = on_event or (lambda event: None)
     trail: list[dict] = []     # 这次做了哪几步（边做边说的话 + 每个工具一行）：跟着回复存下来，刷新后回复上面还能点开看
     began = time.time()
@@ -322,6 +322,11 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
         # 快到「上下文预算」时才一次性收掉较早的读取结果，收到六成，之后又能连着好几轮只往后加
         if compact_once(messages, context_budget):
             read_seen.clear()   # 旧的读取结果收起了，它可能要重读，不能再拦
+        # 你在它干活时补的话（参照 Claude 可以中途插话）：这一轮开头交给模型，照着调整接下来的做法；也记进对话
+        for aside in (inbox() if inbox else []):
+            messages.append({"role": "user", "content": "【我在你干活时补充一句，照这个调整接下来的做法，已经做好的不用重来】" + aside})
+            storage.append_chat(project_id, "user", aside, {"page_id": page_id, "aside": True})
+            emit({"type": "user_aside", "text": aside})
         emit({"type":"model_wait","round":round_no+1,"label":"思考你的问题" if read_only else "理解需求中" if round_no==0 else "继续处理修改"})
         # 本轮的结论文字在工具参数里，边收边推给界面；只在有事件通道时才走流式。
         # note = 模型在动手之前说的话（它为什么要查这个）；result = 最终结论。

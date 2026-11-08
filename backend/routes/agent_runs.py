@@ -36,6 +36,7 @@ class AgentIn(BaseModel):
     lang: str = Field(default='zh', pattern='^[a-z]{2}(-[A-Za-z]{2,4})?$')   # 界面语言：用户这句话看不出语言时，AI 按它回复
     architecture: bool = False   # 架构画布开着：把画布上的页面树放进背景，做页面时照它来
     display: dict | None = None   # 对话里怎么显示这条：界面拼出来的长话只显示成一张小卡片
+    regenerate: str = ''   # 「换一个回答」：先拿掉这条回复和它前面那句，再用同样的话重跑
 
 
 @router.post("/api/projects/{project_id}/agent/chat")
@@ -73,6 +74,14 @@ def agent_settings(body, supplied_key=None):
 # 正在跑的 AI 修改：run_id → 停止信号。点「停止」或关掉页面（连接断开）都会置位，
 # agent 在两轮之间 / 两步之间看到就停下；已改好的部分照常走检查和保存。
 RUNS: dict[str, threading.Event] = {}
+# 跑的时候补的话（参照 Claude 干活时可以插话）：run_id → 还没交给模型的几句；agent 每一轮开头取走
+INBOX: dict[str, list[str]] = {}
+INBOX_LOCK = threading.Lock()
+
+
+def take_inbox(run_id: str) -> list[str]:
+    with INBOX_LOCK:
+        return INBOX.pop(run_id, [])
 
 
 class StopIn(BaseModel):
@@ -87,9 +96,34 @@ def agent_stop(project_id: str, body: StopIn):
     return {'ok': bool(flag)}
 
 
+class SayIn(BaseModel):
+    run_id: str
+    text: str = Field(min_length=1, max_length=4000)
+
+
+@router.post('/api/projects/{project_id}/agent/say')
+def agent_say(project_id: str, body: SayIn):
+    """AI 干活时补一句：下一轮交给模型。架构模式一次请求就答完，插不进去——告诉界面，等跑完再接着发"""
+    if body.run_id not in RUNS:
+        return {'ok': False, 'reason': 'finished'}
+    if body.run_id in ARCH_RUNS:
+        return {'ok': False, 'reason': 'architecture'}
+    with INBOX_LOCK:
+        INBOX.setdefault(body.run_id, []).append(body.text.strip())
+    return {'ok': True}
+
+
+ARCH_RUNS: set[str] = set()
+
+
 @router.post('/api/projects/{project_id}/agent/stream')
 def agent_stream(project_id: str, body: AgentIn):
     settings, key = agent_settings(body)
+    if body.regenerate:
+        try:
+            storage.drop_turn(project_id, body.regenerate)
+        except ValueError as exc:
+            raise HTTPException(400, error_payload(WorkError('regenerate', str(exc)))) from exc
     events = queue.Queue()
     run_id = uuid.uuid4().hex[:12]
     stop = RUNS[run_id] = threading.Event()
@@ -97,6 +131,7 @@ def agent_stream(project_id: str, body: AgentIn):
     def work():
         try:
             if body.intent == 'architecture':   # 架构模式：只改画布上的页面树，不走改代码那一套
+                ARCH_RUNS.add(run_id)
                 result = arch_chat.run(project_id, body.page_id, body.message, key, body.model or settings['model'], settings['base_url'],
                                        settings['max_tokens'], events.put, stop.is_set, settings.get('stream', True), display=body.display)
                 events.put({'type': 'complete', 'result': result})
@@ -108,7 +143,7 @@ def agent_stream(project_id: str, body: AgentIn):
                                on_event=events.put, intent=body.intent, include_annotations=body.include_annotations, scene=body.scene,
                                stream=settings.get('stream', True), should_stop=stop.is_set,
                                start_source=(draft or {}).get('after'), lang=body.lang, live_checks=True,
-                               architecture=body.architecture, display=body.display)
+                               architecture=body.architecture, display=body.display, inbox=lambda: take_inbox(run_id))
             events.put({'type':'complete','result':result})
             synthesize_later(project_id)
         except Exception as exc:
@@ -119,8 +154,11 @@ def agent_stream(project_id: str, body: AgentIn):
             payload['detail'] = payload['detail'].replace(key, '[密钥]')
             events.put({'type':'error','error':payload})
         finally:
+            RUNS.pop(run_id, None); ARCH_RUNS.discard(run_id)
+            leftover = take_inbox(run_id)     # 最后一轮之后才补的：没来得及交给模型，退回给界面接着发
+            if leftover:
+                events.put({'type': 'aside_left', 'texts': leftover})
             events.put(None)
-            RUNS.pop(run_id, None)
     def generate():
         finished = False
         try:

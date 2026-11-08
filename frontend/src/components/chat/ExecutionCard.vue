@@ -32,14 +32,14 @@ const discussing = computed(() => props.run.intent === 'discuss')
 const showSteps = ref(false)
 // 交回答、汇报这几步是收尾的手续，不算「在做事」，不列出来（回看里也不存）
 const CLERICAL = new Set(['answer_user', 'report_result', 'ask_user'])
-const tools = computed(() => props.run.steps.filter(s => !['note', 'live', 'think'].includes(s.kind) && !CLERICAL.has(s.tool)))
+const tools = computed(() => props.run.steps.filter(s => !['note', 'live', 'think', 'aside'].includes(s.kind) && !CLERICAL.has(s.tool)))
 const toolCount = computed(() => tools.value.length)
 const recent = computed(() => new Set(tools.value.slice(-3).map(s => s.id)))
 // 思考：还在想的露最后两句，想完了「想了 N 秒」
 const thinkingNow = step => !step.ended && busy.value
 const thinkTail = step => { const lines = String(step.text || '').trim().split(/\n+/); return lines.slice(-2).join(' ').slice(-120) }
 const thinkLabel = step => thinkingNow(step) ? ['思考中…'] : ['想了 {0} 秒', [Math.max(1, Math.round(((step.ended || props.run.finished || now.value) - step.started) / 1000))]]
-const shown = step => !CLERICAL.has(step.tool) && (['note', 'live', 'think'].includes(step.kind) || showSteps.value || recent.value.has(step.id) || step.state === 'running' || step.state === 'error')
+const shown = step => !CLERICAL.has(step.tool) && (['note', 'live', 'think', 'aside'].includes(step.kind) || showSteps.value || recent.value.has(step.id) || step.state === 'running' || step.state === 'error')
 // 以前不管干什么都写"修改中"：问一句"这里美观吗"也是修改中，还在读代码也是修改中。
 // 标题按当下实际在做的事说话——讨论就说在看，动过文件才叫修改。
 const heading = computed(() => {
@@ -67,7 +67,7 @@ const heading = computed(() => {
       <template v-if="step.kind !== 'note'"><LoaderCircle v-if="step.state === 'running'" :size="13" class="spin" /><AlertCircle v-else-if="step.state === 'error'" :size="13" /><Check v-else-if="step.kind === 'live'" :size="13" /><component :is="iconOf(step)" v-else :size="13" class="tool-icon" /></template>
       <div><button v-if="step.kind !== 'note' && (step.detail || step.diff)" type="button" class="step-head" :aria-expanded="opened.has(step.id)" @click="toggle(step.id)">{{ $t(step.label) }}<em v-if="step.diff" class="diffstat"><i class="add">+{{ step.diff.additions }}</i><i class="del">−{{ step.diff.deletions }}</i></em><em v-else-if="!opened.has(step.id) && brief(step)" class="step-brief">{{ brief(step) }}</em><ChevronDown :size="12" :class="{ open: opened.has(step.id) }" /></button><div v-else-if="step.kind === 'note'" class="prose note-text" v-html="prose(step.label)"></div><span v-else>{{ $t(step.label) }}</span><small v-if="step.error">{{ $t(step.error) }}</small><DiffLines v-else-if="step.diff && opened.has(step.id)" :diff="step.diff" /><small v-else-if="step.detail && opened.has(step.id)" class="step-detail">{{ $t(step.detail) }}</small></div></li></template></ol>
     <div v-if="run.intent === 'architecture' && run.streamText && !run.result" class="stream-text lead"><div class="prose" v-html="prose(run.streamText)"></div><span v-if="!run.steps.some(s => s.kind === 'live')" class="caret"></span></div>
-    <ol aria-live="polite"><template v-for="step in run.intent === 'architecture' ? run.steps.filter(x => x.kind !== 'think') : run.steps" :key="step.id"><li v-if="step.kind === 'think'" class="think" :class="{ running: thinkingNow(step) }"><LoaderCircle v-if="thinkingNow(step)" :size="13" class="spin" /><Lightbulb v-else :size="13" />
+    <ol aria-live="polite"><template v-for="step in run.intent === 'architecture' ? run.steps.filter(x => x.kind !== 'think') : run.steps" :key="step.id"><li v-if="step.kind === 'aside'" class="aside"><div><p>{{ step.label }}</p><small>{{ $t(step.state === 'taken' ? '已交给 AI，接着按这个做' : step.state === 'queued' ? '这一轮插不进去，跑完接着发' : '下一步交给 AI') }}</small></div></li><li v-else-if="step.kind === 'think'" class="think" :class="{ running: thinkingNow(step) }"><LoaderCircle v-if="thinkingNow(step)" :size="13" class="spin" /><Lightbulb v-else :size="13" />
       <div><button type="button" class="step-head" :aria-expanded="opened.has(step.id)" @click="toggle(step.id)">{{ $t(...thinkLabel(step)) }}<ChevronDown :size="12" :class="{ open: opened.has(step.id) }" /></button><small v-if="opened.has(step.id)" class="think-text">{{ step.text.trim() }}</small><small v-else-if="thinkingNow(step) && thinkTail(step)" class="think-text tail">{{ thinkTail(step) }}</small></div></li>
       <li v-else v-show="shown(step)" :class="[step.kind === 'note' ? 'note' : step.state, step.kind === 'live' ? 'live' : step.kind === 'note' ? '' : 'tool', { foldable: step.kind !== 'note' && step.detail }]">
       <template v-if="step.kind !== 'note'"><LoaderCircle v-if="step.state === 'running'" :size="13" class="spin" /><AlertCircle v-else-if="step.state === 'error'" :size="13" /><Check v-else-if="step.kind === 'live'" :size="13" /><component :is="iconOf(step)" v-else :size="13" class="tool-icon" /></template>
@@ -107,6 +107,9 @@ const heading = computed(() => {
 .execution-card li.think{color:var(--muted)}.execution-card li.think svg{color:var(--subtle)}.execution-card li.think.running svg{color:var(--primary)}
 .think-text{display:block;margin-top:3px;font-size:11.5px!important;line-height:1.7;color:var(--subtle)!important;white-space:pre-wrap;max-height:240px;overflow:auto}.think-text.tail{white-space:normal;max-height:none}
 .diffstat{display:inline-flex;gap:4px;margin-left:6px;font-style:normal;font-size:11.5px;font-variant-numeric:tabular-nums}.diffstat .add{font-style:normal;color:#2f7d45}.diffstat .del{font-style:normal;color:#b0473a}
+.execution-card li.aside{justify-content:flex-end;margin:4px 0}.execution-card li.aside>div{flex:none;max-width:88%;text-align:right}
+.execution-card li.aside p{display:inline-block;margin:0;padding:6px 12px;border-radius:14px;background:var(--canvas);color:var(--ink);font-size:13px;text-align:left;white-space:pre-wrap}
+.execution-card li.aside small{display:block;margin-top:2px;font-size:11px!important;color:var(--subtle)!important}
 .step-brief{margin-left:6px;font-style:normal;font-size:11.5px;color:var(--subtle);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .execution-card li small.step-detail{color:var(--muted);margin-top:3px;line-height:1.7}
 .step-head{display:flex;align-items:center;gap:4px;max-width:100%;min-width:0;padding:0;min-height:0;background:none;border:0;color:inherit;font:inherit;text-align:left;cursor:pointer}

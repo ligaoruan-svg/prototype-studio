@@ -172,3 +172,39 @@ class 做了哪几步跟着回复存下来(unittest.TestCase):
         self.assertEqual((done['diff']['additions'], done['diff']['deletions']), (1, 1))
         self.assertEqual([l['kind'] for l in done['diff']['lines']], ['removed', 'added'])
         self.assertIn('新标题', done['diff']['lines'][1]['text'])
+
+    def test_跑的时候补的话下一轮交给模型(self):
+        box = [['标题用蓝色'], []]       # 第一轮开头还没人说话，第二轮开头补了一句
+        self.script(msg(('search_source', {'query': '标题'})), msg(edit('#t', '新标题')), msg(REPORT))
+        agent.run_agent(self.pid, self.page, '改标题', 'k', 'm', intent='edit', stream=False, on_event=self.events.append,
+                        inbox=lambda: box.pop() if box else [])
+        said = [m for m in self.sent[0] if m['role'] == 'user' and '标题用蓝色' in str(m['content'])]
+        self.assertEqual(said, [])                                                      # 第一轮还没补
+        later = [m for m in self.sent[1] if m['role'] == 'user' and '标题用蓝色' in str(m['content'])]
+        self.assertEqual(len(later), 1)
+        self.assertIn({'type': 'user_aside', 'text': '标题用蓝色'}, self.events)
+        chat = storage.load_meta(self.pid)['chat']
+        self.assertTrue(any(m.get('aside') and m['content'] == '标题用蓝色' for m in chat))   # 也记进对话
+
+
+class 换一个回答(unittest.TestCase):
+    """拿掉最后这一问一答再重跑；改过页面的、不是最后一条的不让换"""
+    setUp, tearDown = 一步一步.setUp, 一步一步.tearDown
+
+    def test_拿掉最后一问一答(self):
+        storage.append_chat(self.pid, 'user', '标题怎么样', {'page_id': self.page})
+        storage.append_chat(self.pid, 'assistant', '偏小', {'page_id': self.page, 'changed': False})
+        storage.append_chat(self.pid, 'user', '颜色呢', {'page_id': self.page})
+        storage.append_chat(self.pid, 'user', '顺便看看字号', {'page_id': self.page, 'aside': True})
+        storage.append_chat(self.pid, 'assistant', '颜色可以', {'page_id': self.page, 'changed': False})
+        chat = storage.load_meta(self.pid)['chat']
+        with self.assertRaises(ValueError):
+            storage.drop_turn(self.pid, chat[1]['id'])                     # 不是最后一条
+        storage.drop_turn(self.pid, chat[-1]['id'])
+        self.assertEqual([m['content'] for m in storage.load_meta(self.pid)['chat']], ['标题怎么样', '偏小'])
+
+    def test_改过页面的不让换(self):
+        storage.append_chat(self.pid, 'user', '改标题', {'page_id': self.page})
+        storage.append_chat(self.pid, 'assistant', '改好了', {'page_id': self.page, 'changed': True})
+        with self.assertRaises(ValueError):
+            storage.drop_turn(self.pid, storage.load_meta(self.pid)['chat'][-1]['id'])
