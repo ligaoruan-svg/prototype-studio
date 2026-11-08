@@ -136,7 +136,9 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
         send(event)
 
     def kept() -> dict:
-        return {"trail": trail[-40:], "took": round(time.time() - began)} if trail else {}
+        # 最后一段旁白多半是回答的草稿（模型先写一遍，再交 answer_user / report_result），和回复重复：不留
+        rows = trail[:-1] if trail and trail[-1].get("note") is not None else trail
+        return {"trail": rows[-40:], "took": round(time.time() - began)} if rows else {}
     trace = [] if trace is None else trace
     plan: list[dict] = []   # 当前计划：程序按每轮的修改自动往前推，不用模型一轮轮调 update_plan
     shell_fresh = None   # 刚放进来、还没写内容的外壳：这时候不让翻源码

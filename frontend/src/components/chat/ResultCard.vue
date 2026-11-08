@@ -47,6 +47,10 @@ function sendOther() { const text = other.value.trim(); if (!text || props.locke
 const showTrail = ref(false)
 // 思考过程默认露三行，点「展开全部」看完整的
 const openThink = ref(new Set())
+// 收起时并成一行截断（以前用 CSS 截三行，开头有空行时上下各露半行字）
+const CLIP = 90
+const flat = t => String(t || '').replace(/\s+/g, ' ').trim()
+const clip = t => { const x = flat(t); return x.length > CLIP ? x.slice(0, CLIP) + '…' : x }
 function toggleThink(i) { const next = new Set(openThink.value); next.has(i) ? next.delete(i) : next.add(i); openThink.value = next }
 const trail = computed(() => props.result?.trail || [])
 const toolSteps = computed(() => trail.value.filter(r => r.note == null && r.think == null).length)
@@ -57,7 +61,7 @@ const statuses = { completed: '已完成', partial: '部分完成', unprocessed:
   <div class="result-card">
     <div v-if="trail.length" class="trail" :class="{ open: showTrail }">
       <button type="button" class="trail-head" :aria-expanded="showTrail" @click="showTrail = !showTrail">{{ toolSteps ? $t('做了 {0} 步', [toolSteps]) : $t('思考过程') }}<small v-if="took">{{ $t(...took) }}</small><ChevronDown :size="12" /></button>
-      <ol v-if="showTrail"><li v-for="(r, i) in trail" :key="i" :class="{ note: r.note != null, think: r.think != null, error: r.error }"><template v-if="r.note != null">{{ r.note }}</template><template v-else-if="r.think != null"><Lightbulb :size="13" /><div class="think-body"><p :class="{ full: openThink.has(i) }">{{ r.think.trim() }}</p><button v-if="r.think.length > 80" type="button" class="text-button think-more" @click="toggleThink(i)">{{ openThink.has(i) ? $t('收起') : $t('展开全部') }}</button></div></template><template v-else><component :is="r.error ? AlertCircle : iconOf(r)" :size="13" /><span>{{ $t(r.label) }}<em v-if="brief(r)">{{ brief(r) }}</em></span></template></li></ol>
+      <ol v-if="showTrail"><li v-for="(r, i) in trail" :key="i" :class="{ note: r.note != null, think: r.think != null, error: r.error }"><template v-if="r.note != null || r.think != null"><Lightbulb v-if="r.think != null" :size="13" /><div class="think-body"><p v-if="openThink.has(i)" class="full">{{ (r.think ?? r.note).trim() }}</p><p v-else>{{ clip(r.think ?? r.note) }}</p><button v-if="flat(r.think ?? r.note).length > CLIP" type="button" class="text-button think-more" @click="toggleThink(i)">{{ openThink.has(i) ? $t('收起') : $t('展开全部') }}</button></div></template><template v-else><component :is="r.error ? AlertCircle : iconOf(r)" :size="13" /><span>{{ $t(r.label) }}<em v-if="brief(r)">{{ brief(r) }}</em></span></template></li></ol>
     </div>
     <div v-if="headline" class="result-summary prose" v-html="prose($t(headline))"></div>
     <SpecCard v-if="result.spec" :spec="result.spec" :state="specState" :locked="locked" @draw="$emit('draw-spec', $event)" @revise="$emit('revise-spec', $event)" />
@@ -94,9 +98,9 @@ const statuses = { completed: '已完成', partial: '部分完成', unprocessed:
 .trail-head small{font-size:11.5px;color:var(--subtle)}.trail-head small::before{content:'·';margin-right:5px}
 .trail-head svg{transition:transform .15s}.trail.open .trail-head svg{transform:rotate(180deg)}
 .trail ol{list-style:none;margin:6px 0 10px 6px;padding:0 0 0 13px;border-left:1.5px solid var(--line);display:flex;flex-direction:column;gap:6px}
-.trail li{display:flex;gap:7px;line-height:1.6}.trail li svg{flex:none;margin-top:3px;color:var(--subtle)}.trail li.note{color:var(--ink)}.trail li.error,.trail li.error svg{color:#a24b37}
-.think-body{min-width:0;flex:1}.trail li.think p{margin:0;font-size:11.5px;line-height:1.7;color:var(--subtle);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap}
-.trail li.think p.full{display:block;-webkit-line-clamp:unset;max-height:360px;overflow:auto}.think-more{margin-top:2px;padding:0;font-size:11.5px}
+.trail li{display:flex;gap:7px;line-height:1.6}.trail li svg{flex:none;margin-top:3px;color:var(--subtle)}.trail li.note{color:var(--muted)}.trail li.error,.trail li.error svg{color:#a24b37}
+.think-body{min-width:0;flex:1}.think-body p{margin:0;font-size:12px;line-height:1.7;overflow-wrap:anywhere}.trail li.think p{font-size:11.5px;color:var(--subtle)}
+.think-body p.full{white-space:pre-wrap;max-height:360px;overflow:auto}.think-more{margin-top:2px;padding:0;font-size:11.5px}
 .trail li span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.trail li em{margin-left:6px;font-style:normal;color:var(--subtle)}
 .remembered{display:flex;align-items:flex-start;gap:7px;margin-top:10px;padding:7px 10px;border-radius:10px;background:var(--quiet);font-size:12px;color:var(--ink)}
 .remembered svg{flex-shrink:0;margin-top:3px;color:var(--primary)}
