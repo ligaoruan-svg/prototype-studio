@@ -1518,4 +1518,6 @@ export default {
   "这一轮插不进去，跑完接着发": "Will send when this run finishes",
   "下一步交给 AI": "Goes to the AI at its next step",
   "换一个回答": "Regenerate",
+  "回到最新": "Jump to latest",
+  "AI 会接着修": "The AI will fix it next",
 }

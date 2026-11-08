@@ -280,3 +280,13 @@ test('像 Claude：跑的时候能插话、最后一条能换一个回答、长�
   assert.match(panel, /v-for="message in shownMessages"/)
   assert.match(css, /@container \(max-width: 340px\)/)
 })
+
+test('跑得长也看得到：停在底部就跟着往下滚，翻上去了出「回到最新」；标题旁写着做到第几步；报错只露第一句', () => {
+  const panel = readFileSync(new URL('../src/components/layout/ConversationPanel.vue', import.meta.url), 'utf8')
+  const card = readFileSync(new URL('../src/components/chat/ExecutionCard.vue', import.meta.url), 'utf8')
+  assert.match(panel, /new MutationObserver\(\(\) => \{ if \(!atBottom\.value/)
+  assert.match(panel, /class="jump-latest" @click="toLatest"/)
+  assert.match(card, /class="plan-now"/)
+  assert.match(card, /errShort\(step\.error\)/)
+  assert.match(card, /\.execution-card header\{position:sticky/)
+})

@@ -80,6 +80,7 @@ body.resizing-side iframe { pointer-events: none; }
 /* AI 的话里常有一长串不带空格的代码（`${a}${b}.replace(...)`）：以前把整张卡片撑到七八百像素宽，
    对话栏出现横向滚动、看不全也拉不回来。长串在哪都能折行，对话栏不横向滚动 */
 .messages { overflow-x: hidden; overflow-wrap: anywhere; container-type: inline-size; }
+.jump-latest { position: sticky; bottom: 6px; z-index: 5; display: flex; align-items: center; gap: 5px; width: fit-content; margin: 0 0 0 auto; padding: 5px 11px; border: 1px solid var(--line); border-radius: 999px; background: #fff; box-shadow: 0 2px 8px #2b201a14; font-size: 12px; color: var(--ink); }
 .older-messages { display: block; margin: 0 auto 14px; font-size: 12px; color: var(--muted); }
 .messages pre, .messages code { white-space: pre-wrap; overflow-wrap: anywhere; }
 .conversation-empty { padding-top: 30px; text-align: center; }

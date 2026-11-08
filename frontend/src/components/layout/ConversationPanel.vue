@@ -2,7 +2,7 @@
 // 从 App.vue 拆出来的一块界面：状态和函数都在 App 里，按同样的名字 inject 进来，模板原样不动
 import { computed, inject, onMounted, onUnmounted, ref, watch } from 'vue'
 import { prose } from '../../lib/prose.js'
-import { ArrowUp, Brain, Check, CheckCheck, ChevronDown, Copy, ImagePlus, LoaderCircle, MessageCircle, MessageSquare, PanelLeftClose, Pencil, Plus, SlidersHorizontal, Sparkles, Square, SquareMousePointer, X, RotateCcw } from 'lucide-vue-next'
+import { ArrowUp, Brain, Check, CheckCheck, ChevronDown, Copy, ImagePlus, LoaderCircle, MessageCircle, MessageSquare, PanelLeftClose, Pencil, Plus, SlidersHorizontal, Sparkles, Square, SquareMousePointer, X, RotateCcw, ArrowDown } from 'lucide-vue-next'
 import ExecutionCard from '../chat/ExecutionCard.vue'
 import ResultCard from '../chat/ResultCard.vue'
 import AttachCard from '../chat/AttachCard.vue'
@@ -13,6 +13,16 @@ const STEP = 40
 const limit = ref(STEP)
 const shownMessages = computed(() => messages.value.slice(Math.max(0, messages.value.length - limit.value)))
 watch(() => [project.value?.id, page.value?.id], () => { limit.value = STEP })
+// 跑的时候跟着往下滚（参照 Claude）：你停在底部就一直跟着最新的；往上翻了就不打扰，右下角出「回到最新」
+const atBottom = ref(true)
+function onChatScroll() { const el = chatBox.value; if (el) atBottom.value = el.scrollHeight - el.scrollTop - el.clientHeight < 80 }
+function toLatest() { const el = chatBox.value; if (el) { el.scrollTop = el.scrollHeight; atBottom.value = true } }
+let follow = null, frame = 0
+onMounted(() => {
+  follow = new MutationObserver(() => { if (!atBottom.value || frame) return; frame = requestAnimationFrame(() => { frame = 0; toLatest() }) })
+  if (chatBox.value) follow.observe(chatBox.value, { childList: true, subtree: true, characterData: true })
+})
+onUnmounted(() => { follow?.disconnect(); cancelAnimationFrame(frame) })
 const hiddenCount = computed(() => Math.max(0, messages.value.length - limit.value))
 const isLong = text => String(text || '').length > 160 || String(text || '').split('\n').length > 5
 const preview = text => String(text || '').replace(/\s+/g, ' ').slice(0, 90).trim() + '…'
@@ -90,7 +100,7 @@ function appliedFor(message) {
   <div class="panel-header"><div class="side-tabs" role="tablist" :aria-label="$t('左侧面板')"><button type="button" role="tab" :aria-selected="!rightOpen" :class="{ active: !rightOpen }" @click="showChat"><MessageSquare :size="14" />{{ $t('对话') }}</button><button type="button" role="tab" :aria-selected="rightOpen" :class="{ active: rightOpen }" @click="showPanel"><component :is="tool === 'comment' ? MessageCircle : SlidersHorizontal" :size="14" />{{ tool === 'comment' ? $t('评论') : $t('属性') }}<span v-if="tool === 'comment' && annotations.length" class="count">{{ $t(annotations.length) }}</span></button></div><button class="icon-button" :aria-label="$t('收起左侧面板')" @click="leftOpen = false"><PanelLeftClose :size="16" /></button></div>
 
     <!-- 参照 Claude：不写「你」「设计助手」；你的话是右边一个气泡，AI 的回复直接铺在背景上；复制、重发、时间悬停才出来 -->
-    <div ref="chatBox" class="messages" aria-live="polite">
+    <div ref="chatBox" class="messages" aria-live="polite" @scroll.passive="onChatScroll">
       <div v-if="!messages.length && !pendingUser && showGuide" class="conversation-empty compact-guide"><span class="empty-mark"><Sparkles :size="18" /></span><h2>{{ $t('先聊清楚，再动手。') }}</h2><p>{{ $t('可以一起评价设计、比较方案；确定方向后，只改需要调整的位置。') }}</p><div class="prompt-chips"><button v-for="suggestion in ['现在的设计怎么样？', '有哪些地方值得优化？', selected ? '调整选中区域的对齐' : '检查一下交互有没有漏的']" :key="suggestion" class="prompt-suggestion" :disabled="!page" @click="input = suggestion; toAI()">{{ $t(suggestion) }}</button></div><button class="text-button dismiss-guide" @click="hideGuide">{{ $t('不再显示') }}</button></div>
       <button v-if="hiddenCount" type="button" class="text-button older-messages" @click="limit += STEP">{{ $t('显示更早的 {0} 条', [Math.min(STEP, hiddenCount)]) }}</button>
       <article v-for="message in shownMessages" :key="message.id" class="message" :class="message.role">
@@ -107,6 +117,7 @@ function appliedFor(message) {
       </article>
       <article v-if="pendingUser && !messages.some(m => m.role === 'user' && m.content === pendingUser && m === messages[messages.length - 1])" class="message user"><template v-if="pendingDisplay"><AttachCard :kind="pendingDisplay.kind" :title="pendingDisplay.title" :items="pendingDisplay.items" /><p v-if="pendingDisplay.note" class="bubble">{{ pendingDisplay.note }}</p></template><p v-else class="bubble">{{ isLong(pendingUser) ? preview(pendingUser) : pendingUser }}</p><img v-if="pendingRef" class="message-shot" :src="pendingRef.data_url" :alt="$t(pendingRef.name)"></article>
       <ExecutionCard v-for="run in currentRuns" :key="run.id" :run="run" :locked="locked" @retry="runAgent(run.request, '', run.options)" @repair="repairRun(run)" @settings="openDialog('settings')" @select="setMode('select')" @fill="smallerRequest(run)" @point="pointAt(run)" @dismiss="run.status = 'dismissed'" @stop="stopAgent" />
+      <button v-if="!atBottom && currentRuns.length" type="button" class="jump-latest" @click="toLatest"><ArrowDown :size="13" />{{ $t('回到最新') }}</button>
     </div>
 
     <!-- 输入框：附件（同步卡片、截图、点选的位置）在框里最上面；左下角加图、对话方式，右下角模型、发送 -->
