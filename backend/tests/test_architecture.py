@@ -937,22 +937,39 @@ class 读原型的菜单分组(unittest.TestCase):
 
 
 class 架构模式打招呼(unittest.TestCase):
-    """「您好啊」不带整棵树去问模型（以前要等十几秒），直接回一句"""
+    """「您好啊」还是模型回（不是写死的一句），但不带整棵树和原型代码：以前带着全部上下文要等十几秒"""
     def setUp(self):
         from backend import arch_chat
         self.mod, self.tmp = arch_chat, tempfile.TemporaryDirectory()
         self.old_root, self.old_chat = storage.DATA_ROOT, arch_chat.chat
         storage.DATA_ROOT = Path(self.tmp.name)
         self.pid = storage.create_project('物业')['id']
-        arch_chat.chat = lambda *a, **k: self.fail('打招呼不该调模型')
+        self.sent = []
+
+        def chat(key, model, messages, tools, **k):
+            self.sent.append(messages)
+            if k.get('on_delta'):
+                k['on_delta']('你好！把需求贴过来，', 'note'); k['on_delta']('我先帮你梳理业务。', 'note')
+            return {'choices': [{'message': {'content': '你好！把需求贴过来，我先帮你梳理业务。'}}], 'usage': {'total_tokens': 90}}
+        arch_chat.chat = chat
 
     def tearDown(self):
         storage.DATA_ROOT, self.mod.chat = self.old_root, self.old_chat
         self.tmp.cleanup()
 
-    def test_秒回(self):
-        out = self.mod.run(self.pid, 'p', '您好啊', 'k', 'm', 'u', 8000, lambda e: None, lambda: False)
-        self.assertTrue(out['content'].startswith('在的。把需求贴一段过来'))      # 画布空着：引导贴需求
+    def test_模型回_上下文很短_边写边出(self):
+        events = []
+        out = self.mod.run(self.pid, 'p', '您好啊', 'k', 'm', 'u', 8000, events.append, lambda: False)
+        self.assertEqual(out['content'], '你好！把需求贴过来，我先帮你梳理业务。')
+        self.assertIn('画布还空着', self.sent[0][-1]['content'])
+        self.assertLess(sum(len(m['content']) for m in self.sent[0]), 400)            # 不带整棵树、原型代码
+        self.assertEqual(''.join(e['text'] for e in events if e['type'] == 'text_delta'), out['content'])
+        self.assertEqual(storage.load_meta(self.pid)['chat'][-1]['arch_mode'], 'discuss')
+
+    def test_模型没回上来_兜底一句(self):
+        from backend.deepseek_client import DeepSeekError
+        def boom(*a, **k):
+            raise DeepSeekError('网络断了')
+        self.mod.chat = boom
         out = self.mod.run(self.pid, 'p', '谢谢！', 'k', 'm', 'u', 8000, lambda e: None, lambda: False)
         self.assertEqual(out['content'], '不客气。还要调整哪里，直接说。')
-        self.assertEqual(storage.load_meta(self.pid)['chat'][-1]['arch_mode'], 'discuss')
