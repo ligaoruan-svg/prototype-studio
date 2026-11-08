@@ -8,6 +8,7 @@ import re
 
 from .arch_fields import parse_field
 from .arch_gen import JS, js, key_of, name_key
+from .arch_plan import filled_by
 
 PEOPLE = ["张三", "李四", "王五", "赵六", "钱七", "孙八", "周九", "吴十"]
 PLACES = ["阳光花园 3 栋 201", "翠湖苑 1 栋 502", "锦绣家园 7 栋 1103", "金色港湾 2 栋 806"]
@@ -98,12 +99,16 @@ def demo(cfgs_by_data: dict[str, list[dict]], spec: dict, keys: dict) -> tuple[s
         fields, states = fields_by[data], states_of[data]
         count = min(18, max(6, 3 * len(states))) if states else 8
         prefix = _prefix(cfgs, keys)
+        obj = next((o for o in (spec or {}).get("objects") or [] if o["name"] == data), None)
+        gate = filled_by(obj, list(fields)) if obj else {}     # 还没走到那一步的：派单时间、处理说明留空
         rows = []
         for i in range(count):
             row: dict = {}
             if states:
                 row["status"] = states[i % len(states)]
             for f, meta in fields.items():
+                if f in gate and row.get("status") not in gate[f]:
+                    continue
                 kind, options = meta["type"], meta["options"] or shared.get(f, [])
                 ref = next((d for d in cfgs_by_data if d != data and (f == d or f in d or d in f) and namefield.get(d)), "")
                 if meta.get("ref"):     # 关联：从对方那份数据里取名字
@@ -138,7 +143,7 @@ def demo(cfgs_by_data: dict[str, list[dict]], spec: dict, keys: dict) -> tuple[s
                     row[f] = f"138****{1001 + i * 7:04d}"
                 elif re.search(r"(地址|位置)$", f):
                     row[f] = PLACES[i % len(PLACES)]
-                elif PERSON.search(f) and not NAME.search(f) or f == "姓名":
+                elif PERSON.search(f) and not NAME.search(f) or f.endswith("姓名"):
                     row[f] = PEOPLE[i % len(PEOPLE)]
                 else:     # 描述、备注、名称这类：放进 Demo.text，交给 AI 换成真话
                     tag = f"{data}·{f}"

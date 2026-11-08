@@ -98,6 +98,8 @@ class 五个行业的原型跑起来(unittest.TestCase):
             page.fill("#activeModal textarea, #activeModal [data-lpf='处理说明']", "更换水龙头阀芯")
             box = page.locator("#activeModal .lp-rows")
             box.locator("select").first.select_option(index=1)
+            page.click("#modalConfirm")
+            self.assertIn("工单材料明细第1行的数量", page.inner_text("#toastHost"))      # 明细逐行查必填
             box.locator("[data-lpr='数量']").first.fill("2")
             box.locator("[data-lpr='是否收费']").first.select_option(index=1)
             page.click("#modalConfirm")

@@ -75,7 +75,8 @@ class 画布直接生成列表页(unittest.TestCase):
         self.assertIn('{key:"维修工",label:"维修工",type:"select",options:()=>Store.all("维修工").map(r=>r["姓名"]).filter(Boolean),required:true}', gen["pages"])
         self.assertIn('detail:{title:"报修工单详情",fields:[{key:"工单编号",label:"工单编号"},{key:"报修分类",label:"报修分类"},{key:"维修工"', gen["pages"])
         self.assertIn('Store.define("维修工",[', gen["script"])                  # 没有页面、但被关联的对象也有数据
-        self.assertIn('"维修工":Demo.pick("维修工","姓名",0)', gen["script"])
+        self.assertIn('"维修工":Demo.pick("维修工","姓名",1)', gen["script"])
+        self.assertNotIn('"维修工":Demo.pick("维修工","姓名",0)', gen["script"])     # 第一条还是待派单：派单才选的维修工留空
         self.assertLess(gen["script"].index('Store.define("维修工"'), gen["script"].index('Store.define("报修工单"'))
 
     def test_同步到空外壳时程序先生成_再交给AI补(self):

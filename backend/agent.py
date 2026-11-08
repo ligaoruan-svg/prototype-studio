@@ -184,7 +184,8 @@ def _run_agent(project_id: str, page_id: str, user_message: str, api_key: str, m
         gen = arch_gen.generate(arch)
         if gen["made"]:
             emit({"type": "step_start", "id": "arch_gen", "label": "按画布生成列表页", "tool": "arch_gen"})
-            working_source, generated, fresh_shell = shell_add(working_source, nav=gen["nav"], pages=gen["pages"], script=gen["script"]), gen, False
+            working_source = arch_gen.brand(shell_add(working_source, nav=gen["nav"], pages=gen["pages"], script=gen["script"]), arch.get("name", ""))
+            generated, fresh_shell = gen, False
             emit({"type": "step_done", "id": "arch_gen", "tool": "arch_gen",
                   "detail": "程序写好：" + "、".join(gen["made"]) + "\n交给 AI：演示数据（" + "、".join(gen["data"]) + "）"
                             + ("、手写页（" + "、".join(gen["left"]) + "）" if gen["left"] else "") + "、规则校验",

@@ -276,6 +276,8 @@ def list_page(page: dict, spec: dict, flow_map: dict) -> dict | None:
     filters = _filters(next((k for k in kids if k["type"] == "block" and k["name"] == "筛选"), None), bool(tabs), kb)
     if filters:
         cfg["filters"] = filters
+    if _states(table.get("when", "")):     # 我的任务：只列要处理的状态
+        cfg["where"] = JS(f"r=>{js(_states(table['when']))}.includes(r.status)")
     cfg["columns"] = _columns(table.get("cols") or [], kb)
     if table["name"] != page["name"] + "列表":
         cfg["listTitle"] = table["name"]
@@ -307,6 +309,14 @@ def list_page(page: dict, spec: dict, flow_map: dict) -> dict | None:
             if tables:
                 cfg["detail"]["tables"] = tables
     return cfg
+
+
+def brand(source: str, name: str) -> str:
+    """外壳里的「示例系统」换成系统名（画布最顶上那个）"""
+    name = re.sub(r"[<>'\\\n]", "", name or "").strip()[:20]
+    if not name:
+        return source
+    return source.replace("<title>示例系统</title>", f"<title>{name}</title>", 1).replace("const APP_NAME='示例系统'", f"const APP_NAME='{name}'", 1)
 
 
 def generate(arch: dict, only: set[str] | None = None) -> dict:

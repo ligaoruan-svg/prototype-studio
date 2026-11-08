@@ -157,13 +157,74 @@ def _filters(fields: list[dict], states: list[str], tabs: bool, mine: list[str] 
     return out
 
 
-def _cols(fields: list[dict], states: list[str]) -> list[str]:
-    show = [f for f in fields if f["type"] not in ("textarea", "upload", "image", "note")]
+LONG = re.compile(r"(描述|说明|备注|原因|内容|意见|照片|图片|附件|地址)$")
+
+
+def _cols(fields: list[dict], states: list[str], limit: int = 7) -> list[str]:
+    """表格列：编号、名称打头，再挑选项 / 关联 / 人（分得清是哪类、谁的），金额、时间各一个；长文字（描述、地址）进详情不进表格。
+    连状态最多 limit 列，一屏放得下、操作列不压住内容"""
+    show = [f for f in fields if f["type"] not in ("textarea", "upload", "image", "note") and not LONG.search(f["name"])]
     # 打头的是编号和名称各一个（订单号、商品名称），别让「物流单号」挤到第二列
     first = [f for f in (next((f for f in show if CODEISH.search(f["name"])), None), next((f for f in show if NAMEISH.search(f["name"])), None)) if f]
     rest = [f for f in show if f not in first]
-    cols = [f["name"] for f in first + rest][:8]
+    choice = lambda f: f["type"] in ("select", "radio", "ref", "person")
+    when = lambda f: f["type"] in ("date", "datetime") or re.search(r"(时间|日期)$", f["name"])
+    money = lambda f: f["type"] == "money" or re.search(r"(金额|费|价|合计|租金)$", f["name"])
+    room = limit - len(first) - (1 if states else 0)
+    # 选项 / 关联最多三个，时间、金额各一个，还有空再按字段表顺序补
+    picked = [f for f in rest if choice(f)][:3]
+    picked += [f for f in rest if when(f) and f not in picked][:1] + [f for f in rest if money(f) and not when(f) and f not in picked][:1]
+    picked = picked[:room]
+    picked += [f for f in rest if f not in picked][:max(0, room - len(picked))]
+    cols = [f["name"] for f in first + [f for f in rest if f in picked]]
     return cols + (["状态"] if states else [])
+
+
+def parse_action(raw: str) -> tuple[str, list[str], str, str, str] | None:
+    """「派单：待派单→处理中（客服，必须选维修工）」→ (派单, [待派单], 处理中, 客服, 必须选维修工)；起点是「—」的 src 为空"""
+    m = re.match(r"^([^：:（(]+)[：:]\s*(.+?)\s*(?:→|->)\s*([^（(]+?)\s*(?:[（(](.*)[）)])?\s*$", str(raw).strip())
+    if not m:
+        return None
+    verb, src, dst, note = (x.strip() if x else "" for x in m.groups())
+    who, rest = (re.split(r"[，,；;、\s]", note or "", maxsplit=1) + [""])[:2]
+    src_list = [x for x in re.split(r"\s*[/、,，]\s*|或", src) if x and not re.fullmatch(r"[—\-–－]+|无|空|新建", x)]
+    return verb, src_list, re.split(r"\s*[/／]\s*", dst)[0], who, rest
+
+
+def filled_by(obj: dict, extra: list[str] = ()) -> dict[str, set[str]]:
+    """哪些字段要等某一步做了才有值：{字段: 有值的状态}。派单才选的维修工、完工才填的处理说明、
+    「派单时间」「付款时间」这种带动作名的时间、弹窗里的「审核驳回原因」（extra：字段表外、页面上出现的字段）——
+    走到那一步之后（从它的终点能到的状态）才填"""
+    states, acts = obj.get("states") or [], [a for a in map(parse_action, obj.get("actions") or []) if a]
+    nxt: dict[str, set[str]] = {}
+    for _, src, dst, _, _ in acts:
+        for x in src:
+            nxt.setdefault(x, set()).add(dst)
+
+    def reach(start):
+        seen, todo = {start}, [start]
+        while todo:
+            for y in nxt.get(todo.pop(), ()):
+                if y not in seen:
+                    seen.add(y)
+                    todo.append(y)
+        return seen
+    fields = _parsed(obj)
+    out: dict[str, set[str]] = {}
+    for verb, src, dst, _, rest in acts:
+        if not src or dst not in states:
+            continue
+        stamp = re.compile(f"(?:{re.escape(verb[:2])}|{re.escape(verb[-2:])}).{{0,2}}(时间|日期)")
+        names = {f["name"] for f in _asked(rest, fields)} | {f["name"] for f in fields if f["locked"] and stamp.fullmatch(f["name"])} \
+            | {n for n in extra if n.startswith(verb) and n != verb}
+        for n in names:
+            out.setdefault(n, set()).update(reach(dst))
+    for f in fields:     # 「完成时间」「付款时间」：到了「已完成」「已付款」才有
+        head = re.sub(r"(时间|日期)$", "", f["name"])
+        st = next((x for x in states if len(head) >= 2 and head in x), "") if f["locked"] and head != f["name"] else ""
+        if st and f["name"] not in out:
+            out[f["name"]] = reach(st)
+    return out
 
 
 def _asked(note: str, fields: list[dict]) -> list[dict]:
@@ -204,19 +265,17 @@ def _object_page(page: dict, obj: dict, roles: list[str], subs: list[dict] = (),
     fields, states = _parsed(obj), obj.get("states") or []
     acts, born, later = [], False, set()     # born：有人新建（梳理里写了 —→X 的动作），不是这一页的人也算；later：后面哪步才填的字段
     for raw in obj.get("actions") or []:
-        m = re.match(r"^([^：:（(]+)[：:]\s*(.+?)\s*(?:→|->)\s*([^（(]+?)\s*(?:[（(](.*)[）)])?\s*$", str(raw).strip())
-        if not m:
+        act = parse_action(raw)
+        if not act:
             continue
-        verb, src, dst, note = (x.strip() if x else "" for x in m.groups())
-        who, rest = (re.split(r"[，,；;、\s]", note or "", maxsplit=1) + [""])[:2]
+        verb, src_list, dst, who, rest = act
         mine = any(r and (r in who or who in r) for r in page["who"]) if who else True
         machine = re.search(r"系统|自动|定时|超时|到期", who) and not any(r and r in who for r in roles)
-        src_list = [x for x in re.split(r"\s*[/、,，]\s*|或", src) if x and not re.fullmatch(r"[—\-–－]+|无|空|新建", x)]
         born = born or not src_list
         if src_list:
-            later |= {f["name"] for f in _asked(note, fields)}
+            later |= {f["name"] for f in _asked(rest, fields)}
         if mine and not machine:
-            acts.append((verb, src_list, re.split(r"\s*[/／]\s*", dst)[0], rest))     # rest：括号里谁做的后面那段（选维修工、填关闭原因）
+            acts.append((verb, src_list, dst, rest))     # rest：括号里谁做的后面那段（选维修工、填关闭原因）
     tabs = []
     if kind == "list" and len(states) >= 3:
         tabs = list(states)
@@ -253,7 +312,12 @@ def _object_page(page: dict, obj: dict, roles: list[str], subs: list[dict] = (),
         buttons.append(button)
     # 我的任务页：只有一种要处理的状态就叫「待发货订单」，几种就叫「我的订单列表」（「我的」放在审批人页面上不对）
     title = f"{name}列表" if kind != "tasks" else (tabs and f"我的{name}列表") or next((f"{a[1][0]}{name}" for a in acts if a[1]), f"我的{name}列表")
-    kids.append({"type": "table", "name": title, "cols": _cols(fields, states), "children": buttons})
+    table = {"type": "table", "name": title, "cols": _cols(fields, states), "children": buttons}
+    if kind == "tasks":     # 我的任务只列要我处理的状态（维修工看处理中的），不是全部
+        todo = [x for x in states if any(x in a[1] for a in acts)]
+        if todo:
+            table["when"] = "状态是" + "、".join(todo) + "时"
+    kids.append(table)
     # 新建只填一开始就有的：派单才选的维修工、完工才写的处理说明不放
     form = [field_text(f["name"], f["must"], False, f["type"], f["options"]) for f in editable if f["name"] not in later]
     # 新建：梳理里写了谁新建（新建：—→草稿）就照它，按钮叫「新建报销单」、新的一条是那个状态；
@@ -313,7 +377,10 @@ def expand(plan: dict, spec: dict) -> list[dict]:
             else:
                 kids = _metric_page(p, spec)
             pages.append({"type": "page", "name": p["name"], "desc": p.get("desc", ""), "who": p["who"], "children": kids})
-        nodes.append({"type": "module", "name": mod["name"], "children": pages})
+        if len(pages) == 1 and pages[0]["name"] == mod["name"]:     # 「首页」模块下只有一个「首页」：直接放最外层，左侧菜单不套一层
+            nodes.append(pages[0])
+        else:
+            nodes.append({"type": "module", "name": mod["name"], "children": pages})
     return nodes
 
 

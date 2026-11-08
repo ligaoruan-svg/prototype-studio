@@ -1431,7 +1431,6 @@ export default {
   "这次做": "In scope",
   "这次不做": "Out of scope",
   "我先这样假设": "Assumptions",
-  "哪里不对？直接说，比如「租户这次不做」": "Anything off? Just say it, e.g. “skip tenants for now”",
   "修改梳理": "Revise the summary",
   "发送修改": "Send changes",
   "按这个画架构": "Draw architecture from this",
@@ -1479,7 +1478,6 @@ export default {
   "照画布核对整个原型，对不上的照画布改": "Check the whole prototype against the canvas and fix differences",
   "页面清单": "Page list",
   "确认后程序按页面类型展开": "Confirm to expand by page type",
-  "哪里不对？直接说，比如「统计并进首页」": "Anything off? Just say it, e.g. “put stats on the home page”",
   "修改页面清单": "Revise the page list",
   "正在列页面清单…": "Listing pages…",
   "确认，列页面清单": "Confirm and list pages",
@@ -1494,4 +1492,7 @@ export default {
   "正在定页面清单": "Listing pages",
   "页面清单好了 · 确认后画架构": "Page list ready · confirm to draw",
   "业务梳理好了 · 确认后列页面清单": "Summary ready · confirm to list pages",
+  "{0} 个模块 · {1} 个页面": "{0} modules · {1} pages",
+  "哪里要改？直接说": "What should change? Just say it",
+  "已画好": "Drawn",
 }

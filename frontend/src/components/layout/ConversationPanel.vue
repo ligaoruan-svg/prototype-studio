@@ -44,6 +44,15 @@ function specState(message) {
   if (later.some(m => m.arch_mode === 'draw' && m.arch_changed)) return 'drawn'
   return later.some(m => m.spec) ? 'replaced' : later.some(m => m.plan) ? 'confirmed' : 'open'
 }
+// 清单卡确认时勾了哪些、问题选了什么：从后面那条「按页面清单画架构」读回来，刷新后卡片照当时的样子显示
+function planConfirmed(message) {
+  if (!message.plan) return null
+  const sent = messages.value.slice(messages.value.indexOf(message) + 1).find(m => m.role === 'user' && /^按页面清单画架构/.test(m.content || ''))
+  if (!sent) return null
+  const line = sent.content.match(/可选页要：(.*)/)?.[1] || ''
+  return { picked: line === '都不要' ? [] : line.split('、').filter(Boolean),
+    answers: Object.fromEntries([...sent.content.matchAll(/^- (.+?)：(.+)$/gm)].map(m => [m[1], m[2]])) }
+}
 function planState(message) {
   if (!message.plan) return 'open'
   const later = laterArch(message)
@@ -82,7 +91,7 @@ function appliedFor(message) {
           <p v-if="bubbleText(message)" class="bubble">{{ bubbleText(message) }}</p>
           <button v-if="!message.display && isLong(message.content)" class="text-button more-text" @click="toggleLong(message.id)">{{ openLong.has(message.id) ? $t('收起') : $t('展开全部') }}</button>
         </template>
-        <ResultCard v-else-if="message.report || message.clarification || message.discussion || message.changed || message.spec || message.plan" :result="message" :applied="appliedFor(message)" :spec-state="specState(message)" :plan-state="planState(message)" :selftest="selftests[message.change_id]" :locked="locked" :can-undo="page?.last_undo_id === message.change_id" @undo="undo" @choose="chooseAnswer" @apply="applySuggestion" @discuss="discussSuggestion" @custom="customSuggestion" @rephrase="useRephrase" @forget="forgetFromCard" @draw-spec="drawSpec" @revise-spec="reviseSpec" @draw-plan="drawPlan" @revise-plan="revisePlan" />
+        <ResultCard v-else-if="message.report || message.clarification || message.discussion || message.changed || message.spec || message.plan" :result="message" :applied="appliedFor(message)" :spec-state="specState(message)" :plan-state="planState(message)" :plan-confirmed="planConfirmed(message)" :selftest="selftests[message.change_id]" :locked="locked" :can-undo="page?.last_undo_id === message.change_id" @undo="undo" @choose="chooseAnswer" @apply="applySuggestion" @discuss="discussSuggestion" @custom="customSuggestion" @rephrase="useRephrase" @forget="forgetFromCard" @draw-spec="drawSpec" @revise-spec="reviseSpec" @draw-plan="drawPlan" @revise-plan="revisePlan" />
         <p v-else class="reply">{{ message.content }}</p>
         <span v-if="message.role === 'user' && message.target" class="message-target"><SquareMousePointer :size="12" />{{ $t('指着：{0}', [$t(message.target)]) }}</span>
         <img v-if="message.role === 'user' && message.image" class="message-shot" loading="lazy" :src="`/api/projects/${project.id}/chat-images/${message.image}`" :alt="message.image_name || $t('参考截图缩略图')" @error="$event.target.style.display = 'none'">

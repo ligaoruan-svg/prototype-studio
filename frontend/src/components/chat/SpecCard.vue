@@ -20,7 +20,9 @@ const sections = computed(() => {
       line: [scope.in?.length && `做 ${scope.in.length}`, scope.out?.length && `不做 ${scope.out.length}`, scope.external?.length && `外部 ${scope.external.length}`].filter(Boolean).join(' · ') },
   ].filter(x => x.count)
 })
-const opened = ref(new Set(['objects']))
+// 确认过的卡片收起来只留一行（像 Claude 做完的计划那样），点标题再展开
+const folded = ref(done.value)
+const opened = ref(new Set(done.value ? [] : ['objects']))
 // 字段表在卡片上只露名字和 * 🔒，控件、选项放到悬停提示里（不然一个对象占好几行）
 const short = f => String(f).replace(/\s*[（(].*$/, '')
 function toggle(key) { const next = new Set(opened.value); next.has(key) ? next.delete(key) : next.add(key); opened.value = next }
@@ -40,9 +42,9 @@ function primary() {
 
 <template>
   <div class="spec-card" :class="{ done }">
-    <div class="spec-head"><ListChecks :size="14" /><span>{{ $t('业务梳理') }}</span><em v-if="state === 'drawn'"><Check :size="11" />{{ $t('已按它画好架构') }}</em><em v-else-if="state === 'confirmed'"><Check :size="11" />{{ $t('已确认') }}</em><small v-else-if="state === 'replaced'">{{ $t('已更新，看下面的新版') }}</small><small v-else>{{ $t('确认后再画架构') }}</small></div>
+    <component :is="done ? 'button' : 'div'" class="spec-head" :type="done ? 'button' : undefined" :aria-expanded="done ? !folded : undefined" @click="done && (folded = !folded)"><ListChecks :size="14" /><span>{{ $t('业务梳理') }}</span><ChevronDown v-if="done" :size="13" class="spec-fold" :class="{ up: !folded }" /><em v-if="state === 'drawn'"><Check :size="11" />{{ $t('已按它画好架构') }}</em><em v-else-if="state === 'confirmed'"><Check :size="11" />{{ $t('已确认') }}</em><small v-else-if="state === 'replaced'">{{ $t('已更新，看下面的新版') }}</small><small v-else>{{ $t('确认后再画架构') }}</small></component>
     <p v-if="spec.summary" class="spec-summary">{{ spec.summary }}</p>
-    <ul class="spec-sections">
+    <ul v-if="!folded" class="spec-sections">
       <li v-for="sec in sections" :key="sec.key" :class="{ open: opened.has(sec.key) }">
         <button type="button" class="spec-row" :aria-expanded="opened.has(sec.key)" @click="toggle(sec.key)">
           <b>{{ $t(sec.label) }}</b><i>{{ sec.count }}</i><span>{{ sec.line }}</span><ChevronDown :size="14" class="fold" />
@@ -66,7 +68,7 @@ function primary() {
         </div>
       </li>
     </ul>
-    <div v-if="spec.assumptions?.length" class="spec-assume"><b>{{ $t('我先这样假设') }}</b><ul><li v-for="a in spec.assumptions" :key="a">{{ a }}</li></ul></div>
+    <div v-if="!folded && spec.assumptions?.length" class="spec-assume"><b>{{ $t('我先这样假设') }}</b><ul><li v-for="a in spec.assumptions" :key="a">{{ a }}</li></ul></div>
     <div v-if="!done && spec.questions?.length" class="spec-questions">
       <div v-for="(q, qi) in spec.questions" :key="q.q" class="spec-q">
         <p>{{ q.q }}</p>
@@ -74,7 +76,7 @@ function primary() {
       </div>
     </div>
     <div v-if="!done" class="spec-foot">
-      <input v-model="note" class="spec-note" maxlength="600" :disabled="locked" :placeholder="$t('哪里不对？直接说，比如「租户这次不做」')" :aria-label="$t('修改梳理')" @keydown.enter.prevent="primary">
+      <input v-model="note" class="spec-note" maxlength="600" :disabled="locked" :placeholder="$t('哪里要改？直接说')" :aria-label="$t('修改梳理')" @keydown.enter.prevent="primary">
       <button class="primary spec-draw" :disabled="locked || drawing" @click="primary">{{ note.trim() ? $t('发送修改') : drawing ? $t('正在列页面清单…') : $t('确认，列页面清单') }}</button>
     </div>
   </div>
@@ -83,6 +85,8 @@ function primary() {
 <style scoped>
 .spec-card{margin-top:12px;border:1px solid var(--line);border-radius:14px;background:#fff;padding:8px 6px 6px;box-shadow:0 1px 2px #2b201a08;font-size:12.5px;line-height:1.65}
 .spec-head{display:flex;align-items:center;gap:6px;padding:2px 8px 4px;font-size:12px;font-weight:600;color:var(--ink)}.spec-head>svg{color:var(--primary)}
+button.spec-head{width:100%;border:0;background:none;text-align:left;cursor:pointer;justify-content:flex-start;border-radius:9px}button.spec-head:hover{background:var(--quiet)}
+.spec-fold{color:var(--subtle);transition:transform .15s}.spec-fold.up{transform:rotate(180deg)}
 .spec-head small{margin-left:auto;font-weight:400;font-size:11px;color:var(--muted)}
 .spec-head em{margin-left:auto;display:flex;align-items:center;gap:3px;font-style:normal;font-weight:500;font-size:11px;color:var(--success)}
 .spec-summary{margin:0 8px 6px;color:#4d4a44}

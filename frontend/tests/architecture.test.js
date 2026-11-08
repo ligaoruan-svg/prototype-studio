@@ -228,5 +228,7 @@ test('业务梳理卡：确认带上回答 → 页面清单卡；清单卡确认
   assert.match(result, /<PlanCard v-if="result\.plan" :plan="result\.plan" :state="planState"/)
   assert.match(card, /drawing \? \$t\('正在列页面清单…'\) : \$t\('确认，列页面清单'\)/)
   assert.match(plan, /emit\('draw', \{ picked: \[\.\.\.picked\.value\], answers:/)
+  assert.match(panel, /function planConfirmed[\s\S]*?按页面清单画架构[\s\S]*?可选页要/)      // 刷新后清单卡照当时勾的显示
+  assert.match(plan, /props\.confirmed\?\.picked \|\|/)
   for (const c of [card, plan]) assert.match(c, /:disabled="locked \|\| drawing"/)     // 点了就不能再点，以前点两下画两遍
 })
